@@ -1,0 +1,37 @@
+<?php
+include("../debut.php") ;
+$a[] = "O ";
+$a[] = "OAN ";
+$a[] = "OBAMA ";
+$a[] = "OBAME ";
+$a[] = "OFFREDO ";
+$a[] = "OILI ";
+$a[] = "OIZIRI ";
+$a[] = "OLIVA ";
+$a[] = "OLIVEIR ";
+$a[] = "OLIVEIRA ";
+$a[] = "OLIVERA ";
+$a[] = "Olivia ";
+$a[] = "OLIVIER ";
+$a[] = "OMER ";
+$a[] = "ONOFROFF ";
+$a[] = "OREGGIA ";
+$a[] = "ORMIJANA ";
+$a[] = "ORTEGA ";
+$a[] = "OSA ";
+$a[] = "OSMOND ";
+$a[] = "OSTEN ";
+$a[] = "OTMANI ";
+$a[] = "Otourou ";
+$a[] = "OTU ";
+$a[] = "Ou ";
+$a[] = "OUALI ";
+$a[] = "OUBARI ";
+$a[] = "OUCHES ";
+$a[] = "OUDART ";
+$a[] = "OURS ";
+$a[] = "OUSSENI ";
+$a[] = "OUVILLE ";
+$a[] = "OZIRI ";
+include("../fin.php") ;
+ ?>

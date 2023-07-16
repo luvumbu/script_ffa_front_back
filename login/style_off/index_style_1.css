@@ -1,0 +1,55 @@
+
+:root {
+    --color_1: #1877f2;
+    --white: #ffffff;
+  }
+  
+  .index_class_2 b {
+    color:  var(--blue);
+    font-size: 2.3em;
+   }
+   .index_class_1{
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    width: 80%;
+    margin: auto;
+    margin-top: 200px;
+  
+   }
+   .index_class_1 div{
+  padding: 20px;
+   }
+  
+  
+  
+     .index_class_3{
+   
+   border-radius: 5px;
+   background-color: white;
+   box-shadow: 1px 4px 4px 3px rgba(0, 0, 0, 0.2);
+  }
+  .index_class_3 input{
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 7px;
+  border-radius: 5px;
+  border:1px solid #dddfe2 ; 
+  
+  }
+  
+  
+   
+      .index_class_4{
+         background-color: var(--blue);
+         color: var(--white);
+      }
+      .index_class_4{
+      padding: 5px;
+      text-align: center;
+      border-radius: 5px; 
+      }
+    
+  
+  
+  

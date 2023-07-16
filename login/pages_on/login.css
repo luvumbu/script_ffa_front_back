@@ -1,0 +1,42 @@
+.div_1{
+    margin-bottom:100px; 
+ 
+ }
+ .div_1 input {
+    padding : 15px ; 
+    margin-bottom : 45px; 
+ 
+ }
+ 
+    .display_flexx{
+        display: flex;
+        justify-content: space-around;
+        width:50%;
+margin: auto ; 
+    }
+
+    .g{
+        border : 1px solid rgba(200,0,0,0.3) ;
+    }
+    
+    .d{
+        border : 1px solid rgba(0,200,0,0.3) ;
+    }
+    .v {
+        border : 1px solid rgba(0,0,200,0.3) ;
+
+    }
+
+    .d,.g,.v{
+        width:300px;
+        text-align: center;
+        padding: 10px;
+    }
+    @media screen and (max-width: 1200px) {
+        .display_flexx{
+        display: flex;
+        justify-content: space-around;
+        width:90%;
+margin: auto ; 
+    }
+}

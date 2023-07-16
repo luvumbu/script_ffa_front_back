@@ -1,0 +1,19 @@
+#id_liste_group_name, #id_liste_group_black{
+      position: absolute;
+      top:0 ; 
+      background-color: white;
+    }
+    #id_liste_group_name
+    {
+      width: 80%;
+      padding: 2%;
+      margin-top:100px;
+    }
+    #id_liste_group_black{
+      background-color: rgba(0,0,0,0.7);
+      height: 100%;
+      width: 100%;
+      left: 0;
+      
+    }
+ 

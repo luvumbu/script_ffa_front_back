@@ -1,0 +1,30 @@
+<?php
+include("../debut.php") ;
+$a[] = "H.E.C.";
+$a[] = "Handisport";
+$a[] = "Handisport Béziers";
+$a[] = "Handisport Lyonnais";
+$a[] = "Handisport Pays Vert";
+$a[] = "Handisport Touraine";
+$a[] = "Haspres Athletique Club";
+$a[] = "Hastignan Saint Medard En Jall";
+$a[] = "Hastings Caen";
+$a[] = "Haubourdin Loos Wattignies Ath";
+$a[] = "Haut Vallespir a";
+$a[] = "Haute Bretagne Athletisme *";
+$a[] = "Haute Saintonge Athletisme*";
+$a[] = "Havre Ac";
+$a[] = "Havre Ac *";
+$a[] = "Hec";
+$a[] = "Hem Athletic Club";
+$a[] = "Henri Becquerel";
+$a[] = "Herbauges Athle 44";
+$a[] = "Herbauges Athletic Club";
+$a[] = "Hericourt Athletisme Competiti";
+$a[] = "Herve Faye";
+$a[] = "Hors Stade Ffa";
+$a[] = "Hurdles Dynamic To Spirit";
+$a[] = "Hurepoix Dourdan Marolles";
+$a[] = "Hyeres Running";
+include("../fin.php") ;
+ ?>

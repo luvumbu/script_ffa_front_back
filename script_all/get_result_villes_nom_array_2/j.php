@@ -1,0 +1,33 @@
+<?php
+include("../debut.php") ;
+$a[] = "Jacksonville";
+$a[] = "Jacksonville (USA)";
+$a[] = "Jacob bellecomb";
+$a[] = "Jacob-bellecomb";
+$a[] = "Jambes";
+$a[] = "Jambes (BEL)";
+$a[] = "Jambour (LIB)";
+$a[] = "Jamhour (LIB)";
+$a[] = "Janze";
+$a[] = "Jarnac";
+$a[] = "Jarny";
+$a[] = "Jebsheim";
+$a[] = "Jerusalem (ISR)";
+$a[] = "Jesolo (ITA)";
+$a[] = "Jinan (CHN)";
+$a[] = "Joensuu (FIN)";
+$a[] = "Johannesbourg (RSA)";
+$a[] = "Johnson city (USA)";
+$a[] = "Joinville";
+$a[] = "Joinville le po";
+$a[] = "Joinville-le-po";
+$a[] = "Jonesboro (USA)";
+$a[] = "Jonzac";
+$a[] = "Joplin (USA)";
+$a[] = "Joue les tours";
+$a[] = "Joue-les-tours";
+$a[] = "Jouy-st-prest";
+$a[] = "Jyvaskyla (FIN)";
+$a[] = "Jyväskylä (FIN)";
+include("../fin.php") ;
+ ?>

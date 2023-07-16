@@ -1,0 +1,202 @@
+  
+    .logo_user{
+        width:50px; 
+        height:50px;
+        border-radius : 100%; 
+    }
+    .pages_1_display_flex{
+        display:flex ; 
+        justify-content:space-around ; 
+        text-align:center ; 
+    } 
+    .pages_1_display_flex2 div{
+        width:100px;
+        margin-top:25px;
+    }
+
+    .pages_1_display_flex{
+        display:flex ; 
+        justify-content:space-around ; 
+        text-align:center ; 
+    }
+    .pages_1_flex{
+        display:flex ; 
+        justify-content: space-around ; 
+     
+        width : 80% ; 
+        margin : auto ; 
+        margin-top : 50px; 
+
+    }
+    .pages_1_flex{
+        text-align:center ; 
+    }
+    .pages_1_flex_g,.pages_1_flex_d{
+        
+       
+        padding : 20px; 
+        width : 300px;
+    
+    }
+
+    .pages_1_flex_g{
+        background-color : #ad3117 ; 
+        color:white ; 
+        
+  
+    }
+    .pages_1_flex_d
+    {
+        border : 1px solid  #cccccf ;
+        color :  #cccccf  ;
+    }
+    #carre_{
+        display:flex; 
+        justify-content : space-around ; 
+        margin-top : 150px; 
+        margin-bottom : 150px; 
+
+    }
+    .carre_{
+        width:210px; 
+        height : 400px; 
+    }
+ 
+ 
+
+    .carre_{
+   
+        background-size: 220px 410px;
+        text-align : center ; 
+        color:white ; 
+        font-size : 2em ; 
+        padding-top : 10px; 
+        text-shadow : 1px 1px 1px black ;
+    }
+
+    .carre_1{
+        background-image : url("../../sport/athlete-1840437_1920_modif.jpg") ;        
+     
+    }
+    .carre_2{
+        background-image : url("../../sport/women-655353_1920_modif.jpg") ;        
+     
+    }
+    .carre_3{
+        background-image : url("../../sport/stadium-4181150_1920_modif.jpg") ;        
+     
+    }
+
+
+    .user{
+       height : 50px; 
+       border:1px solid black ; 
+   
+    }
+    .option_user{
+     
+        
+        color : white ; 
+        padding : 25px; 
+        background-size:100% ; 
+        background-position : 0px -50px;   
+        text-shadow : 1px 1px 1px black ; 
+    
+ 
+    }
+    .cursor_pointer:hover{
+        cursor:pointer ; 
+    }
+    .option_user_1{
+        background-image : url("../../sport/option_user_1.jpg") ;    
+ 
+    }
+    .option_user:hover{
+     cursor : pointer ; 
+ 
+    }
+    .option_user_2{
+        background-image : url("../../sport/option_user_2.jpg") ;    
+ 
+    }
+    .option_user_3{
+        background-image : url("../../sport/option_user_3.jpg") ;    
+ 
+    }
+    .option_user_4{
+        background-image : url("../../sport/option_user_4.jpg") ;    
+ 
+    }
+    .option_user_5{
+        background-image : url("../../sport/option_user_5.jpg") ;   
+        border : 1px solid rgba(0,0,0,0.1) ;  
+ 
+    }
+    #option_user{
+        width : 45%; 
+        margin : auto 
+    }
+    .actuality_{
+        display : flex; 
+        justify-content : space-around  ; 
+        margin-top : 150px; 
+        
+       
+
+    }
+    .actuality_x{
+        padding : 45px; 
+    }
+    .actuality_1_g{
+        background-color : #d5ddec ;  
+    
+        color : white ; 
+        text-shadow : 1px 1px 1px black ; 
+    }
+
+    .actuality_1_d{
+        border :1px solid  #d5ddec ;  
+        
+
+   
+    }
+
+
+
+    .actuality_2_d{
+        background-color : #ad3117 ;  
+        
+        color : white ; 
+        text-shadow : 1px 1px 1px black ; 
+    }
+
+    .actuality_2_g{
+        border :1px solid  #ad3117 ;  
+        
+
+   
+    }
+
+
+
+
+
+    .actuality_3_g{
+        background-color : #d6988b ;  
+    
+        color : white ; 
+        text-shadow : 1px 1px 1px black ; 
+    }
+
+    .actuality_3_d{
+        border :1px solid  #d6988b ;  
+        
+
+   
+    }
+    #actuality{
+        margin-bottom : 100px;
+    }
+
+    
+ 

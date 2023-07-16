@@ -1,0 +1,21 @@
+ #form-group{
+     width:400px;
+    
+ }
+ #form-group input,#submit {
+     padding: 15px;
+     margin:10px;
+     border-radius: 7px;
+     width: 100%;
+ }
+ #submit{
+     background-color: rgba(41, 52, 95, 0.5);
+     margin-top: 25px;
+     transition:1s all ; 
+     color:white; 
+     text-shadow: 1px 1px black;
+ }
+ #submit:hover {
+    background-color: rgba(41, 52, 95, 0.8);
+    transition:1s all ; 
+ }

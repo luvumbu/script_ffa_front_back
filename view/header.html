@@ -1,0 +1,142 @@
+<h1 class="h1_header">
+    Athlete
+    </h1>
+    
+    
+    
+    
+    
+    
+    
+    <div class="display_header">
+            <h2 onclick="header_option(this)" class="cursor_pointer_2" title="Clubs">
+            Clubs  
+            </h2>
+            <h2 onclick="header_option(this)" class="cursor_pointer_2" title="Athletes">
+                Athletes  
+            </h2>
+            <h2 onclick="header_option(this)" class="cursor_pointer_2" title="Villes">
+                Villes  
+            </h2>
+            <h2 onclick="header_option(this)" class="cursor_pointer_2" title="Login">
+                Login 
+            </h2>
+    </div>
+    
+    <div style="margin-top:150px"></div>
+    <div id="optiones_total">
+    
+    </div>
+    
+    <style>
+        body{
+            margin:0 ; 
+            padding : 0 ; 
+        }
+        .h1_header{
+            text-align:center ; 
+        }
+        .display_header{
+            display:flex ; 
+            justify-content:space-around ; 
+            background-color:#ad3117 ; 
+            color:white ; 
+        }
+        .cursor_pointer_2:hover{
+            cursor:pointer ;
+            
+            width:100% ; 
+        }
+        .cursor_pointer_2{
+     
+            width:100% ; 
+            text-align:center ; 
+            padding:5px; 
+        }
+    
+        .cursor_pointer:hover{
+    cursor:pointer ;  
+    }
+        
+    </style>
+    
+    
+    <script src="model/class/js/Ajax.js"></script>
+    
+    
+    <script>
+        function header_option(this_){
+    console.log(this_.title) ;
+    
+    
+    
+    
+    
+    
+     
+
+
+ 
+
+
+
+  if(this_.title =="Login"){
+           Ajax("optiones_total","view/pages/Login.php");
+
+  }
+  else {
+    Ajax("optiones_total","view/pages/general_model.php");
+
+    const myTimeout = setTimeout(myStopFunction, 100);
+
+function myStopFunction() {
+
+  document.getElementById("nom_model_1").innerHTML=this_.title ; 
+  document.getElementById("nom_model_2").innerHTML=this_.title ; 
+
+
+ 
+  Ajax("link_css","view/pages/link_css_"+this_.title+".html");
+  
+ let result = this_.title.replace("s", "");
+  switch(this_.title) {
+            case "Clubs":
+                     document.getElementById("nom_model_3").placeholder="Recherche un "+result ;
+                     document.getElementById("nom_model_2").backgroundImage="sport/women-655353_1920.jpg" ; 
+
+
+                break;
+            case "Athletes":
+           
+                         document.getElementById("nom_model_3").placeholder="Recherche un "+result ; 
+
+                break;
+                case "Villes":
+
+                         document.getElementById("nom_model_3").placeholder="Recherche une "+result ; 
+
+            break ;
+         
+                        }
+  }
+
+
+}
+     
+     //       Ajax("optiones_total","view/pages/"+this_.title+".php");
+
+    
+     
+    
+    
+        }
+    
+    // Ajax("optiones_total","pages/recherche_1.php");
+    
+      // Ajax("optiones_total","login/perso.php");
+ 
+    
+    </script>
+    
+    
+    <link rel="stylesheet" href="view/pages/pages.css">

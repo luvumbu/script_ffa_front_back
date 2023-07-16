@@ -1,0 +1,31 @@
+<?php
+include("../debut.php") ;
+$a[] = "Ca50877";
+$a[] = "Ca91510";
+$a[] = "CAF";
+$a[] = "CAM";
+$a[] = "CAN";
+$a[] = "Cb04468";
+$a[] = "Cd31890";
+$a[] = "Cd99242";
+$a[] = "Cf40652";
+$a[] = "Cf71276";
+$a[] = "Cg92767";
+$a[] = "CGO";
+$a[] = "Ch48385";
+$a[] = "CHA";
+$a[] = "CHI";
+$a[] = "CHN";
+$a[] = "CIV";
+$a[] = "CMR";
+$a[] = "COD";
+$a[] = "COL";
+$a[] = "COM";
+$a[] = "CPV";
+$a[] = "CRC";
+$a[] = "CRO";
+$a[] = "CUB";
+$a[] = "CYP";
+$a[] = "CZE";
+include("../fin.php") ;
+ ?>
