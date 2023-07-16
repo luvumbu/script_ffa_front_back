@@ -28,23 +28,17 @@ session_start();
   if(!isset($_SESSION["information_user_id_sha1"])){
     
     include("pages_off/acceuil1.html") ;
-    // si lutilisateur n'est pas connexion
-   ?>
-
-<script>
-    document.title =change_title() ;
-  document.getElementById("titre_page1").innerHTML=change_title();
-  document.getElementById("titre_page2").innerHTML=change_title();
-  
 
 
-</script>
 
-   <?php
+ 
+
+ 
   }
   else {
 
-   include("pages_on/login.php") ;
+    include("pages_on/login.php") ;
+  
 
 
 
@@ -109,4 +103,6 @@ include("class/php/php_off/verif.php");
  
 </body>
  <link rel="stylesheet" href="css.css">
+ <link rel="stylesheet" href="../view/pages/Login.css">
+
  </html>

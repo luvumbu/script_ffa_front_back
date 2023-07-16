@@ -74,13 +74,4 @@
  
 </div>
 
-<?php 
-    //include("bas.php") ; 
-?>
-
-<link rel="stylesheet" href="view/pages/pages.css">
- <style>
-    .option_user {
-        margin-bottom : 50px; 
-    }
- </style>
+ 

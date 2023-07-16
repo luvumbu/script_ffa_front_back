@@ -52,8 +52,9 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <title>INDEX B</title>
+  <title>Ndenga Luvumbu application</title>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/x-icon" href="src/img/ndenga.gif">
 </head>
 <body>
   <?php
@@ -128,12 +129,21 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 </body>
 
 
-<script>
-  function Inscription1() {
-    Ajax("optiones_total","view/pages/Inscription1.php");
-  }
-  function Inscription2() {
-    Ajax("optiones_total","view/pages/Inscription2.php");
-  }
-</script>
+<script src="model/class/js/Ajax.js"></script>
+<script src="js.js"></script>
+
+<link rel="stylesheet" href="view/pages/general_model.css">
+<link rel="stylesheet" href="view/pages/Inscription1.css">
+<link rel="stylesheet" href="view/pages/Inscription2.css">
+<link rel="stylesheet" href="view/pages/Login.css">
+<link rel="stylesheet" href="view/pages/pages.css">
+<link rel="stylesheet" href="view/pages/pages_1.css">
+<link rel="stylesheet" href="view/pages/recherche_04.css">
+
+
+
+
+
 </html>
+
+

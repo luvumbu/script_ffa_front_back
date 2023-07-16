@@ -26,6 +26,42 @@
 </div>
 
 </div>
+
+<style>
+    .margin_70{
+        margin:70px;
+    }
+    .group_nom{
+        background-color: rgba(0, 0, 0, 0.1);
+        width: 450px;
+        margin: auto;
+        padding: 50px;
+    }
+    .group_nom input {
+        width:100%;
+     border-radius:5px;
+     margin-bottom:20px;
+    border:1px solid rgba(0, 0, 0, 0.1);
+    padding: 5px;
+        
+    }
+    .green {
+        text-align: center;
+        background-color: green;
+        color:white;
+        padding:10px;
+    }
+    .select_group{
+        padding: 5px;
+        margin-bottom:20px;
+        width: 100%;
+        text-align: center;
+    }
+    select , option {
+       
+    background:1px solid rgba(0, 0, 0, 0) ; 
  
+    }
+</style>
 
 <link rel="stylesheet" href="etape_03.css">

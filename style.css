@@ -14,10 +14,17 @@
     src: url("src/font/Sugo-Pro-Display-Thin-trial.ttf");
     
    }
+   @font-face {
+    font-family: "Aesthetic Romance";
+    src: url("src/font/Aesthetic Romance.ttf");
+    
+   }
+
+   
   
    
-  h1{
-    font-family: "Sugo-Pro-Display-Thin-trial";
+  body{
+    font-family: "Aesthetic Romance";
   }
   #form-group{
     width: 60%;
