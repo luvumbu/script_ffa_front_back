@@ -40,7 +40,7 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
   $fread_ressource = fread($ressource, filesize($filename_config));
   if ($fread_ressource != "off") {
     //config_folder_verif.php
-    header('Location:login/index.php');    
+   // header('Location:login/index.php');    
     //header('Location:login/index.php');
     //header("HTTP/1.1 404 Not Found")
     // lors de la création du document si on a coché sur la case on fait une redirection si non on reste sur la même page
@@ -147,3 +147,48 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 </html>
 
 
+<script>
+
+function showHint(str) {
+
+
+  
+ 
+  if (str.length == 0) {
+    document.getElementById("txtHint").innerHTML = "";
+    return;
+  } else {
+    var xmlhttp = new XMLHttpRequest();
+    xmlhttp.onreadystatechange = function() {
+      if (this.readyState == 4 && this.status == 200) {
+        document.getElementById("txtHint").innerHTML = this.responseText;
+      }
+    }
+    xmlhttp.open("GET", resultat_recherche+str[0]+""+".php?q="+str, true);
+    xmlhttp.send();
+  }
+}
+
+function redirection_ok(_this){
+  Ajax("optiones_total","http://localhost/script_ffa_front_back/user_blog.php");
+//  Ajax("optiones_total","view/pages/"+_this.title+".php");
+
+
+  
+
+}
+ 
+
+</script>
+
+<style>
+  #txtHint{
+
+
+max-height : 500px; 
+overflow: scroll;
+overflow-x: hidden;
+
+ 
+  }
+</style>

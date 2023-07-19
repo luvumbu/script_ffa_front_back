@@ -2,14 +2,15 @@
 
 
 
-<div class="pages_1_flex">
-    <div class="pages_1_flex_g">
+     
+<div class="pages_1_flex"  >
+    <div class="pages_1_flex_g" onclick="redirection_ok(this)" title="Actualites">
     <h2>
     Actualités 
     </h2>
 
     </div>
-    <div class="pages_1_flex_d">
+    <div class="pages_1_flex_d" onclick="redirection_ok(this)" title="Athletes">
     <h2>
     Athlètes
     </h2>

@@ -1,21 +1,21 @@
 
-<div id="option">
+<div class="Login_01">
 
 
-    <div class="option">
-        <p>
+    <div class="" >
+        <div class="Login_connection2">
             Connexion
-        </p>
-        <p>
-            <input type="text" placeholder="identifiant">
+        </div>
+        <div class="Login_connection3">
+            <input type="text" placeholder="identifiant" style="text-align:center">
         
 
-        </p>
-        <p>
-        <input type="text" placeholder="mot de passe">
-        </p>
+</div>
+        <div class="Login_connection3">
+        <input type="text" placeholder="mot de passe" style="text-align:center">
+</div>
         
-        <p class="bt_n1">
+        <p class="Login_connection">
                 Se connecter
         </p>
 
@@ -23,30 +23,65 @@
 
         </p>
 <div >
-<p>
+<div class="Login_connection2">
             Inscription
-        </p>
-        <p>
+</div>
+        <div class="Login_connection2">
         <img width="50" height="50" src="https://img.icons8.com/ios/50/user--v1.png" alt="user--v1"/>
-        </p>
+</div>
 </div>
     </div>
 </div>
 
-<div id="option2">
+ 
+ <style>
+    .Login_01{
+        text-align:center ; 
+        border:1px solid rgba(0,0,0,0.2) ; 
+        width:300px;
+        margin:auto ; 
+ background-color: white; 
+
+    }
+    .Login_01 input{
+ padding : 10px ; 
+ width:80%; 
+ margin:auto ; 
+ background-color: #dcdddf ; 
+    }
+    .Login_connection{
+        background-color : #ad3117 ; 
+    
+        width:70%; 
+        margin:auto ; 
+        padding:10px; 
+        color:white ; 
+    text-align:center ; 
+
+    }
+    .Login_connection2{
+      
+    text-align:center ; 
+        width:75%; 
+        margin:auto ; 
+        padding:10px; 
+        color:  #bbb3ba ; 
+       
+    }
+    .Login_connection3{
+        width:90%; 
+        margin:auto ; 
+        margin-bottom:7px ; 
+        border:1px solid rgba(0,0,0,0) ; 
+    }
+
+    .Login_connection3 input{
+ 
+        border:1px solid rgba(0,0,0,0) ; 
+    }
+ </style>
 
 
-<div class="option2 option" >
-    <p>
-    Je suis une
-marque et je veux
-sponsoriser
-    </p>
-    <p>
-    <img width="50" height="50" src="https://img.icons8.com/ios/50/user--v1.png" alt="user--v1"/>
 
-    </p>
-</div>
-</div>
-<div id="option3"></div>
+
  
