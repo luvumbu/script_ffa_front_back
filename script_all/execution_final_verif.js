@@ -5,6 +5,8 @@ let taille2 = parseInt(taille);
 var exe = false ;
 var window_location_href2 ="" ; 
 
+const getFullYear_ = new Date().getFullYear();
+let getFullYear_verif ="x" ;  
 
 //http://www.asoftech.com/ata/ 
 /*
@@ -748,6 +750,36 @@ break ;
          
   
 } 
+
+
+
+ 
+if(getFullYear_==anne){
+ // getFullYear_verif =1;
+ 
+let person = prompt("Voulez vous envoyer la data quand meme y pour envoyer ");
+if(person=="y"){
+  getFullYear_verif = 1 ; 
+}
+else {
+  getFullYear_verif = 0 ; 
+
+}
+}
+/*
+else{
+  getFullYear_verif =0 ; 
+}
+ */
+
+
+
+ 
+
+
+
+
+
 if(page_total!=url_v3){
   
     
@@ -895,6 +927,7 @@ ok_.add("get_vent_array_2", get_vent_array_2); // ajout de l'information pour le
 ok_.add("get_result_users_perf_array_2", get_result_users_perf_array_2); // ajout de l'information pour lenvoi 
 
 
+ok_.add("getFullYear_verif", getFullYear_verif); // ajout de l'information pour lenvoi 
 
 
 

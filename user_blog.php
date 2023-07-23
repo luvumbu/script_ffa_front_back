@@ -218,10 +218,7 @@ $_mon_coump =[
 'get_epreuve_nom_complet',
 'reg_date'];
 
-
- $dbname="u489596434_ffa_2x" ; 
-
- $recherche="`get_result_users_nom_1_array_2`" ; 
+ 
  $nom_recherche =$name;
  
 $apple = new Select_datas($servername,$username,$password,$dbname);
@@ -282,34 +279,7 @@ $apple = new Select_datas($servername,$username,$password,$dbname);
 
  if(count($apple->list_row)>0){
  
-
-
-
-
-
-  // Ajout de l'adresse ip 
-
-
-
-
-
   
-  
-  
-  
-
-  
-  
-  
-
-
- 
-
-
-
-    
-
-
        for($i= 0 ; $i<count($apple->list_row) ; $i++){
      //   echo $i.'<br/>' ; 
 
@@ -484,7 +454,9 @@ $apple = new Select_datas($servername,$username,$password,$dbname);
 
 
 
-
+for($i = 0 ; $i < count($reg_date) ; $i ++){
+  echo $get_result_users_nom_1_array_2[$i]."<br/>";
+}
 
 
 

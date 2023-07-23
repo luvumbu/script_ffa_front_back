@@ -1,4 +1,6 @@
 let resultat_recherche ="" ; 
+let onclick_recherche_element ="" ; 
+
 function header_option(this_){
     console.log(this_.title) ;    
     
@@ -29,7 +31,7 @@ function myStopFunction() {
  
   
 
-  const myTimeout = setTimeout(myGreeting, 100);
+  const myTimeout = setTimeout(myGreeting, 250);
 
 function myGreeting() {
   Ajax("link_css","view/pages/link_css_"+this_.title+".html");
@@ -42,16 +44,23 @@ function myGreeting() {
                      document.getElementById("nom_model_2").backgroundImage="sport/women-655353_1920.jpg" ; 
 
                      resultat_recherche ="script_all/get_club_nom_complet_array_2/" ;
+                     onclick_recherche_element ="get_club_nom_complet_array_2";
                 break;
             case "Athletes":
            
                          document.getElementById("nom_model_3").placeholder="Recherche un "+result ; 
                      resultat_recherche ="script_all/get_users_nom_complet_array/" ;
+                     onclick_recherche_element ="get_users_nom_complet_array";
+
 
 
                 break;
                 case "Villes":
                   resultat_recherche ="script_all/get_result_villes_nom_array_2/" ;
+                  onclick_recherche_element ="get_result_villes_nom_array_2";
+
+
+                  
 
 
                          document.getElementById("nom_model_3").placeholder="Recherche une "+result ; 
@@ -83,19 +92,3 @@ function Inscription1() {
 
 
  
-
-function showHint(str) {
-  if (str.length == 0) {
-    document.getElementById("txtHint").innerHTML = "";
-    return;
-  } else {
-    var xmlhttp = new XMLHttpRequest();
-    xmlhttp.onreadystatechange = function() {
-      if (this.readyState == 4 && this.status == 200) {
-        document.getElementById("txtHint").innerHTML = this.responseText;
-      }
-    }
-    xmlhttp.open("GET", "script_all/get_result_users_nom_1_array_2/a.php?q="+str, true);
-    xmlhttp.send();
-  }
-}

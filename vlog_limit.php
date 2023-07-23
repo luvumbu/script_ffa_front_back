@@ -12,13 +12,10 @@ include("model/class/php/Insertion_Bdd.php") ;
 
 
 // PArtie en local 
-$dbname="u489596434_ffa_2x";
-$username="root";
-$password="root";
-$servername="localhost";
+ 
 //http://localhost/script_ffa_front_back/vlog.php/[id_info_all_array]/2512
  
-/*
+ 
  // Partie en ligne 
 // https://bokonzi.com/ffa/vlog.php/[get_result_users_nom_1_array_2]/ndenga
  
@@ -28,7 +25,7 @@ $username="u489596434_ffa_2x";
 $password="v3p9r3e@59A";
 $servername="localhost";
 
-*/
+ 
  
 
 $date_array = array() ; 

@@ -179,6 +179,25 @@ function redirection_ok(_this){
 }
  
 
+
+function onclick_recherche(_this){
+  console.log(_this.title);
+//  alert(onclick_recherche_element) ; 
+
+
+
+  var xmlhttp = new XMLHttpRequest();
+xmlhttp.onreadystatechange = function() {
+  if (this.readyState == 4 && this.status == 200) {
+    var myObj = JSON.parse(this.responseText);
+   console.log(myObj) ; 
+  }
+};
+xmlhttp.open("GET", "https://bokonzi.com/ffa/vlog_limit.php/["+onclick_recherche_element+"]/"+_this.title, true);
+xmlhttp.send();
+
+
+}
 </script>
 
 <style>
