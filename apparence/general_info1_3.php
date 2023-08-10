@@ -434,385 +434,107 @@ var D8_ =14.15 ;
 
 
 for(var t = 0 ; t <tab_sprint_3.length ; t ++  ) {
-  console.log(tab_sprint_3[t]) ; 
-
-
+ 
   nombre_ = tab_sprint_3[t] ; 
 
-
-
-
-  console.log(nombre_);
-  console.log(".......................");
-
-
-if(nombre_>D8_){
-  console.log("D8") ;
-
-  tab_sprint_1_niveau_[0].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-var IA_  =10.10 ;  	
-var IB_  =10.20 ;  	
-var N1_  =10.34 ;  	
-var N2_  =10.64 ;  	
-var N3_  =10.84 ;  	
-  
-var D8_ =14.15 ;
-
-
-  */
+if(nombre_>D8_){ 
+  tab_sprint_1_niveau_[0].push(tab_sprint_3[t]) ;  
 }
-// D8  ok
 
-
-if(nombre_<=D7_ && nombre_ >D6_){
-  console.log("D7") ;
+if(nombre_<=D7_ && nombre_ >D6_){ 
   tab_sprint_1_niveau_[1].push(tab_sprint_3[t]) ;
-  
-  /* 
-
- 	
-   	
-var D7_  =14.14 ; 
- 
-
-
-  */
-
 }
-// D7  ok
+
 if(nombre_<=D6_&& nombre_ >D5_){
-  console.log("D6") ;
-  tab_sprint_1_niveau_[2].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var D6_  =13.74 ;  	
- 
-
-  */
-
+   tab_sprint_1_niveau_[2].push(tab_sprint_3[t]) ;
 }
-// D6 ok
-
 if(nombre_<=D5_ && nombre_ >D4_){
   console.log("D5") ;
   tab_sprint_1_niveau_[3].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var D5_  =13.44 ;  	
- 
-
-
-  */
-
 }
-// D5 ok 
 
 if(nombre_<=D4_ && nombre_ >D3_){
   console.log("D4") ;
   tab_sprint_1_niveau_[4].push(tab_sprint_3[t]) ;
-  
-  /* 
-
- 
-var D4_  =13.14 ;  	
- 
-
-  */
-
 }
-// D4 ok 
 
 if(nombre_<=D3_ && nombre_ >D2_){
   console.log("D3") ;
   tab_sprint_1_niveau_[5].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var D3_  =12.94 ;  	
- 
-
-  */
-
-}
-// D3 ok
+  }
 if(nombre_<=D2_ && nombre_ >D1_){
   console.log("D2") ;
   tab_sprint_1_niveau_[6].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var D2_  =12.74 ;  	
-
-
-
-  */
-
-}
-// D2 ok
-
+ }
 if(nombre_<=D1_ && nombre_ >R6_){
   console.log("D1") ;
   tab_sprint_1_niveau_[7].push(tab_sprint_3[t]) ;
-  
-  /* 
-
- 	
-var D1_  =12.54 ;  	
- 
-
-  */
-
 }
-// D1 ok
-
 if(nombre_<=R6_ && nombre_ >R5_){
   console.log("R6") ;
   tab_sprint_1_niveau_[8].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var R6_  =12.44 ;  	
- 
-
-
-  */
-
-}
-// R6 ok 
-// .............................
- 
+ }
 if(nombre_<=R5_ && nombre_ >R4_){
   console.log("R5") ;
   tab_sprint_1_niveau_[9].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var R5_  =12.34 ;  	
- 
-
-
-  */
-
 }
-// R5 ok 
 if(nombre_<=R4_ && nombre_ >R3_){
   console.log("R4") ;
   tab_sprint_1_niveau_[10].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-   	
-var R4_  =12.24 ;  	
- 
-
-
-  */
-
 }
-// R4 ok 
 if(nombre_<=R3_ && nombre_ >R2_){
   console.log("R3") ;
   tab_sprint_1_niveau_[11].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  
-var R3_  =12.14 ;  	
- 
-
-  */
-
 }
  
 if(nombre_<=R2_ && nombre_ >R1_){
   console.log("R2") ;
   tab_sprint_1_niveau_[11].push(tab_sprint_3[t]) ;
-  
-  /* 
-  	
-var R2_  =11.94 ;  
- 
-
-
-  */
-
 }
-// R2 ok 
 if(nombre_<=R1_ && nombre_ >IR4_){
   console.log("R1") ;
   tab_sprint_1_niveau_[12].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  
-var R1_  =11.74 ;  	
- 
-
-
-  */
-
 }
-// R1 ok
 if(nombre_<=IR4_ && nombre_ >IR3_){
   console.log("IR4") ;
   tab_sprint_1_niveau_[13].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-   	
-var IR4_  =11.54 ;  
- 
-
-
-  */
-
 }
-// IR4 ok 
 if(nombre_<=IR3_ && nombre_ >IR2_){
   console.log("IR3") ;
   tab_sprint_1_niveau_[14].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var IR3_  =11.44 ;  	
- 
-
-
-  */
-
 }
-// IR3 ok 
 if(nombre_<=IR2_ && nombre_ >IR1_){
   console.log("IR2") ;
   tab_sprint_1_niveau_[15].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var IR2_  =11.34 ;  	
- 
-
-  */
-
 }
-// IR2 ok 
 if(nombre_<=IR1_ && nombre_ >N4_){
   console.log("IR1") ;
   tab_sprint_1_niveau_[16].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-   	
-var IR1_  =11.14 ;  	
- 
-
-
-  */
-
-}
-// IR1 ok 
+ }
 if(nombre_<=N4_ && nombre_ >N3_){
   console.log("N4") ;
   tab_sprint_1_niveau_[17].push(tab_sprint_3[t]) ;
-  
-  /* 
-
- 	
-var N4_  =10.94 ;  	
- 
-
-
-  */
-
 }
-// R6
 if(nombre_<=N3_ && nombre_ >N2_){
   console.log("N3") ;
   tab_sprint_1_niveau_[18].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var N3_  =10.84 ;  	
- 
- 
-
-
-  */
-
 }
-// N4 ok 
 if(nombre_<=N2_ && nombre_ >N1_){
   console.log("N2") ;
   tab_sprint_1_niveau_[19].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-  	
-var N2_  =10.64 ;  	
- 
-
-
-  */
-
 }
-// N2 ok 
 if(nombre_<=N1_ && nombre_ >IB_){
   console.log("N1") ;
   tab_sprint_1_niveau_[20].push(tab_sprint_3[t]) ;
-  
-  /* 
-
- 	
-var N1_  =10.34 ;  	
- 
-
-
-  */
-
 }
- 
-
-// N1 ok 
-if(nombre_<=IB_ && nombre_ >IA_){
+ if(nombre_<=IB_ && nombre_ >IA_){
   console.log("IB") ;
   tab_sprint_1_niveau_[21].push(tab_sprint_3[t]) ;
-  
-  /* 
+ }
 
- 
-var IB_  =10.20 ;  	
- 
-
-
-  */
-
-}
-
-// IB ok 
 if(nombre_<=IA_ ){
   console.log("IA") ;
   tab_sprint_1_niveau_[22].push(tab_sprint_3[t]) ;
-  
-  /* 
-
-var IA_  =10.10 ;  	
- 
-
-  */
-
 }
  
 
