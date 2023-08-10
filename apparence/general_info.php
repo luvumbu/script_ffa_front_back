@@ -1,4 +1,5 @@
 <?php
+include("general_info.html");
 /*
 info_page_facebook
 info_page_web

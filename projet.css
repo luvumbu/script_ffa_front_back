@@ -28,6 +28,20 @@ color:rgba(0,0,0,0.1) ;
 
  }
 
+
+
+ 
+
+ @font-face {
+  font-family: Inversionz;
+  src: url(font/Inversionz.ttf);
+}
+.Inversionz{
+  font-family: Inversionz;
+
+}
+ 
+
  @media screen and (max-width: 1200px) {
    .page_t1{
    text-align:center ; 

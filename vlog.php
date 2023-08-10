@@ -13,8 +13,8 @@ include("model/class/php/Insertion_Bdd.php") ;
 
 // PArtie en local 
 $dbname="u489596434_ffa_2x";
-$username="root";
-$password="root";
+$username="u489596434_ffa_2x";
+$password="v3p9r3e@59A";
 $servername="localhost";
 //http://localhost/script_ffa_front_back/vlog.php/[id_info_all_array]/2512
  

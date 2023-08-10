@@ -456,6 +456,10 @@ $apple = new Select_datas($servername,$username,$password,$dbname);
 
 for($i = 0 ; $i < count($reg_date) ; $i ++){
   echo $get_result_users_nom_1_array_2[$i]."<br/>";
+
+
+
+ 
 }
 
 

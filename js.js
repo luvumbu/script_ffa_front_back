@@ -20,7 +20,7 @@ function header_option(this_){
   else {
     Ajax("optiones_total","view/pages/general_model.php");
 
-    const myTimeout = setTimeout(myStopFunction, 25);
+    const myTimeout = setTimeout(myStopFunction, 200);
 
 function myStopFunction() {
 
@@ -31,7 +31,7 @@ function myStopFunction() {
  
   
 
-  const myTimeout = setTimeout(myGreeting, 250);
+  const myTimeout = setTimeout(myGreeting, 300);
 
 function myGreeting() {
   Ajax("link_css","view/pages/link_css_"+this_.title+".html");

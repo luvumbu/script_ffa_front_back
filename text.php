@@ -56,4 +56,28 @@
 	get_epreuve_nom_complet	
 	reg_date		
 	*/
+
+
+
+	// categorie athletisme
+
+	/*
+	https://www.athle.fr/asp.net/main.html/html.aspx?htmlid=25
+
+
+
+	*/
+
+
+	// table de cotation athletisme homme 
+
+
+	/*
+
+	https://www.athle.fr/asp.net/main.html/html.aspx?htmlid=125
+
+	// table de cotation femme 
+
+	https://www.athle.fr/asp.net/main.html/html.aspx?htmlid=122
+	*/
 	?>

@@ -55,6 +55,8 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
   <title>Ndenga Luvumbu application</title>
   <meta charset="UTF-8">
   <link rel="icon" type="image/x-icon" href="src/img/ndenga.gif">
+ 
+
 </head>
 <body>
   <?php
@@ -146,12 +148,11 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 
 </html>
 
-
 <script>
 
 function showHint(str) {
 
-
+ 
   
  
   if (str.length == 0) {
@@ -181,8 +182,149 @@ function redirection_ok(_this){
 
 
 function onclick_recherche(_this){
+
+
+  let get_emplacement	 = [""] ; 
+	let get_rp_array_2	 = [""] ; 
+	let get_vent_array_2	 = [""] ; 
+	let get_result_users_perf_array_2	 = [""] ; 
+	let get_result_users_nom_1_array_2	 = [""] ; 
+	let get_result_users_nom_2_array_2	 = [""] ; 
+	let get_result_users_nom_3_array_2	 = [""] ; 
+	let get_result_users_nom_4_array_2	 = [""] ; 
+	let get_users_nationality_array_2	 = [""] ; 
+	let get_club_nom_complet_array_2	 = [""] ; 
+	let get_club_departement_array_2	 = [""] ; 
+	let get_club_region_array_2	 = [""] ; 
+	let get_cat_array_2	 = [""] ; 
+	let get_users_naissance_array_2	 = [""] ; 
+	let get_result_date_perf_array_2	 = [""] ; 
+	let get_result_villes_nom_array_2 = [""] ; 	
+	let epreuve_sex_array_2	 = [""] ; 
+	let get_users_nom_complet_array	 = [""] ; 
+	let info_all_array_click	 = [""] ; 
+	let info_all_array_ip	 = [""] ; 
+	let info_all_array_src_name	 = [""] ; 
+	let window_location_href	 = [""] ; 
+	let get_epreuve_nom_complet	 = [""] ; 
+	let reg_date = [""] ; 
+
+
+
+    tab_liste = [
+
+ 	
+	'get_emplacement',	
+	'get_rp_array_2',	
+	'get_vent_array_2',	
+	'get_result_users_perf_array_2',	
+	'get_result_users_nom_1_array_2',	
+	'get_result_users_nom_2_array_2',	
+	'get_result_users_nom_3_array_2',	
+	'get_result_users_nom_4_array_2',	
+	'get_users_nationality_array_2',	
+	'get_club_nom_complet_array_2',	
+	'get_club_departement_array_2',	
+	'get_club_region_array_2',	
+	'get_cat_array_2',	
+	'get_users_naissance_array_2',	
+	'get_result_date_perf_array_2',	
+	'get_result_villes_nom_array_2',	
+	'epreuve_sex_array_2',	
+	'get_users_nom_complet_array',	
+	'info_all_array_click',	
+	'info_all_array_ip',	
+	'info_all_array_src_name',	
+	'window_location_href',	
+	'get_epreuve_nom_complet',	
+	'reg_date'
+    ]
+ ; 
+
+
+ var total_info  ; 
+
+ var recherche_info="get_users_nom_complet_array" ; 
+var recherche_info_element_1_div = "VICAUT    Willy " ; 
+var recherche_info_element_2_div = "test" ; 
+
+
+var list_get_club_nom_complet_array_2 = [] ; 
+    console.log( tab_liste.length) ; 
+ 
+ 
+
+Ajax("optiones_total","apparence/general_info1.php");
+    
+
+
+
+
   console.log(_this.title);
+  console.log("test") ; 
 //  alert(onclick_recherche_element) ; 
+document.getElementById("optiones_total").innerHTML="";
+
+
+const myTimeout = setTimeout(myGreeting, 250);
+
+function myGreeting() {
+  document.getElementById("id_nom_club__2").innerHTML=_this.title;
+ 
+
+
+
+  var el_ = "" ; 
+  var el_bool = false ; 
+for(var x = 0 ; x<_this.title.length ; x++){
+ if(_this.title[x]==" "){
+  el_bool =true ; 
+break ; 
+ } 
+ else {
+  el_ = el_+_this.title[x] ; 
+ }
+}
+
+
+
+if(el_bool){
+  document.getElementById("id_nom_club__1").innerHTML=el_;
+
+}
+else {
+  document.getElementById("id_nom_club__1").innerHTML="";
+
+}
+
+
+ 
+ console.log(onclick_recherche_element) ; 
+
+switch(onclick_recherche_element) {
+  case "get_club_nom_complet_array_2":
+    document.getElementById("id_nom_recherche").innerHTML="<strong>Recherche par club</strong>";
+
+    break;
+    case "get_users_nom_complet_array":
+    document.getElementById("id_nom_recherche").innerHTML="<strong>Recherche par Nom sportive</strong>";
+
+    break;
+    case "get_result_villes_nom_array_2":
+    document.getElementById("id_nom_recherche").innerHTML="<strong>Recherche par Villes</strong>";
+
+    break;
+ 
+  
+ 
+}
+
+}
+
+
+//document.getElementById("id_nom_club__1").innerHTML=_this.title;
+
+
 
 
 
@@ -190,7 +332,74 @@ function onclick_recherche(_this){
 xmlhttp.onreadystatechange = function() {
   if (this.readyState == 4 && this.status == 200) {
     var myObj = JSON.parse(this.responseText);
-   console.log(myObj) ; 
+ 
+    var myObj = JSON.parse(this.responseText);
+
+ 
+total_info = myObj ; 
+
+console.log(myObj) ;  
+
+
+ 
+
+
+
+
+
+
+/*
+
+
+
+for(var i = 0 ; i <myObj.length ; i ++ ) {
+  console.log(myObj[i].get_club_nom_complet_array_2) ; 
+
+ 
+
+
+  if( list_get_club_nom_complet_array_2.includes(myObj[i].get_club_nom_complet_array_2)){
+
+  }
+  else {
+    list_get_club_nom_complet_array_2.push(myObj[i].get_club_nom_complet_array_2);
+  }
+}
+
+
+console.log("FIN") ; 
+console.log(list_get_club_nom_complet_array_2) ; 
+
+switch(recherche_info) {
+case "get_club_nom_complet_array_2":
+document.getElementById("recherche_info_div").innerHTML="ReCHeRCHe D'UN cLUB" ; 
+break;
+case "get_users_nom_complet_array":
+document.getElementById("recherche_info_div").innerHTML="ReCHeRCHe par Nom d'athletB" ; 
+
+
+document.getElementById("recherche_info_element_1_div").innerHTML=onclick_recherche_element ; 
+
+
+recherche_info_element_2_div = "" ; 
+for(var i = 0 ; i<onclick_recherche_element.length ; i ++){
+
+console.log(i) ; 
+_this.title = _this.title+onclick_recherche_element[i] ; 
+if(onclick_recherche_element[i]==" "){
+  break ; 
+}
+}
+document.getElementById("recherche_info_element_2_div").innerHTML=_this.title ; 
+
+
+break;
+default:
+// code block
+}
+
+*/
+
   }
 };
 xmlhttp.open("GET", "https://bokonzi.com/ffa/vlog_limit.php/["+onclick_recherche_element+"]/"+_this.title, true);
@@ -211,3 +420,11 @@ overflow-x: hidden;
  
   }
 </style>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js"></script>
+ 
+ 
