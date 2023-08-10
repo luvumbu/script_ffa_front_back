@@ -397,31 +397,31 @@ console.log(myObj) ;
 // tab_sprint_3 == 
  
 
- 
-var IA_  =10.10 ;  	
-var IB_  =10.20 ;  	
-var N1_  =10.34 ;  	
-var N2_  =10.64 ;  	
-var N3_  =10.84 ;  	
-var N4_  =10.94 ;  	
-var IR1_  =11.14 ;  	
-var IR2_  =11.34 ;  	
-var IR3_  =11.44 ;  	
-var IR4_  =11.54 ;  
-var R1_  =11.74 ;  	
-var R2_  =11.94 ;  
-var R3_  =12.14 ;  	
-var R4_  =12.24 ;  	
-var R5_  =12.34 ;  	
-var R6_  =12.44 ;  	
-var D1_  =12.54 ;  	
-var D2_  =12.74 ;  	
-var D3_  =12.94 ;  	
-var D4_  =13.14 ;  	
-var D5_  =13.44 ;  	
-var D6_  =13.74 ;  	
-var D7_  =14.14 ; 
-var D8_ =14.15 ;
+ // DEBUT DU SCRYPT DE RECHERCHE 
+var IA_tab_sprint_3  =10.10 ;  	
+var IB_IA_tab_sprint_3  =10.20 ;  	
+var N1_tab_sprint_3  =10.34 ;  	
+var N2_tab_sprint_3  =10.64 ;  	
+var N3_tab_sprint_3  =10.84 ;  	
+var N4_tab_sprint_3  =10.94 ;  	
+var IR1_tab_sprint_3  =11.14 ;  	
+var IR2_tab_sprint_3  =11.34 ;  	
+var IR3_tab_sprint_3  =11.44 ;  	
+var IR4_tab_sprint_3  =11.54 ;  
+var R1_tab_sprint_3  =11.74 ;  	
+var R2_tab_sprint_3  =11.94 ;  
+var R3_tab_sprint_3  =12.14 ;  	
+var R4_tab_sprint_3  =12.24 ;  	
+var R5_tab_sprint_3  =12.34 ;  	
+var R6_tab_sprint_3  =12.44 ;  	
+var D1_tab_sprint_3  =12.54 ;  	
+var D2_tab_sprint_3  =12.74 ;  	
+var D3_tab_sprint_3  =12.94 ;  	
+var D4_tab_sprint_3  =13.14 ;  	
+var D5_tab_sprint_3  =13.44 ;  	
+var D6_tab_sprint_3  =13.74 ;  	
+var D7_tab_sprint_3  =14.14 ; 
+var D8_tab_sprint_3 =14.15 ;
 
 
 
@@ -437,103 +437,82 @@ for(var t = 0 ; t <tab_sprint_3.length ; t ++  ) {
  
   nombre_ = tab_sprint_3[t] ; 
 
-if(nombre_>D8_){ 
+if(nombre_>D8_tab_sprint_3){ 
   tab_sprint_1_niveau_[0].push(tab_sprint_3[t]) ;  
 }
 
-if(nombre_<=D7_ && nombre_ >D6_){ 
+if(nombre_<=D7_tab_sprint_3 && nombre_ >D6_tab_sprint_3){ 
   tab_sprint_1_niveau_[1].push(tab_sprint_3[t]) ;
 }
 
-if(nombre_<=D6_&& nombre_ >D5_){
+if(nombre_<=D6_tab_sprint_3&& nombre_ >D5_tab_sprint_3){
    tab_sprint_1_niveau_[2].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=D5_ && nombre_ >D4_){
-  console.log("D5") ;
+if(nombre_<=D5_tab_sprint_3 && nombre_ >D4_tab_sprint_3){
   tab_sprint_1_niveau_[3].push(tab_sprint_3[t]) ;
 }
 
-if(nombre_<=D4_ && nombre_ >D3_){
-  console.log("D4") ;
+if(nombre_<=D4_tab_sprint_3 && nombre_ >D3_tab_sprint_3){
   tab_sprint_1_niveau_[4].push(tab_sprint_3[t]) ;
 }
 
-if(nombre_<=D3_ && nombre_ >D2_){
-  console.log("D3") ;
+if(nombre_<=D3_tab_sprint_3 && nombre_ >D2_tab_sprint_3){
   tab_sprint_1_niveau_[5].push(tab_sprint_3[t]) ;
   }
-if(nombre_<=D2_ && nombre_ >D1_){
-  console.log("D2") ;
+if(nombre_<=D2_tab_sprint_3 && nombre_ >D1_tab_sprint_3){
   tab_sprint_1_niveau_[6].push(tab_sprint_3[t]) ;
  }
-if(nombre_<=D1_ && nombre_ >R6_){
-  console.log("D1") ;
+if(nombre_<=D1_tab_sprint_3 && nombre_ >R6_tab_sprint_3){
   tab_sprint_1_niveau_[7].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=R6_ && nombre_ >R5_){
-  console.log("R6") ;
+if(nombre_<=R6_tab_sprint_3 && nombre_ >R5_tab_sprint_3){
   tab_sprint_1_niveau_[8].push(tab_sprint_3[t]) ;
  }
-if(nombre_<=R5_ && nombre_ >R4_){
-  console.log("R5") ;
+if(nombre_<=R5_tab_sprint_3 && nombre_ >R4_tab_sprint_3){
   tab_sprint_1_niveau_[9].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=R4_ && nombre_ >R3_){
-  console.log("R4") ;
+if(nombre_<=R4_tab_sprint_3 && nombre_ >R3_tab_sprint_3){
   tab_sprint_1_niveau_[10].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=R3_ && nombre_ >R2_){
-  console.log("R3") ;
+if(nombre_<=R3_tab_sprint_3 && nombre_ >R2_tab_sprint_3){
   tab_sprint_1_niveau_[11].push(tab_sprint_3[t]) ;
 }
  
-if(nombre_<=R2_ && nombre_ >R1_){
-  console.log("R2") ;
+if(nombre_<=R2_tab_sprint_3 && nombre_ >R1_tab_sprint_3){
   tab_sprint_1_niveau_[11].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=R1_ && nombre_ >IR4_){
-  console.log("R1") ;
+if(nombre_<=R1_tab_sprint_3 && nombre_ >IR4_tab_sprint_3){
   tab_sprint_1_niveau_[12].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=IR4_ && nombre_ >IR3_){
-  console.log("IR4") ;
+if(nombre_<=IR4_tab_sprint_3 && nombre_ >IR3_tab_sprint_3){
   tab_sprint_1_niveau_[13].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=IR3_ && nombre_ >IR2_){
-  console.log("IR3") ;
+if(nombre_<=IR3_tab_sprint_3 && nombre_ >IR2_tab_sprint_3){
   tab_sprint_1_niveau_[14].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=IR2_ && nombre_ >IR1_){
-  console.log("IR2") ;
+if(nombre_<=IR2_tab_sprint_3 && nombre_ >IR1_tab_sprint_3){
   tab_sprint_1_niveau_[15].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=IR1_ && nombre_ >N4_){
-  console.log("IR1") ;
+if(nombre_<=IR1_tab_sprint_3 && nombre_ >N4_tab_sprint_3){
   tab_sprint_1_niveau_[16].push(tab_sprint_3[t]) ;
  }
-if(nombre_<=N4_ && nombre_ >N3_){
-  console.log("N4") ;
+if(nombre_<=N4_tab_sprint_3 && nombre_ >N3_tab_sprint_3){
   tab_sprint_1_niveau_[17].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=N3_ && nombre_ >N2_){
-  console.log("N3") ;
+if(nombre_<=N3_tab_sprint_3 && nombre_ >N2_tab_sprint_3){
   tab_sprint_1_niveau_[18].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=N2_ && nombre_ >N1_){
-  console.log("N2") ;
+if(nombre_<=N2_tab_sprint_3 && nombre_ >N1_tab_sprint_3){
   tab_sprint_1_niveau_[19].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=N1_ && nombre_ >IB_){
-  console.log("N1") ;
+if(nombre_<=N1_tab_sprint_3 && nombre_ >IB_IA_tab_sprint_3){
   tab_sprint_1_niveau_[20].push(tab_sprint_3[t]) ;
 }
- if(nombre_<=IB_ && nombre_ >IA_){
-  console.log("IB") ;
+ if(nombre_<=IB_IA_tab_sprint_3 && nombre_ >IA_tab_sprint_3){
   tab_sprint_1_niveau_[21].push(tab_sprint_3[t]) ;
  }
 
-if(nombre_<=IA_ ){
-  console.log("IA") ;
+if(nombre_<=IA_tab_sprint_3 ){
   tab_sprint_1_niveau_[22].push(tab_sprint_3[t]) ;
 }
  
@@ -546,16 +525,19 @@ if(nombre_<=IA_ ){
 //console.log(tab_sprint_1_niveau_.length) ; 
 
 
+ // FIN DU SCRYPT DE RECHERCHE 
 
 
-
+/*
 for(var i = 0 ; i<22; i++){
  console.log("Nideau "+i) ; 
   console.log(tab_sprint_1_niveau_[i]) ; 
 
+
+
 }
 
-
+*/
 // exemple table double 
 /*
 var langages = new Array(3)
