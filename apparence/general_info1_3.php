@@ -80,6 +80,7 @@ id_nom_club_1
 
 
 </style>
+<script src="const.js"></script>
 
 <script src="all_tab.js"></script>
 <script src="scrypt_boucle.js"></script>
@@ -144,31 +145,31 @@ id_nom_club_1
                   switch(myObj[x].get_epreuve_nom_complet) {
                     case "Disque (1.0 kg) | F":
                       // code block
-                      tab_lancers_1.push(myObj[x].get_result_users_perf_array_2) ;  
+                      tab_lancers_1.push(myObj[x]) ;  
                       break;
                       case "Disque (2.0 kg) | M":
                       // code block
-                      tab_lancers_2.push(myObj[x].get_result_users_perf_array_2) ;  
+                      tab_lancers_2.push(myObj[x]) ;  
                       break;
                       case "Javelot (600 g) | F":
                       // code block
-                      tab_lancers_3.push(myObj[x].get_result_users_perf_array_2) ;  
+                      tab_lancers_3.push(myObj[x]) ;  
                       break;
                       case "Javelot (800 g) | M":
                       // code block
-                      tab_lancers_4.push(myObj[x].get_result_users_perf_array_2) ;  
+                      tab_lancers_4.push(myObj[x]) ;  
                       break;
                       case "Marteau (4 kg) | F":
                       // code block
-                      tab_lancers_5.push(myObj[x].get_result_users_perf_array_2) ;  
+                      tab_lancers_5.push(myObj[x]) ;  
                       break;
                       case "Marteau (7.26 kg) | M":
                       // code block
-                      tab_lancers_6.push(myObj[x].get_result_users_perf_array_2) ;  
+                      tab_lancers_6.push(myObj[x]) ;  
                       break;
                       case "Poids (7.26 kg) | M":
                       // code block
-                      tab_lancers_77.push(myObj[x].get_result_users_perf_array_2) ;  
+                      tab_lancers_77.push(myObj[x]) ;  
                       break;
               
                       
@@ -184,35 +185,35 @@ id_nom_club_1
                   switch(myObj[x].get_epreuve_nom_complet) {
                     case '1 500m | F':
                       // code block
-                      tab_demi_fond_1.push(myObj[x].get_result_users_perf_array_2);
+                      tab_demi_fond_1.push(myObj[x]);
                       break;
                       case '1 500m | M':
                       // code block
-                      tab_demi_fond_2.push(myObj[x].get_result_users_perf_array_2);
+                      tab_demi_fond_2.push(myObj[x]);
                       break;
                       case '3 000m | F':
                       // code block
-                      tab_demi_fond_3.push(myObj[x].get_result_users_perf_array_2);
+                      tab_demi_fond_3.push(myObj[x]);
                       break;
                       case '3 000m | M':
                       // code block
-                      tab_demi_fond_4.push(myObj[x].get_result_users_perf_array_2);
+                      tab_demi_fond_4.push(myObj[x]);
                       break;
                       case '3000m Steeple (76) | F':
                       // code block
-                      tab_demi_fond_5.push(myObj[x].get_result_users_perf_array_2);
+                      tab_demi_fond_5.push(myObj[x]);
                       break;
                       case '3000m Steeple (91) | M':
                       // code block
-                      tab_demi_fond_6.push(myObj[x].get_result_users_perf_array_2);
+                      tab_demi_fond_6.push(myObj[x]);
                       break;
                       case '800m | F': 
                       // code block
-                      tab_lancers_7.push(myObj[x].get_result_users_perf_array_2);
+                      tab_lancers_7.push(myObj[x]);
                       break;
                       case '800m | M': 
                       // code block
-                      tab_lancers_7.push(myObj[x].get_result_users_perf_array_2);
+                      tab_lancers_7.push(myObj[x]);
                       break;
               
                       
@@ -227,11 +228,11 @@ id_nom_club_1
                   switch(myObj[x].get_epreuve_nom_complet) {
                     case '100m Haies (84) | F | Vent : VR':
                       // code block
-                      tab_sprint_1.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_1.push(myObj[x]); 
                       break;
                       case '100m | F':
                       // code block
-                      tab_sprint_2.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_2.push(myObj[x]); 
                       break;
                       case '100m | M | Vent : VR':
                       // code block
@@ -239,55 +240,55 @@ id_nom_club_1
                       break;
                       case '110m Haies (106) | M | Vent : VR':
                       // code block
-                      tab_sprint_4.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_4.push(myObj[x]); 
                       break;
                       case '200m | F | Vent : VR':
                       // code block
-                      tab_sprint_5.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_5.push(myObj[x]); 
                       break;
                       case '200m | M | Vent : VR':
                       // code block
-                      tab_sprint_6.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_6.push(myObj[x]); 
                       break;
                       case '400m Haies (76) | F':
                       // code block
-                      tab_sprint_7.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_7.push(myObj[x]); 
                       break;
                       case '400m Haies (91) | M':
                       // code block
-                      tab_sprint_8.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_8.push(myObj[x]); 
                       break;
                       case '400m | F':
                       // code block
-                      tab_sprint_9.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_9.push(myObj[x]); 
                       break;
                       case '400m | M':
                       // code block
-                      tab_sprint_10.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_10.push(myObj[x]); 
                       break;
                       case '50m - Salle | F':
                       // code block
-                      tab_sprint_11.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_11.push(myObj[x]); 
                       break;
                       case '50m - Salle | M':
                       // code block
-                      tab_sprint_12.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_12.push(myObj[x]); 
                       break;
                       case '50m | F':
                       // code block
-                      tab_sprint_13.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_13.push(myObj[x]); 
                       break;
                       case '50m | M':
                       // code block
-                      tab_sprint_14.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_14.push(myObj[x]); 
                       break;
                       case '60m - Salle | F':
                       // code block
-                      tab_sprint_15.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_15.push(myObj[x]); 
                       break;
                       case '60m - Salle | M':
                       // code block
-                      tab_sprint_16.push(myObj[x].get_result_users_perf_array_2); 
+                      tab_sprint_16.push(myObj[x]); 
                       break;
                        
  
@@ -394,7 +395,7 @@ node.setAttribute("id","tab_f") ;
 document.getElementById("n3_4").appendChild(node);
 
 
-console.log(myObj) ; 
+ // console.log(myObj) ; 
 // tab_sprint_3 == 
  
 
@@ -415,7 +416,17 @@ console.log(myObj) ;
 
  
 
-console.log(scrypt_boucle(tab_sprint_3,cotation_tab_sprint_3,tab_sprint_1_niveau_ )) ; 
+
+
+
+var ok1 = scrypt_boucle(tab_sprint_3,cotation_tab_sprint_3 ) ; 
+ 
+console.log(ok1) ; 
+
+//var ok2 = scrypt_boucle(tab_sprint_1,cotation_tab_sprint_1 ) ; 
+ 
+//console.log(ok2) ; 
+ 
 
 //console.log(tab_sprint_1_niveau_);
 

@@ -8,11 +8,13 @@ function scrypt_boucle(tab_sprint_3,cotation_tab_sprint_3 ){
   }
 
 
+
     for(var t = 0 ; t <tab_sprint_3.length ; t ++  ) {
    
    nombre_ = tab_sprint_3[t].get_result_users_perf_array_2 ; 
    
   
+ 
    
    tab_sprint_1_niveau__[n24].push(nombre_) ;
    
@@ -95,7 +97,7 @@ function scrypt_boucle(tab_sprint_3,cotation_tab_sprint_3 ){
   
   }
    tab_sprint_1_niveau__[n25].push(  tab_sprint_1_niveau__[n24].sort()) ;
- 
+   
   return tab_sprint_1_niveau__ ; 
   
   }
