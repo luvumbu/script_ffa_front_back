@@ -119,54 +119,7 @@ var tab_sprint_16 = []  ;
 // IB   22
 
 
-var tab_sprint_1_niveau_=  new Array(24) ;
-var tab_sprint_2_niveau_=  new Array(24) ;
-var tab_sprint_3_niveau_=  new Array(24) ;
-var tab_sprint_4_niveau_=  new Array(24) ;
-var tab_sprint_5_niveau_=  new Array(24) ;
 
-var tab_sprint_6_niveau_=  new Array(24) ;
-var tab_sprint_7_niveau_=  new Array(24) ;
-var tab_sprint_8_niveau_=  new Array(24) ;
-var tab_sprint_9_niveau_=  new Array(24) ;
-var tab_sprint_10_niveau_=  new Array(24) ;
-
-var tab_sprint_11_niveau_=  new Array(24) ;
-var tab_sprint_12_niveau_=  new Array(24) ;
-var tab_sprint_13_niveau_=  new Array(24) ;
-var tab_sprint_14_niveau_=  new Array(24) ;
-var tab_sprint_15_niveau_=  new Array(24) ;
-
-var tab_sprint_16_niveau_=  new Array(24) ;
-
-
-
-
-for (i=0; i < 24; i++){
-
-    tab_sprint_1_niveau_[i] = new Array() ; 
-    tab_sprint_2_niveau_[i] = new Array() ; 
-    tab_sprint_3_niveau_[i] = new Array() ; 
-    tab_sprint_4_niveau_[i] = new Array() ; 
-    tab_sprint_5_niveau_[i] = new Array() ;
-
-    tab_sprint_6_niveau_[i] = new Array() ; 
-    tab_sprint_7_niveau_[i] = new Array() ; 
-    tab_sprint_8_niveau_[i] = new Array() ; 
-    tab_sprint_9_niveau_[i] = new Array() ; 
-    tab_sprint_10_niveau_[i] = new Array() ; 
-
-    tab_sprint_11_niveau_[i] = new Array() ; 
-    tab_sprint_12_niveau_[i] = new Array() ; 
-    tab_sprint_13_niveau_[i] = new Array() ; 
-    tab_sprint_14_niveau_[i] = new Array() ; 
-    tab_sprint_15_niveau_[i] = new Array() ; 
-    tab_sprint_16_niveau_[i] = new Array() ; 
-
-
-
-
-}
 
 
 
