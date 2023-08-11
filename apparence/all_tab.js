@@ -142,7 +142,7 @@ var tab_sprint_16_niveau_=  new Array(24) ;
 
 
 
-for (i=0; i < 23; i++){
+for (i=0; i < 24; i++){
 
     tab_sprint_1_niveau_[i] = new Array() ; 
     tab_sprint_2_niveau_[i] = new Array() ; 

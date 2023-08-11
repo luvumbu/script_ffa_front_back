@@ -425,10 +425,99 @@ var D8_tab_sprint_3 =14.15 ;
 
 
 
+var cotation_tab_sprint_3  = [
+  10.10,  	
+  10.20,   	
+  10.34,
+  10.64, 
+  10.64,   	
+  10.84,   	
+  10.94,   	
+  11.14,   	
+  11.34,   	
+  11.44,   	
+  11.54,   
+  11.74,   	
+  11.94,   
+  12.14,   	
+  12.24,   	
+  12.34,   	
+  12.44,   	
+  12.54,   	
+  12.74,   	
+  12.94,   	
+  13.14,   	
+  13.44,   	
+  13.74,   	
+  14.14,  
+  14.15, 
+] ;
+var n0=0 ; 
+var n1=1 ; 
+var n2=2 ; 
+var n3=3 ; 
+var n4=4 ; 
+var n5=5 ; 
+
+var n6=6 ; 
+var n7=7 ; 
+var n8=8 ; 
+var n9=9 ; 
+var n10=10 ; 
+
+var n11=11 ; 
+var n12=12 ; 
+var n13=13 ; 
+var n14=14 ; 
+var n15=15 ; 
+
+var n16=16 ; 
+var n17=17 ; 
+var n18=18 ; 
+var n19=19; 
+var n20=20; 
+
+var n21=21 ; 
+var n22=22 ; 
+var n23=23 ; 
+var n24=24 ; 
+
+
+
+
 // ................................. debut condition 
 
 
 
+
+
+
+var cotation_tab_sprint_3  = [
+  10.10,  	
+  10.20,   	
+  10.34,
+  10.64,	
+  10.84,   	
+  10.94,   	
+  11.14,   	
+  11.34,   	
+  11.44,   	
+  11.54,   
+  11.74,   	
+  11.94,   
+  12.14,   	
+  12.24,   	
+  12.34,   	
+  12.44,   	
+  12.54,   	
+  12.74,   	
+  12.94,   	
+  13.14,   	
+  13.44,   	
+  13.74,   	
+  14.14,  
+  14.15, 
+] ;
 
 
 
@@ -437,90 +526,98 @@ for(var t = 0 ; t <tab_sprint_3.length ; t ++  ) {
  
   nombre_ = tab_sprint_3[t] ; 
 
-if(nombre_>D8_tab_sprint_3){ 
-  tab_sprint_1_niveau_[0].push(tab_sprint_3[t]) ;  
+   
+if(nombre_<=cotation_tab_sprint_3[n0] ){
+  tab_sprint_1_niveau_[n0].push(tab_sprint_3[t]) ;
 }
-
-if(nombre_<=D7_tab_sprint_3 && nombre_ >D6_tab_sprint_3){ 
-  tab_sprint_1_niveau_[1].push(tab_sprint_3[t]) ;
-}
-
-if(nombre_<=D6_tab_sprint_3&& nombre_ >D5_tab_sprint_3){
-   tab_sprint_1_niveau_[2].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=D5_tab_sprint_3 && nombre_ >D4_tab_sprint_3){
-  tab_sprint_1_niveau_[3].push(tab_sprint_3[t]) ;
-}
-
-if(nombre_<=D4_tab_sprint_3 && nombre_ >D3_tab_sprint_3){
-  tab_sprint_1_niveau_[4].push(tab_sprint_3[t]) ;
-}
-
-if(nombre_<=D3_tab_sprint_3 && nombre_ >D2_tab_sprint_3){
-  tab_sprint_1_niveau_[5].push(tab_sprint_3[t]) ;
-  }
-if(nombre_<=D2_tab_sprint_3 && nombre_ >D1_tab_sprint_3){
-  tab_sprint_1_niveau_[6].push(tab_sprint_3[t]) ;
+  if(nombre_<=cotation_tab_sprint_3[n1] && nombre_ >cotation_tab_sprint_3[n0]){
+  tab_sprint_1_niveau_[n1].push(tab_sprint_3[t]) ;
  }
-if(nombre_<=D1_tab_sprint_3 && nombre_ >R6_tab_sprint_3){
-  tab_sprint_1_niveau_[7].push(tab_sprint_3[t]) ;
+
+if(nombre_<=cotation_tab_sprint_3[n2] && nombre_ >cotation_tab_sprint_3[n1]){
+  tab_sprint_1_niveau_[n2].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=R6_tab_sprint_3 && nombre_ >R5_tab_sprint_3){
-  tab_sprint_1_niveau_[8].push(tab_sprint_3[t]) ;
- }
-if(nombre_<=R5_tab_sprint_3 && nombre_ >R4_tab_sprint_3){
-  tab_sprint_1_niveau_[9].push(tab_sprint_3[t]) ;
+if(nombre_<=cotation_tab_sprint_3[n3] && nombre_ >cotation_tab_sprint_3[n2]){
+  tab_sprint_1_niveau_[n3].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=R4_tab_sprint_3 && nombre_ >R3_tab_sprint_3){
-  tab_sprint_1_niveau_[10].push(tab_sprint_3[t]) ;
+
+if(nombre_<=cotation_tab_sprint_3[n4] && nombre_ >cotation_tab_sprint_3[n3]){
+  tab_sprint_1_niveau_[n4].push(tab_sprint_3[t]) ;
 }
-if(nombre_<=R3_tab_sprint_3 && nombre_ >R2_tab_sprint_3){
-  tab_sprint_1_niveau_[11].push(tab_sprint_3[t]) ;
+
+if(nombre_<=cotation_tab_sprint_3[n5] && nombre_ >cotation_tab_sprint_3[n4]){
+  tab_sprint_1_niveau_[n5].push(tab_sprint_3[t]) ;
 }
+if(nombre_<=cotation_tab_sprint_3[n6] && nombre_ >cotation_tab_sprint_3[n5]){
+  tab_sprint_1_niveau_[n6].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n7] && nombre_ >cotation_tab_sprint_3[n6]){
+  tab_sprint_1_niveau_[n7].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n8] && nombre_ >cotation_tab_sprint_3[n7]){
+  tab_sprint_1_niveau_[n8].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n9] && nombre_ >cotation_tab_sprint_3[n8]){
+  tab_sprint_1_niveau_[n9].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n10] && nombre_ >cotation_tab_sprint_3[n9]){
+  tab_sprint_1_niveau_[n10].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n11] && nombre_ >cotation_tab_sprint_3[n10]){
+  tab_sprint_1_niveau_[n11].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n12] && nombre_ >cotation_tab_sprint_3[n11]){
+  tab_sprint_1_niveau_[n12].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n13] && nombre_ >cotation_tab_sprint_3[n12]){
+  tab_sprint_1_niveau_[n13].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n14] && nombre_ >cotation_tab_sprint_3[n13]){
+  tab_sprint_1_niveau_[n14].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n15] && nombre_ >cotation_tab_sprint_3[n14]){
+  tab_sprint_1_niveau_[n15].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n16] && nombre_ >cotation_tab_sprint_3[n15]){
+  tab_sprint_1_niveau_[n16].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n17] && nombre_ >cotation_tab_sprint_3[n16]){
+  tab_sprint_1_niveau_[n17].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n18] && nombre_ >cotation_tab_sprint_3[n17]){
+  tab_sprint_1_niveau_[n18].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n19] && nombre_ >cotation_tab_sprint_3[n17]){
+  tab_sprint_1_niveau_[n19].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n20] && nombre_ >cotation_tab_sprint_3[n18]){
+  tab_sprint_1_niveau_[n20].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n21] && nombre_ >cotation_tab_sprint_3[n20]){
+  tab_sprint_1_niveau_[n21].push(tab_sprint_3[t]) ;
+}
+if(nombre_<=cotation_tab_sprint_3[n22] && nombre_ >cotation_tab_sprint_3[n21]){
+  tab_sprint_1_niveau_[n22].push(tab_sprint_3[t]) ;
+}
+if(  nombre_ >cotation_tab_sprint_3[n22]){
+  tab_sprint_1_niveau_[n23].push(tab_sprint_3[t]) ;
+}
+
  
-if(nombre_<=R2_tab_sprint_3 && nombre_ >R1_tab_sprint_3){
-  tab_sprint_1_niveau_[11].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=R1_tab_sprint_3 && nombre_ >IR4_tab_sprint_3){
-  tab_sprint_1_niveau_[12].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=IR4_tab_sprint_3 && nombre_ >IR3_tab_sprint_3){
-  tab_sprint_1_niveau_[13].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=IR3_tab_sprint_3 && nombre_ >IR2_tab_sprint_3){
-  tab_sprint_1_niveau_[14].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=IR2_tab_sprint_3 && nombre_ >IR1_tab_sprint_3){
-  tab_sprint_1_niveau_[15].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=IR1_tab_sprint_3 && nombre_ >N4_tab_sprint_3){
-  tab_sprint_1_niveau_[16].push(tab_sprint_3[t]) ;
- }
-if(nombre_<=N4_tab_sprint_3 && nombre_ >N3_tab_sprint_3){
-  tab_sprint_1_niveau_[17].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=N3_tab_sprint_3 && nombre_ >N2_tab_sprint_3){
-  tab_sprint_1_niveau_[18].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=N2_tab_sprint_3 && nombre_ >N1_tab_sprint_3){
-  tab_sprint_1_niveau_[19].push(tab_sprint_3[t]) ;
-}
-if(nombre_<=N1_tab_sprint_3 && nombre_ >IB_IA_tab_sprint_3){
-  tab_sprint_1_niveau_[20].push(tab_sprint_3[t]) ;
-}
- if(nombre_<=IB_IA_tab_sprint_3 && nombre_ >IA_tab_sprint_3){
-  tab_sprint_1_niveau_[21].push(tab_sprint_3[t]) ;
- }
 
-if(nombre_<=IA_tab_sprint_3 ){
-  tab_sprint_1_niveau_[22].push(tab_sprint_3[t]) ;
-}
- 
+
+
+
+
+
+
+
+
 
 
 
 }
-
+console.log(tab_sprint_1_niveau_);
 
 //console.log(tab_sprint_1_niveau_.length) ; 
 
