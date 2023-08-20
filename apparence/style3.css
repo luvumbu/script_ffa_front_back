@@ -1,0 +1,172 @@
+
+  .container_blue{
+  border-top: 4px solid black;
+ transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ position: relative;
+ background-color: #a1adff;
+ padding-bottom:100px ; 
+
+  }
+  .hommes_class,  .femmes_class,.Sprint_class,
+  .Lancer_class, 
+  .demi-font_class,    
+  .font_class,
+.International_font_class,
+  .National_font_class,
+  .Regional_font_class,
+  .Iner_Region_font_class,
+  .Departemental_font_class
+  {
+ background-color: #a1adff;
+ width:110px;
+ height: 50px;
+ text-align: center;
+ color:white ; 
+ padding-top:10px; 
+ text-shadow: 1px 1px black; 
+ border: 1px solid rgba(0, 0, 0, 0);
+
+  }
+  .hommes_class:hover,  .femmes_class:hover,
+  .Sprint_class,
+  .Lancer_class:hover, 
+  .demi-font_class:hover,    
+  .font_class{
+ 
+   cursor: pointer;
+     }
+  .femmes_class{
+    background-color: #d17dce;
+    
+     }
+     .hommes_class{
+      background-color: #095fbf;
+      
+       }
+       .femmes_class:hover{
+        border:1px solid  #095fbf;
+        
+         }
+         .hommes_class:hover{
+          border:1px solid  #d17dce;
+          
+           }
+ 
+  .div1_2{
+  
+  }
+ 
+  .container_blue div div .div1, .container_blue div div .div2, .container_blue div div .div3, .container_blue div div .div4, .container_blue div div .div5 {
+    transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ background-color:#5d6457 ; 
+text-align: center;
+ background-image: linear-gradient(to right, #6fcc3b,#25a600,green,#01a701);
+ width:30% ; 
+  color:white ; 
+}
+
+ .container_blue div div .div1_2 {
+    transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ background-color:#5d6457 ;
+ padding: 5%;
+
+ background-image: linear-gradient(to right, #6fcc3b,#25a600,green,#01a701);
+ width:20% ;
+ margin-left:5% ; 
+  color:white ; 
+}
+
+.container_blue div div .div2_2 {
+    transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ background-color:#5d6457 ;
+ padding: 5%;
+
+ background-image: linear-gradient(to right, #6fcc3b,#25a600,green,#01a701);
+ width:20% ;
+ margin-left:5% ; 
+  color:white ; 
+}
+.container_blue div div .div3_2 {
+    transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ background-color:#5d6457 ;
+ padding: 5%;
+
+ background-image: linear-gradient(to right, #6fcc3b,#25a600,green,#01a701);
+ width:20% ;
+ margin-left:5% ; 
+  color:white ; 
+}
+.container_blue div div .div4_2 {
+    transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ background-color:#5d6457 ;
+ padding: 5%;
+
+ background-image: linear-gradient(to right, #6fcc3b,#25a600,green,#01a701);
+ width:20% ;
+ margin-left:5% ; 
+  color:white ; 
+}
+.container_blue div div .div5_2 {
+    transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ background-color:#5d6457 ;
+ padding: 5%;
+
+ background-image: linear-gradient(to right, #6fcc3b,#25a600,green,#01a701);
+ width:20% ;
+ margin-left:5% ; 
+  color:white ; 
+}
+
+.container_blue div div .div6_2 {
+    transform: rotate(180deg); /* Équivalent à rotateZ(45deg) */
+ background-color:#5d6457 ;
+ padding: 5%;
+
+ background-image: linear-gradient(to right, #6fcc3b,#25a600,green,#01a701);
+ width:20% ;
+ margin-left:5% ; 
+  color:white ; 
+}
+
+.container_blue div div .div1:hover, .container_blue div div .div2:hover, .container_blue div div .div3:hover, .container_blue div div .div4:hover, .container_blue div div .div5:hover {
+   
+ background-color:#3f552a ; 
+ cursor: pointer;
+  
+}
+ 
+
+.Sprint_class{
+  background-color:#d17d7d ; 
+
+}
+ .Lancer_class{
+  background-color:#d17d9a ; 
+
+ }
+ .demi-font_class{
+  background-color:#c0d17d ; 
+
+ }
+     
+   
+ .font_class{
+  background-color:#7dced1 ; 
+
+ }
+.International_font_class
+{
+  background-color:#ffcc00 ;
+}.National_font_class
+{
+  background-color:#99ff99 ;
+}.Regional_font_class 
+{
+  background-color:#ccffff ;
+}.Iner_Region_font_class 
+{
+  background-color:#ffcc99 ;
+}.Departemental_font_class
+{
+  background-color:#ff99cc ;
+}

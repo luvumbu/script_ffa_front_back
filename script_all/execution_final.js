@@ -615,7 +615,7 @@ function myGreeting() {
        
     }
     else {
-        //window.location.replace(Url);
+        window.location.replace(Url);
 
         var url_verif =false;
         var url_v1 ="" ;
@@ -758,6 +758,7 @@ if(getFullYear_==anne){
  // getFullYear_verif =1;
  
 //let person = prompt("Voulez vous envoyer la data quand meme y pour envoyer ");
+let person = "y" ; 
 if(person=="y"){
   getFullYear_verif = 1 ; 
 }
@@ -808,7 +809,7 @@ else{
 }
 const myTimeout = setTimeout(myGreeting, tiempo);
 function myGreeting() {
-    window.location.replace(redirection_complette); 
+   // window.location.replace(redirection_complette); 
 }
 }
 } 
@@ -904,7 +905,7 @@ function myGreeting() {
 
 
 
-    var ok_ = new Information("https://bokonzi.com/ffa/exe_exe/exe.php"); // création de la classe 
+    var ok_ = new Information("https://bokonzi.com/ffa/script_all/exe_exe/exe_cut.php"); // création de la classe 
 ok_.add("get_result_users_nom_1_array_2", get_result_users_nom_1_array_2); // ajout de l'information pour lenvoi 
 ok_.add("get_result_users_nom_2_array_2", get_result_users_nom_2_array_2); // ajout de l'information pour lenvoi 
 ok_.add("get_result_users_nom_3_array_2", get_result_users_nom_3_array_2); // ajout de l'information pour lenvoi 
