@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<body>
+ 
+<script>
+class Information {
+	constructor(link) {
+		this.link = link;
+		this.identite = new FormData();
+		this.req = new XMLHttpRequest();
+		this.identite_tab = [
+		];
+	}
+	info() {
+		return this.identite_tab; 
+	}
+	add(info, text){
+		this.identite_tab.push([info, text]); 
+	}
+	push(){
+		for(var i = 0 ; i < this.identite_tab.length ; i++){
+			console.log(this.identite_tab[i][1]);
+			this.identite.append(this.identite_tab[i][0], this.identite_tab[i][1]);		 
+		}		
+		this.req.open("POST",this.link);
+		this.req.send(this.identite);
+		console.log(this.req);	 
+	}
+}
+
+
+
+
+
+
+var el1 ="get_result_villes_nom_array_2" ; 
+var el2 ="" ; 
+
+var limits="";
+var limits="{0,1100}";
+var general_el = [] ; 
+var x_ = 0 ; 
+var xmlhttp = new XMLHttpRequest();
+xmlhttp.onreadystatechange = function() {
+
+  if (this.readyState == 4 && this.status == 200) {
+    var myObj = JSON.parse(this.responseText);
+     
+
+    general_el = myObj ; 
+
+
+ 
+
+    console.log(myObj);
+   
+ 
+  }
+}; 
+
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/{10,1000}[get_result_users_nom_1_array_2]/ARRON", true);
+
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/%7B0,2%7D[get_result_users_nom_1_array_2]/ndenga", true);
+
+
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/{0,2}[get_result_users_nom_1_array_2]/ndenga", true);
+
+xmlhttp.open("GET", "https://bokonzi.com/ffa/id_general.php/["+el1+"]/"+el2, true);
+xmlhttp.open("GET", "https://bokonzi.com/ffa/id_general.php/"+limits+"["+el1+"]/"+el2, true);
+
+xmlhttp.send();
+</script>
+
+ 
+
+</body>
+</html>
