@@ -263,7 +263,7 @@ information_g = myObj ;
               }
             };
  
-              xmlhttp.open("GET", "https://bokonzi.com/ffa/vlog.php/["+onclick_recherche_element+"]/"+_this.title, true);
+              xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/["+onclick_recherche_element+"]/"+_this.title, true);
             xmlhttp.send();
 
  
