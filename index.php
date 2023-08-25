@@ -196,7 +196,7 @@ function onclick_recherche(_this){
 
   
 
-  Ajax("optiones_total","script_ffa_front_back/apparence/general_info1_5.php");
+  Ajax("optiones_total","apparence/general_info1_5.php");
 
   var recherche_ = "get_club_nom_complet_array_2" ; 
             var recherche_element ="A. La Riviere De Corps" ; 
