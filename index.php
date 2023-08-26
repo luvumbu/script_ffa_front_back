@@ -217,7 +217,7 @@ function onclick_recherche(_this){
                 var myObj = JSON.parse(this.responseText);
       
  
-
+console.log(myObj) ; 
                 switch(recherche_) {
   case "get_club_nom_complet_array_2":
   

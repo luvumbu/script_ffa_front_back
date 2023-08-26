@@ -2,6 +2,9 @@
 <html>
 <body>
  
+
+
+	<div></div>
 <script>
 class Information {
 	constructor(link) {
@@ -60,13 +63,13 @@ class Information {
 	reg_date
 	*/
 
-var el1 ="window_location_href" ; 
-var el2 ="" ; 
+var el1 ="get_result_users_nom_4_array_2" ; 
+var el2 ="ndenga" ; 
 
  
-var limits="{0,100}";
-var limits="";
 
+var limits="";
+var limits="{0,50}";
 var general_el = [] ; 
 var x_ = 0 ; 
 var xmlhttp = new XMLHttpRequest();
@@ -82,12 +85,7 @@ xmlhttp.onreadystatechange = function() {
  
 
     console.log(myObj);
-
    
-
-   for(var x = 0 ; x<myObj.length ; x++ ){
-    console.log(myObj[x].window_location_href);
-   }
  
   }
 }; 
@@ -99,16 +97,12 @@ xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/%7B0,2%7D[get_resul
 
 xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/{0,2}[get_result_users_nom_1_array_2]/ndenga", true);
 
-xmlhttp.open("GET", "https://bokonzi.com/ffa/id_general.php/["+el1+"]/"+el2, true);
-xmlhttp.open("GET", "https://bokonzi.com/ffa/id_general.php/"+limits+"["+el1+"]/"+el2, true);
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/["+el1+"]/"+el2, true);
 
-xmlhttp.open("GET", "script_all/all_json/get_users_nom_complet_array.json", true);
-
-
-xmlhttp.open("GET", "https://bokonzi.com/ffa/script_all/all_json/get_result_users_nom_1_array_2.json", true);
-xmlhttp.open("GET", "https://bokonzi.com/ffa/script_all/all_json/"+el1+".json", true);
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]/"+el2, true);
 
 
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]/"+el2, true);
 
 xmlhttp.send();
 </script>
