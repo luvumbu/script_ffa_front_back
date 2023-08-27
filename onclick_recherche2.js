@@ -1,5 +1,14 @@
 
 function onclick_recherche2(_this){
+
+
+    console.log("canvas") ;
+
+
+var limits ="" ;
+var onclick_recherche_element ="get_club_nom_complet_array_2" ;
+var el2 ="Lille Metropole Athletisme*" ;
+
     var recherche_ = "get_club_nom_complet_array_2" ; 
               var recherche_element ="A. La Riviere De Corps" ; 
               var recherche_element ="Clll Armentieres" ; 
@@ -31,9 +40,23 @@ function onclick_recherche2(_this){
   }
   var nc = 0 ; 
   var nc2 = 5;
-  var  myOperation = new Operation(myObj,cotation_x[0],tab_sprint[0]);
+
+
+
+
+
+
+  
+  for(var x = nc ; x< nc2 ; x ++){  
+    var  myOperation = new Operation(myObj,cotation_x[x],tab_sprint[x]);
     myOperation.boucle_() ;
-    myOperation.myChart_("Mon_canvas") ; 
+    myOperation.myChart_("canvas"+x) ; 
+  
+  }
+
+
+
+
                 }
               };
    

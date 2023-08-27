@@ -164,12 +164,12 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 
 <script>
   var limits="";
-  var limits="{0,10}";
+  var limits="{0,10000}";
  onclick_recherche_element = "get_epreuve_nom_complet" ;
 
  el1 ="get_club_nom_complet_array_2" ; 
 var el2 ="60m - Salle | F" ; 
- el2 ="50m - Salle | F" ; 
+ el2 ="Lille Metropole Athletisme*" ; 
 
  
 
