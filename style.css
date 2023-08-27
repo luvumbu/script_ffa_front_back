@@ -93,6 +93,16 @@ html {
   justify-content: space-around;
 }
 
+#txtHint{
+
+
+  max-height : 500px; 
+  overflow: scroll;
+  overflow-x: hidden;
+  
+   
+    }
+
 
 
 

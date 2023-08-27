@@ -11,9 +11,9 @@ if ($q !== "") {
   foreach($a as $name) {
     if (stristr($q, substr($name, 0, $len))) {
       if ($hint === "") {
-        $hint = "<div class='div_recherche' onclick='onclick_recherche(this)' title='".$name."' >".$name."</div>";
+        $hint = "<div class='div_recherche' onclick='onclick_recherche(this.title)' title='".$name."' >".$name."</div>";
       } else {
-        $hint .= "<div class='div_recherche' onclick='onclick_recherche(this)' title='".$name."' >".$name."</div>";
+        $hint .= "<div class='div_recherche' onclick='onclick_recherche(this.title)' title='".$name."' >".$name."</div>";
       }
     }
   }

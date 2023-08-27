@@ -347,7 +347,25 @@ this.r_level ++ ;
  
  
 
+      //obj,tab_cotation,recherche_element
+
  
+
+  
+ 
+ 
+      var  para = document.createElement("canvas");
+      para.setAttribute("id",name) ;
+      para.setAttribute("style","width:100%;max-width:600px") ; 
+      document.getElementById("optiones_total").appendChild(para);
+
+
+ 
+
+
+
+
+  
 
 
     var xValues = ["ItaInternational", "National", "Regional", "Inter regional", "Departemental"];
@@ -371,7 +389,7 @@ new Chart(name, {
     legend: {display: false},
     title: {
       display: true,
-      text: "World Wine Production 2018"
+      text: this.recherche_element
     }
   }
 });
