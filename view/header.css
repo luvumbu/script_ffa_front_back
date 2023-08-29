@@ -1,0 +1,28 @@
+body{
+    margin:0 ; 
+    padding : 0 ; 
+}
+.h1_header{
+    text-align:center ; 
+}
+.display_header{
+    display:flex ; 
+    justify-content:space-around ; 
+    background-color:#373737 ; 
+    color:white ; 
+}
+.cursor_pointer_2:hover{
+    cursor:pointer ;
+    
+    width:100% ; 
+}
+.cursor_pointer_2{
+
+    width:100% ; 
+    text-align:center ; 
+    padding:5px; 
+}
+
+.cursor_pointer:hover{
+cursor:pointer ;  
+}

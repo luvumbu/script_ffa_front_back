@@ -323,6 +323,8 @@ this.r_level ++ ;
    this.x[n24].push(nombre_) ; 
    this.x2[n24].push(nombre_2) ; 
 
+
+
     
   }
    

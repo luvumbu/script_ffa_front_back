@@ -1,50 +1,90 @@
-
-var tab_lancers = 
-[   
  
-"Disque (1.0 kg) | F" , 
-"Disque (2.0 kg) | M" ,  
-"Javelot (600 g) | F" , 
-"Javelot (800 g) | M" ,  
-"Marteau (4 kg) | F" , 
-"Marteau (7.26 kg) | M" ,  
-"Poids (7.26 kg) | M"
-]
- 
-
-
-
-var tab_demi_fond = 
-[   
-"1 500m | F" , 
-"1 500m | M" , 
-"3 000m | F" , 
-"3 000m | M" , 
-"3000m Steeple (76) | F" , 
-"3000m Steeple (91) | M" ,  
-"800m | F" , 
-"800m | M" , 
-
-]
-
-
-
-;
 var tab_sprint = 
 [   
 "50m - Salle | F" ,
 "60m - Salle | F",
 "100m | F | Vent : VR",
 "200m - Salle | F",
-"400m - Salle | F"
+"400m - Salle | F",
+"800m - Salle | F",
+"1 000m - Salle | F",
+"1 500m - Salle | F",
+"3 000m - Salle | F",
+"50m Haies (84)-Salle | F",
+"60m Haies (84)-Salle | F",
+"Hauteur - Salle | F",
+"Perche - Salle | F",
+"1 500m | F",
+"3 000m | F",
+"5 000m | F",
+"10 000m | F",
+"100m Haies (84) | F | Vent : VR",
+"400m Haies (76) | F",
+"3000m Steeple (76) | F",
+"Hauteur | F",
+"Perche | F",
+"Longueur | F | Vent : VR",
+"Triple saut | M | Vent : VR",
+"Triple saut | F | Vent : VR",
+"Poids (4 kg) | F",
+"Disque (1.0 kg) | F",
+"Javelot (600 g) | F",
+"Marteau (7.26 kg) | M",
+"3 000m Marche | F",
+"5 000m Marche | F",
+"10 000m Marche | F",
+"20 000m Marche | M",
+"10 Km Marche Route | M",
+"20 Km Marche Route | M",
+"35 km Marche Route | M",
+"50m - Salle | M",
+"60m - Salle | M",
+
+"200m - Salle | M",
+"400m - Salle | M",
+"800m - Salle | M",
+"1 000m - Salle | M",
+"1 500m - Salle | M",
+"3 000m - Salle | M",
+"50m Haies(106)-Salle | M",
+"60m Haies(106)-Salle | M",
+"Hauteur - Salle | M",
+"Perche - Salle | M",
+"Longueur - Salle | M",
+"Marteau (4 kg) | F",
+"Poids (7 kg) - Salle | M",
+"5 000m Marche-Salle | M",
+"100m | M | Vent : VR",
+"200m | M | Vent : VR",
+"400m | M",
+"800m | M",
+"1 500m | M",
+"3 000m | M",
+"5 000m | M",
+"5 Km Route | M | Vent : VR",
+"110m Haies (106) | M | Vent : VR",
+"400m Haies (91) | M",
+"3000m Steeple (91) | M",
+"Hauteur | M",
+"Perche | M",
+"Longueur | M | Vent : VR",
+"Poids (7.26 kg) | M",
+"Disque (2.0 kg) | M",
+"Javelot (800 g) | M",
+"5 000m Marche | M",
+"10 000m Marche | M"
 ]
-/*
+
+
+
+
+/*"
 
 var tab_sprint = 
 [   
-"50m - Salle | F" ,
-"60m - Salle | F",
-"100m | F | Vent : VR",
+"50m - Salle | F"" ,
+"60m - Salle | F"",
+"100m | F" | Vent : VR",
 "200m - Salle | F",
 "400m - Salle | F",
 "50m Haies (84)-Salle | F",

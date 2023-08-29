@@ -5,9 +5,9 @@ function onclick_recherche2(_this){
     console.log("canvas") ;
 
 
-var limits ="" ;
+var limits ="{0,1000}" ;
 var onclick_recherche_element ="get_club_nom_complet_array_2" ;
-var el2 ="Lille Metropole Athletisme*" ;
+var el2 ="Ca Montreuil 93" ;
 
     var recherche_ = "get_club_nom_complet_array_2" ; 
               var recherche_element ="A. La Riviere De Corps" ; 
@@ -39,7 +39,7 @@ var el2 ="Lille Metropole Athletisme*" ;
    
   }
   var nc = 0 ; 
-  var nc2 = 5;
+  var nc2 = tab_sprint.length;
 
 
 

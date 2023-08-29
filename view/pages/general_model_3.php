@@ -6,23 +6,4 @@
 <div style="margin-bottom:200px">
 <p id="txtHint" class="recherche_1_2 result_recherche"></p>
 
-<style>
-    .result_recherche{
-        width:80%;
-        margin:auto ; 
-
-    }
-    .result_recherche div {
-        border:1px solid black ; 
-        padding:10px; 
-        text-align:center ;
-        transition:1s all ;
-
-    }
-    .result_recherche div:hover {
-        cursor:pointer ; 
-        background-color:grey ; 
-        transition:1s all ;
-        color:white ; 
-    }
-</style>
+<link rel="stylesheet" href="view/pages/general_model_3.css">
