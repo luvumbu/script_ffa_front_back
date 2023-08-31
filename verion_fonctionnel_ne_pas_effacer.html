@@ -63,8 +63,9 @@ class Information {
 	reg_date
 	*/
 
-var el1 ="get_result_users_nom_1_array_2" ; 
-var el2 ="zero" ; 
+var el1 ="get_epreuve_nom_complet" ; 
+var el2 ="800m - Salle | F" ; 
+el2 = "50m - Salle | F" ; 
 
  
 
@@ -85,8 +86,33 @@ xmlhttp.onreadystatechange = function() {
  
 
     console.log(myObj);
-   
+
+
+
+	for(var x = 0 ; x<myObj.length; x ++ ){
+
+
+		var h  = myObj[x].get_result_users_perf_array_2.replace(".", "h");
+		var r  = h.replace(".", "");
+		var r  = r.replace("h", ".");
+		myObj[x].get_result_users_perf_array_2 = r ; 
+
+
+
+
+
+if(r>2.1650 ){
+	//console.log(r) ; 
+
+}
+
+
  
+		 
+
+
+	}
+   
   }
 }; 
 

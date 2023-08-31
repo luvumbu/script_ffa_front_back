@@ -5,9 +5,9 @@ function onclick_recherche2(_this){
     console.log("canvas") ;
 
 
- 
-var onclick_recherche_element ="get_epreuve_nom_complet" ;
-var el2 ="60m Haies (84)-Salle | F" ;
+var limits ="" ;
+var onclick_recherche_element ="get_club_nom_complet_array_2" ;
+var el2 ="Ca Montreuil 93" ;
 
     var recherche_ = "get_club_nom_complet_array_2" ; 
               var recherche_element ="A. La Riviere De Corps" ; 
@@ -46,21 +46,14 @@ var el2 ="60m Haies (84)-Salle | F" ;
 
 
 
-  /*
+  
   for(var x = nc ; x< nc2 ; x ++){  
     var  myOperation = new Operation(myObj,cotation_x[x],tab_sprint[x]);
     myOperation.boucle_() ;
     myOperation.myChart_("canvas"+x) ; 
   
   }
-*/
-  
-x = 6; 
- 
-   var  myOperation = new Operation(myObj,cotation_x[x],tab_sprint[x]);
-    myOperation.boucle_() ;
-    myOperation.myChart_("canvas"+x) ; 
-  
+
 
 
 
