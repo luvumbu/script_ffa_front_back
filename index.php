@@ -163,8 +163,9 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 
 
 <script>
+  var limits="{1000,1000}";
   var limits="";
-  var limits="{1000,100000}";
+
 
 
  onclick_recherche_element = "get_epreuve_nom_complet" ;
