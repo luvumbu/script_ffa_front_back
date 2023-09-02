@@ -163,24 +163,19 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 
 
 <script>
-  var limits="{1000,1000}";
-  var limits="";
-
-
-
- onclick_recherche_element = "get_epreuve_nom_complet" ;
-
+  
+/*
  el1 ="get_club_nom_complet_array_2" ; 
 var el2 ="60m Haies (84)-Salle | F" ; 
  el2 ="Lille Metropole Athletisme*" ; 
 
- 
+ */
 
 
+ var limits ="" ;
 
 
-
-onclick_recherche2("Lille Metropole Athletisme*") ; 
+//onclick_recherche2("Lille Metropole Athletisme*") ; 
 </script>
 
 

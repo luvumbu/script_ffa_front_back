@@ -1,5 +1,8 @@
 function onclick_recherche(_this){
 
+ 
+  el2 = _this; 
+ 
     document.getElementById("optiones_total").innerHTML="" ;  
    img_chargement() ; 
    // Ajax("optiones_total","apparence/general_info1_5.php");
@@ -40,21 +43,15 @@ function onclick_recherche(_this){
   
   var nc = 0 ; 
   var nc2 = 5;
+
   
   
-  /*
-  for(var x = nc ; x< nc2 ; x ++){  
+  for(var x = nc ; x< cotation_x.length ; x ++){  
     var  myOperation = new Operation(myObj,cotation_x[x],tab_sprint[x]);
     myOperation.boucle_() ;
-    myOperation.myChart_(nom_canvas[x]) ; 
+    myOperation.myChart_("canvas"+x) ; 
   
   }
-   
-  */
-  var  myOperation = new Operation(myObj,cotation_x[0],tab_sprint[0]);
-    myOperation.boucle_() ;
-    myOperation.myChart_("Mon_canvas") ; 
-   
   
   
    //myObj,cotation_x[x],tab_sprint[x] ; 
@@ -66,13 +63,20 @@ function onclick_recherche(_this){
   //console.log(myOperation.array_1_info()) ; 
       
   information_g = myObj ;
+
+
+
+
+
+console.log(onclick_recherche_element) ;
+  console.log(_this) ;
   
    
                 }
               };
    
-                xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+onclick_recherche_element+"]/"+_this, true);
-               // xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+onclick_recherche_element+"]/"+el2, true);
+             
+               xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+onclick_recherche_element+"]/"+el2, true);
             xmlhttp.send();
   }  
   // fin on recherche

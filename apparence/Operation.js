@@ -111,11 +111,7 @@ class Operation {
 
        
   
-     
-       var h  = this.obj[x].get_result_users_perf_array_2.replace(".", "h");
-       var r  = h.replace(".", "");
-       var r  = r.replace("h", ".");
-       this.obj[x].get_result_users_perf_array_2 = r ; 
+ 
 
 
        

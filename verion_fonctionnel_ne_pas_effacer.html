@@ -80,7 +80,7 @@ xmlhttp.onreadystatechange = function() {
     var myObj = JSON.parse(this.responseText);
      
 
-    general_el = myObj ; 
+    //general_el = myObj ; 
 
 
  
@@ -88,30 +88,15 @@ xmlhttp.onreadystatechange = function() {
     console.log(myObj);
 
 
-
-	for(var x = 0 ; x<myObj.length; x ++ ){
-
-
-		var h  = myObj[x].get_result_users_perf_array_2.replace(".", "h");
-		var r  = h.replace(".", "");
-		var r  = r.replace("h", ".");
-		myObj[x].get_result_users_perf_array_2 = r ; 
-
-
-
-
-
-if(r>2.1650 ){
-	//console.log(r) ; 
-
-}
-
-
- 
-		 
-
-
+	for(var x = 0 ; x < myObj.length ; x ++) {
+		console.log(myObj[x].get_result_users_nom_1_array_2) ; 
+		general_el.push(myObj[x].get_result_users_nom_1_array_2) ; 
 	}
+
+
+
+	console.log(general_el) ;
+ 
    
   }
 }; 
@@ -129,6 +114,10 @@ xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]
 
 
 xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]/"+el2, true);
+
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi2.php", true);
+
+
 
 xmlhttp.send();
 </script>
