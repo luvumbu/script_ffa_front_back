@@ -142,11 +142,11 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 
 
 
-<script src="apparence/get_epreuve_nom_complet_list.js"></script>
+<script src="get_epreuve_nom_complet_list.js"></script>
  
-<script src="apparence/Operation.js"></script>
+<script src="Operation.js"></script>
 
-<script src="apparence/scrypt_boucle2.js"></script>
+<script src="scrypt_boucle2.js"></script>
  
 
 
