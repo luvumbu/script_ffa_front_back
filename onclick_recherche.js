@@ -47,11 +47,47 @@ function onclick_recherche(_this){
   
   
   for(var x = nc ; x< cotation_x.length ; x ++){  
+
+
     var  myOperation = new Operation(myObj,cotation_x[x],tab_sprint[x]);
     myOperation.boucle_() ;
     myOperation.myChart_("canvas"+x) ; 
+
+
+ 
+
   
   }
+
+ 
+
+
+      // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+/*
+  this.i_level = 0 ;
+      this.n_level = 0 ;
+      this.ir_level = 0 ;
+      this.r_level = 0 ;
+      this.d_level = 0 ;
+
+
+
+
+
+       
+
+
+
+
+      
+      this.x = [];
+      this.x2 = [];  
+
+
+*/
+      // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   
   
    //myObj,cotation_x[x],tab_sprint[x] ; 

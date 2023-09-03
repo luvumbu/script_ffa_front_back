@@ -368,13 +368,32 @@ this.r_level ++ ;
   
  
  
-      var  para = document.createElement("canvas");
-      para.setAttribute("id",name) ;
-      para.setAttribute("style","width:100%;max-width:600px") ; 
-      document.getElementById("optiones_total").appendChild(para);
+
 
 
  
+if(
+
+  this.i_level==0 
+  && 
+  this.n_level==0 
+  && 
+  this.ir_level==0 
+  && 
+  this.r_level==0 
+  && 
+  this.d_level==0 
+  
+
+
+  ){
+
+}
+else {
+  var  para = document.createElement("canvas");
+  para.setAttribute("id",name) ;
+  para.setAttribute("style","width:100%;max-width:600px") ; 
+  document.getElementById("optiones_total").appendChild(para);
 
 
 
@@ -409,7 +428,7 @@ new Chart(name, {
 });
 
 
-
+    }
 
   }
    
