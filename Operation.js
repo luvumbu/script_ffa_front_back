@@ -162,6 +162,7 @@ class Operation {
    
     //this.n_level ++ ;
 
+    test_1.push(nombre_2);
    this.i_level  ++;
 
    
@@ -452,6 +453,16 @@ else {
   para.innerHTML=name_level[0]; 
   document.getElementById("c1"+ramdom_x).appendChild(para);
 
+
+  var  para = document.createElement("a");
+  para.setAttribute("class","info_1 width_02") ; 
+  para.setAttribute("onclick","alors_()") ; 
+  para.setAttribute("title",this.recherche_element+" "+this.tab_cotation[0]) ; 
+
+
+  para.innerHTML="Voir"; 
+  document.getElementById("c1"+ramdom_x).appendChild(para);
+
 //  fin 01
 
 // 02
@@ -563,7 +574,7 @@ document.getElementById("c5"+ramdom_x).appendChild(para);
 
 
   
-
+test_1.push("/");
 
     var xValues = [name_level[0],name_level[1],name_level[2],name_level[3],name_level[4]];
 

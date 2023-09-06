@@ -5,7 +5,6 @@ console.log("alert ok ") ;
 
 console.log(cotation_x);
 console.log(cotation_x.length); 
-
 console.log("alert ok ") ; 
     console.log("canvas") ;
 

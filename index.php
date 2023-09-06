@@ -171,7 +171,11 @@ var el2 ="60m Haies (84)-Salle | F" ;
 
  */
 
+var test_1 = [] ; 
 
+function alors_() {
+  console.log(test_1);
+}
  var limits ="{0,10000}" ;
 
 
