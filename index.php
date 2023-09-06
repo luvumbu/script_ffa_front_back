@@ -172,12 +172,67 @@ var el2 ="60m Haies (84)-Salle | F" ;
  */
 
 
- var limits ="" ;
+ var limits ="{0,10000}" ;
 
 
-//onclick_recherche2("Lille Metropole Athletisme*") ; 
+onclick_recherche2("Lille Metropole Athletisme*") ; 
+
+
+
+
 </script>
+<style>
+  .info_1{
+    padding-top: 10px;
+  
+  }
+  .width_01{
+    width:30px; 
 
+  }
 
+  .width_02{
+    width:100px; 
+    
+  }
+  .p_clas{
+    width : 500px; 
+ margin-bottom : 25px; 
+ margin-top: 25px; 
  
+
+    
+  }
+  .chil_1{
+    display: flex;
+    justify-content:space-between ; 
+
+    margin-bottom: 4px; 
+  }
+  .carre1{
+    width: 40px; 
+    height: 40px;
+   background-color: #ffcc00;
+  }
+  .carre2{
+    width: 40px; 
+    height: 40px;
+   background-color: #99ff99;
+  }
+  .carre3{
+    width: 40px; 
+    height: 40px;
+   background-color: #ccffff;
+  }
+  .carre4{
+    width: 40px; 
+    height: 40px;
+   background-color: #ffcc99;
+  }
+  .carre5{
+    width: 40px; 
+    height: 40px;
+   background-color: #ff99cc;
+  }
+</style>
  

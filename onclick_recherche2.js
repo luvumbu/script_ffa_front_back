@@ -49,15 +49,45 @@ var el2 ="Lille Metropole Athletisme*" ;
 
 
 
+  var  para = document.createElement("h1");
+  para.setAttribute("id",el2) ;
+  para.setAttribute("class","text-center") ;
+  para.setAttribute("style","margin-bottom:100px") ;
 
 
-  
+  para.innerHTML=el2 ; 
+  document.getElementById("optiones_total").appendChild(para);
+var i_level = 0 ; 
+  var n_level = 0 ; 
+var ir_level = 0 ; 
+var r_level = 0 ; 
+  var d_level = 0 ; 
   for(var x = nc ; x< cotation_x.length ; x ++){  
     var  myOperation = new Operation(myObj,cotation_x[x],tab_sprint[x]);
     myOperation.boucle_() ;
     myOperation.myChart_("canvas"+x) ; 
+
+
+    i_level = i_level + myOperation.i_level  ; 
+    n_level = n_level + myOperation.n_level  ; 
+    ir_level = ir_level + myOperation.ir_level  ; 
+    r_level = r_level + myOperation.r_level  ; 
+    d_level = d_level + myOperation.d_level  ; 
   
   }
+console.log(i_level) ; 
+console.log(n_level) ; 
+console.log(ir_level) ; 
+console.log(r_level) ; 
+console.log(d_level) ; 
+
+
+  console.log(
+    i_level+
+    n_level+
+    ir_level+
+    r_level+
+    d_level) ; 
 
   /*
 x = 6; 

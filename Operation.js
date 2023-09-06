@@ -390,18 +390,182 @@ if(
 
 }
 else {
+
+
+  var name_level =[
+    "International",
+    "National",
+    "Régional",
+    "Inter regional",
+    "Départemental"
+  
+  ]
+
+
+
+
   var  para = document.createElement("canvas");
   para.setAttribute("id",name) ;
   para.setAttribute("style","width:100%;max-width:600px") ; 
   document.getElementById("optiones_total").appendChild(para);
 
 
+  var ramdom_x = parseInt(Math.random()*100000) ; 
+  var ramdom_x = "r"+parseInt(Math.random()*100000) ; 
+
+  var  para = document.createElement("div");
+  para.setAttribute("class","p_clas") ;
+  para.setAttribute("id",ramdom_x) ;
+
+   
+
+
+  
+
+  document.getElementById("optiones_total").appendChild(para);
+
+
+
+
+// 01
+   
+  var  para = document.createElement("div");
+  para.setAttribute("class","chil_1") ;
+  para.setAttribute("id","c1"+ramdom_x) ;
+  document.getElementById(ramdom_x).appendChild(para);
+
+
+  var  para = document.createElement("div");
+  para.setAttribute("class","carre1") ;
+  para.setAttribute("id","cc1"+ramdom_x) ;
+  document.getElementById("c1"+ramdom_x).appendChild(para);
+
+  var  para = document.createElement("div");
+  para.setAttribute("class","info_1") ;
+  para.setAttribute("id","cc2"+ramdom_x) ;
+  para.innerHTML=this.i_level; 
+  document.getElementById("c1"+ramdom_x).appendChild(para);
+
+
+  var  para = document.createElement("div");
+  para.setAttribute("class","info_1 width_02") ; 
+  para.innerHTML=name_level[0]; 
+  document.getElementById("c1"+ramdom_x).appendChild(para);
+
+//  fin 01
+
+// 02
+   
+var  para = document.createElement("div");
+para.setAttribute("class","chil_1") ;
+para.setAttribute("id","c2"+ramdom_x) ;
+document.getElementById(ramdom_x).appendChild(para);
+
+
+var  para = document.createElement("div");
+para.setAttribute("class","carre2") ;
+para.setAttribute("id","cc2"+ramdom_x) ;
+document.getElementById("c2"+ramdom_x).appendChild(para);
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_2") ;
+para.setAttribute("id","cc2"+ramdom_x) ;
+para.innerHTML=this.n_level; 
+document.getElementById("c2"+ramdom_x).appendChild(para);
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_1 width_02") ; 
+para.innerHTML=name_level[1]; 
+document.getElementById("c2"+ramdom_x).appendChild(para);
+
+//  fin 02
+
+
+// 03
+   
+var  para = document.createElement("div");
+para.setAttribute("class","chil_1") ;
+para.setAttribute("id","c3"+ramdom_x) ;
+document.getElementById(ramdom_x).appendChild(para);
+
+
+var  para = document.createElement("div");
+para.setAttribute("class","carre3") ;
+para.setAttribute("id","cc3"+ramdom_x) ;
+document.getElementById("c3"+ramdom_x).appendChild(para);
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_3") ;
+para.setAttribute("id","cc3"+ramdom_x) ;
+para.innerHTML=this.ir_level;
+document.getElementById("c3"+ramdom_x).appendChild(para);
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_1 width_02") ; 
+para.innerHTML=name_level[2]; 
+document.getElementById("c3"+ramdom_x).appendChild(para);
+
+//  fin 03
+
+// 04
+   
+var  para = document.createElement("div");
+para.setAttribute("class","chil_1") ;
+para.setAttribute("id","c4"+ramdom_x) ;
+document.getElementById(ramdom_x).appendChild(para);
+
+
+var  para = document.createElement("div");
+para.setAttribute("class","carre4") ;
+para.setAttribute("id","cc4"+ramdom_x) ;
+document.getElementById("c4"+ramdom_x).appendChild(para);
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_4") ;
+para.setAttribute("id","cc4"+ramdom_x) ;
+para.innerHTML=this.r_level ;
+document.getElementById("c4"+ramdom_x).appendChild(para);
+
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_1 width_02") ; 
+para.innerHTML=name_level[3]; 
+document.getElementById("c4"+ramdom_x).appendChild(para);
+
+//  fin 04
+
+
+// 05
+   
+var  para = document.createElement("div");
+para.setAttribute("class","chil_1") ;
+para.setAttribute("id","c5"+ramdom_x) ;
+document.getElementById(ramdom_x).appendChild(para);
+
+
+var  para = document.createElement("div");
+para.setAttribute("class","carre5") ;
+para.setAttribute("id","cc5"+ramdom_x) ;
+document.getElementById("c5"+ramdom_x).appendChild(para);
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_5") ;
+para.setAttribute("id","cc5"+ramdom_x) ;
+para.innerHTML=this.d_level ;
+document.getElementById("c5"+ramdom_x).appendChild(para);
+
+var  para = document.createElement("div");
+para.setAttribute("class","info_1 width_02") ; 
+para.innerHTML=name_level[4]; 
+document.getElementById("c5"+ramdom_x).appendChild(para);
+
+//  fin 05
 
 
   
 
 
-    var xValues = ["ItaInternational", "National", "Regional", "Inter regional", "Departemental"];
+    var xValues = [name_level[0],name_level[1],name_level[2],name_level[3],name_level[4]];
 
 
   

@@ -115,7 +115,10 @@ xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]
 
 
 xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi2.php", true);
+
 xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]/"+el2, true);
+xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]/"+el2, true);
+
 
 
 
