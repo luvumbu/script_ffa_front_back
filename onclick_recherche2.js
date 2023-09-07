@@ -61,6 +61,8 @@ var i_level = 0 ;
 var ir_level = 0 ; 
 var r_level = 0 ; 
   var d_level = 0 ; 
+
+  
   for(var x = nc ; x< cotation_x.length ; x ++){  
     var  myOperation = new Operation(myObj,cotation_x[x],tab_sprint[x]);
     myOperation.boucle_() ;

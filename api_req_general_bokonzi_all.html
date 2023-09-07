@@ -62,9 +62,6 @@ class Information {
 
 var el1 ="get_result_users_nom_1_array_2" ; 
 var el2 ="" ; 
-
- 
-
 var limits="";
 var limits="{0,100}";
 var general_el = [] ; 
@@ -74,16 +71,8 @@ xmlhttp.onreadystatechange = function() {
 
   if (this.readyState == 4 && this.status == 200) {
     var myObj = JSON.parse(this.responseText);
-     
-
     general_el = myObj ; 
-
-
- 
-
-    console.log(myObj);
-   
- 
+    console.log(myObj); 
   }
 }; 
 
@@ -100,8 +89,5 @@ xmlhttp.open("GET", "https://bokonzi.com/ffa/api_bokonzi.php/"+limits+"["+el1+"]
 
 xmlhttp.send();
 </script>
-
- 
-
 </body>
 </html>

@@ -139,29 +139,10 @@ if (!file_exists($filename_config) || !file_exists($filename_config2)) {
 
 <script src="model/class/js/Ajax.js"></script>
 <script src="js.js"></script>
-
-
-
-<script src="get_epreuve_nom_complet_list.js"></script>
- 
+<script src="get_epreuve_nom_complet_list.js"></script> 
 <script src="Operation.js"></script>
-
 <script src="scrypt_boucle2.js"></script>
- 
-
-
-
-
-
-
-
-
-
 </html>
-
-
-
-
 <script>
   
 /*

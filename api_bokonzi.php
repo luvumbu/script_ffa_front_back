@@ -294,18 +294,7 @@ $apple = new Select_datas($servername,$username,$password,$dbname);
     else {
              $apple->sql='SELECT * FROM `info_all_array` WHERE '.$recher_verif_data.'  LIKE "'.$name.'%" LIMIT '.$affiche_debut.','.$affiche_fin.' ';  
     }
- 
- 
-    
- 
-    
-    
-    
- 
-    
-    
      
-    
     $apple->execution();
     $myJSON = json_encode($apple->list_row); 
 
