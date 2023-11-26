@@ -1,5 +1,14 @@
 <?php
-header("Access-Control-Allow-Origin: *"); 
+session_start() ; 
+
+$w = 0 ; 
+ 
+header("Access-Control-Allow-Origin: *");
+   $servername ="localhost"; 
+   $username ="u489596434_bokonzi_on"; 
+   $password ="v3p9r3e@59A"; 
+ $dbname = $username;
+ 
  
 
 
@@ -152,7 +161,7 @@ $apple = new Insertion_Bdd(
   );
       
  
-  $apple->set_msg_valudation("inserttion ok ") ;  
+  $apple->set_msg_valudation("ok") ;  
   $apple->set_sql("INSERT INTO info_all_array (
 
     get_emplacement,
@@ -223,8 +232,7 @@ $apple = new Insertion_Bdd(
   $apple->execution() ;
 
 
- echo "FIN" ; 
-
+ 
 
  }
 
