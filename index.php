@@ -5272,13 +5272,31 @@ function _renderClubTab(tab, suffix) {
         var recPages = d.rec_pages || 1;
         if (rec.length === 0 && recPage === 1) { content.innerHTML = '<div class="loading-msg">Aucun record trouvé</div>'; return; }
 
-        html += '<div style="margin-bottom:12px;color:#5a6580;font-size:13px;">' + totalRec.toLocaleString('fr-FR') + ' records au total — Page ' + recPage + '/' + recPages + '</div>';
+        // Filtres par discipline
+        var recDiscMap = {};
+        rec.forEach(function(r) { if (r.discipline && r.disc_color) recDiscMap[r.discipline] = r.disc_color; });
+        var recDiscKeys = Object.keys(recDiscMap);
+        var recDiscFilter = window['_clubRecDiscFilter' + s] || null;
+        if (recDiscKeys.length > 1) {
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">';
+            var allActive = !recDiscFilter;
+            html += '<button onclick="_clubToggleRecDisc(null,\'' + s + '\')" style="padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(allActive?'#a29bfe':'#1e2a3a')+';background:'+(allActive?'#a29bfe20':'transparent')+';color:'+(allActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
+            recDiscKeys.forEach(function(dk) {
+                var dc = recDiscMap[dk];
+                var isOn = recDiscFilter && recDiscFilter.indexOf(dk) !== -1;
+                html += '<button onclick="_clubToggleRecDisc(\'' + dk + '\',\'' + s + '\')" style="padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?dc:'#1e2a3a')+';background:'+(isOn?dc+'20':'transparent')+';color:'+(isOn?dc:'#5a6580')+';transition:all .2s;">' + escapeHtml(dk) + '</button>';
+            });
+            html += '</div>';
+        }
+        var filteredRec = recDiscFilter ? rec.filter(function(r) { return recDiscFilter.indexOf(r.discipline) !== -1; }) : rec;
+
+        html += '<div style="margin-bottom:12px;color:#5a6580;font-size:13px;">' + totalRec.toLocaleString('fr-FR') + ' records au total — Page ' + recPage + '/' + recPages + (recDiscFilter ? ' (filtre: ' + filteredRec.length + ' affichés)' : '') + '</div>';
 
         var thRec = '<tr><th>#</th><th>Athlète</th><th>Cat</th><th>Sexe</th><th>Épreuve</th><th>Discipline</th><th>Performance</th><th>Niveaux</th><th>Date</th><th></th></tr>';
         html += '<div class="table-wrap">';
         html += '<table class="bk-table">' + thRec + '</table>';
         html += '<table class="bk-table">';
-        rec.forEach(function(r, i) {
+        filteredRec.forEach(function(r, i) {
             var inB = r.athlete_id ? isAthleteInBasket(r.athlete_id) : false;
             html += '<tr><td>' + ((recPage - 1) * 10 + i + 1) + '</td>';
             html += '<td><b>' + (r.athlete_id ? '<a href="?page=profil&id=' + r.athlete_id + '&s=records" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(r.athlete) + '</a>' : escapeHtml(r.athlete)) + '</b></td>';
@@ -6305,6 +6323,18 @@ function loadClubEpPage(page, suffix) {
         d.ep_pages = data.ep_pages;
         _renderClubTab('epreuves', s);
     });
+}
+function _clubToggleRecDisc(disc, suffix) {
+    var s = suffix || '';
+    if (disc === null) {
+        window['_clubRecDiscFilter' + s] = null;
+    } else {
+        var cur = window['_clubRecDiscFilter' + s] || [];
+        var idx = cur.indexOf(disc);
+        if (idx === -1) { cur.push(disc); } else { cur.splice(idx, 1); }
+        window['_clubRecDiscFilter' + s] = cur.length > 0 ? cur : null;
+    }
+    _renderClubTab('records', s);
 }
 function _clubToggleDisc(disc, suffix) {
     var s = suffix || '';
