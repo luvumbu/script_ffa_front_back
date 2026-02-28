@@ -1,0 +1,934 @@
+================================================================================
+  DOCUMENTATION COMPLETE DU PROJET BOKONZI - SCRAPER ATHLE.FR
+================================================================================
+
+  Projet   : Bokonzi Athletisme
+  Serveur  : bokonzi.com (Hostinger)
+  BDD      : MySQL (u489596434_bokonzi_on)
+  Langage  : PHP 8+
+  Source   : athle.fr (Federation Francaise d'Athletisme)
+  Objectif : Scraper ~300 000 athletes, stocker en JSON + MySQL
+
+================================================================================
+  TABLE DES MATIERES
+================================================================================
+
+  1. VUE D'ENSEMBLE
+  2. ARCHITECTURE DES DOSSIERS
+  3. FLUX D'EXECUTION PRINCIPAL (index.php)
+  4. LE SCRAPING PARALLELE (curl_multi)
+  5. LE PARSEUR HTML (AthleteScraper.php)
+  6. LE STOCKAGE JSON (src/)
+  7. L'INSERTION EN BASE DE DONNEES (insert_athle.php)
+  8. LE SCHEMA DE LA BASE DE DONNEES (dbCheck_athle.php)
+  9. LES 16 TABLES EN DETAIL
+  10. LES OPTIMISATIONS DE PERFORMANCE
+  11. LE SYSTEME DE PROGRESSION ET AUTO-REFRESH
+  12. LES OUTILS D'ADMINISTRATION (admin/)
+  13. LA PAGE D'AFFICHAGE (athlete.php)
+  14. L'IMPORT SEPAREE (import_bdd.php)
+  15. GESTION DES ERREURS (failed.json)
+  16. ESTIMATION DES TEMPS DE TRAITEMENT
+  17. DEPLOIEMENT SUR HOSTINGER
+  18. GLOSSAIRE
+
+
+================================================================================
+  1. VUE D'ENSEMBLE
+================================================================================
+
+Le projet Bokonzi est un systeme automatise qui :
+
+  1. Recupere la liste des URLs d'athletes depuis la BDD (table nom_et_liens)
+  2. Scrape les pages HTML de chaque athlete sur athle.fr (3 pages par athlete)
+  3. Parse le HTML pour extraire 9 categories de donnees structurees
+  4. Sauvegarde les donnees en JSON dans des fichiers PHP (src/{id}.php)
+  5. Insere les donnees dans une base MySQL normalisee (16 tables)
+  6. Se rafraichit automatiquement pour traiter le batch suivant
+
+Le tout fonctionne de maniere autonome : une fois lance dans un navigateur,
+le script tourne tout seul jusqu'a avoir traite les 300 000 athletes.
+
+Schema du flux :
+
+  athle.fr ──(curl_multi)──> HTML brut
+                               │
+                    AthleteScraper.php
+                               │
+                    Donnees structurees (PHP arrays)
+                         │              │
+                    src/{id}.php    MySQL (16 tables)
+                    (fichier JSON)  (via insert_athle.php)
+
+
+================================================================================
+  2. ARCHITECTURE DES DOSSIERS
+================================================================================
+
+  BK/
+  │
+  ├── index.php              Script principal : scrape + JSON + BDD
+  ├── athlete.php            Page d'affichage d'un athlete (via JSON)
+  ├── import_bdd.php         Import des JSON existants vers la BDD
+  │
+  ├── admin/                 Outils d'administration
+  │   ├── reset.php          Remet le compteur a zero (+ option vider BDD)
+  │   ├── drop_all.php       Supprime les 16 tables du projet
+  │   ├── setup_bdd.php      Cree la BDD + tables depuis zero
+  │   └── cache_urls.php     Regenere le cache local des URLs
+  │
+  ├── core/                  Logique metier (inclus par les scripts)
+  │   ├── insert_athle.php   Fonctions d'insertion optimisee en BDD
+  │   └── dbCheck_athle.php  Creation/verification du schema (16 tables, 30 FK)
+  │
+  ├── Class/                 Classes PHP
+  │   ├── AthleteScraper.php Parseur HTML pour athle.fr
+  │   ├── DatabaseHandler.php Classe CRUD MySQL generique
+  │   └── ... (autres classes utilitaires)
+  │
+  ├── src/                   Fichiers JSON generes (1 par athlete)
+  │   ├── 26134.php          Exemple : athlete #26134
+  │   ├── 809035.php         Exemple : athlete #809035
+  │   └── ...
+  │
+  ├── docs/                  Documentation
+  │   ├── FONCTIONNEMENT_PROJET.txt  (ce fichier)
+  │   ├── DOCUMENTATION.txt
+  │   ├── RECAP_PROJET.txt
+  │   └── historique_projet_athle_scraper.txt
+  │
+  ├── archive/               Fichiers obsoletes (gardes pour reference)
+  │   ├── url.php            Ancien fetcher d'URLs (remplace par cache)
+  │   ├── json_athle.php     Ancien exporteur JSON (integre dans index.php)
+  │   ├── test_parser.php    Script de test du parseur
+  │   ├── test_cli.php       Script de test en ligne de commande
+  │   └── ...
+  │
+  ├── progress.txt           Position actuelle du scraping (auto-genere)
+  ├── urls_cache.json        Cache local de toutes les URLs (auto-genere)
+  ├── failed.json            Log des athletes en echec (auto-genere)
+  └── import_progress.txt    Position de l'import BDD (auto-genere)
+
+
+================================================================================
+  3. FLUX D'EXECUTION PRINCIPAL (index.php)
+================================================================================
+
+index.php est le coeur du systeme. Il orchestre tout le processus.
+
+PARAMETRES :
+  - $TIME_LIMIT = 25      Secondes max par chargement de page
+  - $PARALLEL   = 7       Nombre d'athletes scrapes en parallele
+
+ETAPE 1 — Chargement des URLs
+  - Verifie si urls_cache.json existe
+  - Si non : requete BDD sur la table nom_et_liens → sauvegarde en JSON
+  - Si oui : charge le fichier JSON local
+  - Indexe les URLs par id_nom_et_liens (cle primaire)
+  - Resultat : $allUrls[id] = { id_nom_et_liens, url, ... }
+
+ETAPE 2 — Connexion BDD + Schema
+  - Cree une instance DatabaseHandler (connexion MySQL)
+  - Execute dbCheck_athle.php (cree les tables si elles n'existent pas)
+  - Recupere la connexion directe : $conn = $databaseHandler->connection
+  - Charge le cache memoire des tables de reference : $cache = loadRefCache($conn)
+
+ETAPE 3 — Progression
+  - Lit progress.txt pour savoir ou on en est
+  - Calcule le pourcentage : $done / $totalAthletes * 100
+  - Affiche la barre de progression rouge en HTML
+
+ETAPE 4 — Boucle de scraping (par batch)
+  Pour chaque batch :
+    a) Collecte les N prochains athletes valides (skip les IDs manquants/vides)
+    b) Appelle scrapeParallel($batch) → 7 athletes x 3 pages = 21 requetes HTTP
+    c) Pour chaque athlete du batch :
+       - Cree un AthleteScraper
+       - Injecte les pages HTML telechargees
+       - Appelle les 9 methodes extract*()
+       - Sauvegarde en JSON dans src/{id}.php
+       - Insere en BDD via insertAthleteData()
+       - En cas d'erreur → log dans failed.json
+    d) Avance la progression dans progress.txt
+    e) Pause 1 seconde (eviter le rate-limiting d'athle.fr)
+    f) Si TIME_LIMIT depasse → sort de la boucle
+
+ETAPE 5 — Resume + Refresh
+  - Ferme la connexion BDD
+  - Affiche le resume : athletes traites, restants, ETA
+  - Si pas fini : header("Refresh: 1") → la page se recharge dans 1s
+  - Si fini : affiche "TERMINE !"
+
+
+================================================================================
+  4. LE SCRAPING PARALLELE (curl_multi)
+================================================================================
+
+La fonction scrapeParallel() est definie dans index.php.
+Elle permet de telecharger les pages de plusieurs athletes en meme temps.
+
+FONCTIONNEMENT :
+  - Recoit un tableau : [id_nom_et_liens => athlete_id]
+  - Pour chaque athlete, prepare 3 URLs :
+      https://athle.fr/athletes/{id}/bilans
+      https://athle.fr/athletes/{id}/records
+      https://athle.fr/athletes/{id}/selections
+  - Cree un handle cURL pour chaque URL (7 athletes x 3 = 21 handles)
+  - Les ajoute tous a un curl_multi_init()
+  - Execute toutes les requetes en parallele
+  - Recupere les resultats groupes par athlete
+
+OPTIONS CURL :
+  - CURLOPT_TIMEOUT = 15s par requete
+  - CURLOPT_USERAGENT = 'Mozilla/5.0'
+  - CURLOPT_SSL_VERIFYPEER = false (Hostinger)
+  - CURLOPT_FOLLOWLOCATION = true (redirections)
+
+RETOUR :
+  [id_nom_et_liens => [
+      'bilans'     => '<html>...',
+      'records'    => '<html>...',
+      'selections' => '<html>...',
+  ]]
+
+POURQUOI 7 EN PARALLELE ?
+  - 5 = trop lent
+  - 10 = fonctionne mais risque de blocage athle.fr
+  - 15 = athle.fr bloque les requetes (pages bilans vides)
+  - 7 = bon compromis vitesse/fiabilite
+  - sleep(1) entre chaque batch pour espacer les requetes
+
+
+================================================================================
+  5. LE PARSEUR HTML (AthleteScraper.php)
+================================================================================
+
+Fichier : Class/AthleteScraper.php
+
+AthleteScraper est la classe qui parse le HTML d'athle.fr pour en extraire
+les donnees structurees. Elle contient 9 methodes d'extraction.
+
+PROPRIETES PUBLIQUES :
+  $html          Le HTML brut de la page courante (injecte depuis l'exterieur)
+  $identite      Donnees d'identite de l'athlete
+  $clubs         Liste des clubs
+  $medailles     Liste des medailles
+  $selections    Liste des selections en equipe de France
+  $progressions  Meilleures performances par annee
+  $records       Records personnels
+  $podiums       Classements en competition
+  $resultats     Tous les resultats detailles
+  $niveaux       Niveaux FFA (avec performances associees)
+
+METHODES D'EXTRACTION :
+
+  extractIdentite()
+    Source : page /bilans
+    Extrait : nom (4 parties), date/lieu naissance, categorie, sexe,
+              nationalite, taille, poids, licence, athlete_id
+    Stocke dans : $this->identite
+
+  extractClubs()
+    Source : page /bilans
+    Extrait : nom du club, annee debut, annee fin
+    Stocke dans : $this->clubs[]
+
+  extractMedailles()
+    Source : page /bilans
+    Extrait : type (or/argent/bronze), annee, epreuve, competition, lieu, pays
+    Stocke dans : $this->medailles[]
+
+  extractProgressions()
+    Source : page /bilans
+    Extrait : epreuve, annee, performance (brut + centisec), vent, date,
+              lieu, categorie, club, ligue/departement
+    Stocke dans : $this->progressions[]
+
+  extractPodiums()
+    Source : page /bilans
+    Extrait : annee, niveau competition, place, rang, epreuve, performance,
+              vent, date, lieu
+    Stocke dans : $this->podiums[]
+
+  extractResultats()
+    Source : page /bilans
+    Extrait : annee, date, epreuve, performance, vent, tour, place,
+              niveau, points, lieu
+    Stocke dans : $this->resultats[]
+
+  extractNiveaux()
+    Source : page /bilans
+    Extrait : annee, code niveau, points, club
+    + sous-tableau performances : epreuve, performance, code_niveau
+    Stocke dans : $this->niveaux[]
+
+  extractRecords()
+    Source : page /records
+    Extrait : epreuve, performance, date, club, lieu, categorie, ligue/dept
+    Stocke dans : $this->records[]
+
+  extractSelections()
+    Source : page /selections
+    Extrait : type, date, duree, age, competition, epreuve, classement,
+              performance
+    Stocke dans : $this->selections[]
+
+METHODE toArray() :
+  Retourne toutes les donnees sous forme de tableau associatif PHP,
+  pret pour json_encode().
+
+CONVERSION DES PERFORMANCES :
+  Les performances athletiques sont stockees en 2 formats :
+  - performance_brut : texte original ("10\"45", "1:52.30", "4m85")
+  - performance : valeur numerique en centiemes de seconde (1045, 11230, 485)
+  Cela permet le tri et la comparaison en BDD.
+
+
+================================================================================
+  6. LE STOCKAGE JSON (src/)
+================================================================================
+
+Chaque athlete scrappe est sauvegarde dans un fichier PHP/JSON dans le
+dossier src/.
+
+FORMAT DU FICHIER src/{athlete_id}.php :
+
+  <?php
+  header("Access-Control-Allow-Origin: *");
+  header("Content-Type: application/json; charset=utf-8");
+  ?>
+  {
+      "identite": {
+          "athlete_id": 26134,
+          "nom_complet": "DUPONT Jean",
+          "nom_1": "DUPONT",
+          "nom_2": "Jean",
+          "nom_3": "",
+          "nom_4": "",
+          "date_naissance": "1990-05-15",
+          "annee_naissance": 1990,
+          "lieu_naissance": "Paris",
+          "categorie": "SE",
+          "sexe": "M",
+          "nationalite": "FRA",
+          "taille_cm": 182,
+          "poids_kg": 75,
+          "licence": "1234567"
+      },
+      "clubs": [...],
+      "medailles": [...],
+      "selections": [...],
+      "progressions": [...],
+      "records": [...],
+      "podiums": [...],
+      "resultats": [...],
+      "niveaux": [...]
+  }
+
+POURQUOI DES FICHIERS .PHP ET PAS .JSON ?
+  - Les headers PHP permettent de servir le JSON directement via HTTP
+  - Access-Control-Allow-Origin: * permet l'acces depuis n'importe quel domaine
+  - Content-Type: application/json informe le navigateur que c'est du JSON
+  - L'URL bokonzi.com/src/26134.php retourne directement le JSON
+
+ACCES :
+  https://bokonzi.com/src/{id}.php
+
+
+================================================================================
+  7. L'INSERTION EN BASE DE DONNEES (core/insert_athle.php)
+================================================================================
+
+Fichier : core/insert_athle.php
+
+Ce fichier contient les fonctions optimisees pour inserer les donnees
+d'un athlete dans la BDD MySQL.
+
+FONCTIONS :
+
+  fk($val)
+    Retourne "NULL" si la valeur est vide, sinon "'valeur'"
+    Utilise pour construire les requetes SQL avec FK nullable
+
+  loadRefCache($conn)
+    Charge en memoire les 6 tables de reference :
+    - villes      (nom_ville → id_ville)
+    - clubs       (nom_club → id_club)
+    - epreuves    (nom_epreuve → id_epreuve)
+    - competitions (nom_competition → id_competition)
+    - categories  (code_categorie → id_categorie)
+    - nationalites (code_nationalite → id_nationalite)
+    Retourne : $cache = ['villes' => [...], 'clubs' => [...], ...]
+
+  cachedGetOrInsertId(&$cache, $conn, $table, $colId, $colNom, $valeur, $extraCols)
+    1. Cherche la valeur dans le cache memoire → 0 requete SQL
+    2. Si absente : INSERT IGNORE (gere les doublons sans erreur)
+    3. Si INSERT IGNORE retourne 0 : SELECT pour recuperer l'ID existant
+    4. Met a jour le cache et retourne l'ID
+    Optimisation : au lieu de SELECT + IF + INSERT pour chaque FK,
+    on fait un lookup memoire en O(1)
+
+  cachedGetCategorieId(&$cache, $code)
+    Lookup memoire uniquement (pas d'INSERT car les categories sont pre-remplies)
+
+  insertAthleteData($scraper, $conn, &$cache)
+    Fonction principale qui insere les 9 sections d'un athlete :
+
+    1. IDENTITE (athletes)
+       - Verifie si l'athlete existe deja (par athlete_id_externe)
+       - Si oui : UPDATE + DELETE des tables enfants
+       - Si non : INSERT nouveau
+       - Resout les FK : ville de naissance, nationalite
+
+    2. CLUBS (athlete_clubs)           → batch INSERT
+    3. MEDAILLES (athlete_medailles)   → batch INSERT
+    4. SELECTIONS (athlete_selections) → batch INSERT
+    5. PROGRESSIONS (athlete_progressions) → batch INSERT
+    6. RECORDS (athlete_records)       → batch INSERT
+    7. PODIUMS (athlete_podiums)       → batch INSERT
+    8. RESULTATS (athlete_resultats)   → batch INSERT
+    9. NIVEAUX (athlete_niveaux + athlete_niv_perfs) → sequentiel
+       (car les perfs ont besoin de l'id_niveau du parent)
+
+BATCH INSERT :
+  Au lieu de :
+    INSERT INTO ... VALUES (row1);
+    INSERT INTO ... VALUES (row2);
+    INSERT INTO ... VALUES (row3);
+
+  On fait :
+    INSERT INTO ... VALUES (row1), (row2), (row3);
+
+  → 1 requete au lieu de N par section
+  → ~25 requetes par athlete au lieu de ~956
+
+
+================================================================================
+  8. LE SCHEMA DE LA BASE DE DONNEES (core/dbCheck_athle.php)
+================================================================================
+
+Fichier : core/dbCheck_athle.php
+
+Ce fichier cree automatiquement toutes les tables si elles n'existent pas.
+Il est execute a chaque lancement de index.php et import_bdd.php.
+
+Il attend une variable $databaseHandler (instance DatabaseHandler deja connectee).
+
+ACTIONS :
+  1. Recupere la liste des tables existantes
+  2. Pour chaque table : si elle n'existe pas → CREATE TABLE
+  3. Si elle existe : verifie les colonnes manquantes → ALTER TABLE ADD COLUMN
+  4. Cree les cles etrangeres (addForeignKey)
+  5. Pre-remplit les categories FFA (12 categories)
+
+TABLES DE REFERENCE (6) :
+  - villes, clubs, epreuves, competitions, categories, nationalites
+
+TABLE PRINCIPALE (1) :
+  - athletes
+
+TABLES DE DONNEES (9) :
+  - athlete_clubs, athlete_medailles, athlete_selections,
+    athlete_progressions, athlete_records, athlete_podiums,
+    athlete_resultats, athlete_niveaux, athlete_niv_perfs
+
+TOTAL : 16 tables, 30 cles etrangeres
+
+
+================================================================================
+  9. LES 16 TABLES EN DETAIL
+================================================================================
+
+─────────────────────────────────────────
+  TABLES DE REFERENCE
+─────────────────────────────────────────
+
+  villes
+  ├── id_ville (PK, AUTO_INCREMENT)
+  ├── nom_ville (VARCHAR 150, NOT NULL)
+  ├── pays_ville (CHAR 3)
+  ├── departement_ville (VARCHAR 100)
+  └── region_ville (VARCHAR 100)
+  Unique: (nom_ville, pays_ville)
+
+  clubs
+  ├── id_club (PK, AUTO_INCREMENT)
+  ├── nom_club (VARCHAR 200, NOT NULL, UNIQUE)
+  ├── departement_club (VARCHAR 100)
+  └── region_club (VARCHAR 100)
+
+  epreuves
+  ├── id_epreuve (PK, AUTO_INCREMENT)
+  ├── nom_epreuve (VARCHAR 100, NOT NULL, UNIQUE)
+  └── sexe_epreuve (CHAR 1)
+
+  competitions
+  ├── id_competition (PK, AUTO_INCREMENT)
+  └── nom_competition (VARCHAR 300, NOT NULL, UNIQUE)
+
+  categories
+  ├── id_categorie (PK, AUTO_INCREMENT)
+  ├── code_categorie (VARCHAR 5, NOT NULL, UNIQUE)
+  ├── nom_categorie (VARCHAR 50, NOT NULL)
+  ├── age_min (TINYINT UNSIGNED)
+  └── age_max (TINYINT UNSIGNED)
+  Pre-remplie avec 12 categories FFA :
+    EA (4-7), PO (8-9), BE (10-11), MI (12-13),
+    CA (14-15), JU (16-17), ES (18-22), SE (23-39),
+    V1 (40-49), V2 (50-59), V3 (60-69), V4 (70-99)
+
+  nationalites
+  ├── id_nationalite (PK, AUTO_INCREMENT)
+  ├── code_nationalite (CHAR 3, NOT NULL, UNIQUE)
+  └── nom_nationalite (VARCHAR 100)
+
+─────────────────────────────────────────
+  TABLE PRINCIPALE
+─────────────────────────────────────────
+
+  athletes
+  ├── id_athlete (PK, AUTO_INCREMENT)
+  ├── athlete_id_externe (INT UNSIGNED, NOT NULL, UNIQUE) ← ID athle.fr
+  ├── nom_1_athlete (VARCHAR 100)       ← nom de famille
+  ├── nom_2_athlete (VARCHAR 100)       ← prenom
+  ├── nom_3_athlete (VARCHAR 100)       ← partie 3
+  ├── nom_4_athlete (VARCHAR 100)       ← partie 4
+  ├── nom_complet_athlete (VARCHAR 200) ← nom complet
+  ├── date_naissance_athlete (DATE)
+  ├── annee_naissance_athlete (SMALLINT UNSIGNED)
+  ├── id_ville_naissance (FK → villes)
+  ├── taille_cm_athlete (SMALLINT UNSIGNED)
+  ├── poids_kg_athlete (SMALLINT UNSIGNED)
+  ├── categorie_athlete (VARCHAR 10)
+  ├── sexe_athlete (CHAR 1)            ← M ou F
+  ├── nationalite_athlete (CHAR 3)     ← code ISO
+  ├── id_nationalite (FK → nationalites)
+  ├── licence_athlete (VARCHAR 20)
+  └── date_creation_athlete (TIMESTAMP)
+
+─────────────────────────────────────────
+  TABLES DE DONNEES
+─────────────────────────────────────────
+
+  athlete_clubs
+  ├── id_athlete_club (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── id_club (FK → clubs, CASCADE)
+  ├── annee_debut (SMALLINT UNSIGNED)
+  └── annee_fin (SMALLINT UNSIGNED)
+
+  athlete_medailles
+  ├── id_medaille (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── type_medaille (ENUM: or, argent, bronze, autre)
+  ├── annee_medaille (SMALLINT UNSIGNED)
+  ├── id_competition (FK → competitions, SET NULL)
+  ├── id_epreuve (FK → epreuves, SET NULL)
+  └── id_ville (FK → villes, SET NULL)
+
+  athlete_selections
+  ├── id_selection (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── type_selection (VARCHAR 20)
+  ├── date_selection (DATE)
+  ├── duree_jours_selection (SMALLINT UNSIGNED)
+  ├── age_selection (TINYINT UNSIGNED)
+  ├── id_competition (FK → competitions, SET NULL)
+  ├── id_epreuve (FK → epreuves, SET NULL)
+  ├── classement_selection (TINYINT UNSIGNED)
+  ├── performance_selection (INT UNSIGNED) ← centiemes
+  └── performance_brut_selection (VARCHAR 30) ← texte original
+
+  athlete_progressions
+  ├── id_progression (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── id_epreuve (FK → epreuves, SET NULL)
+  ├── id_categorie (FK → categories, SET NULL)
+  ├── id_club (FK → clubs, SET NULL)
+  ├── annee_progression (SMALLINT UNSIGNED)
+  ├── performance_progression (INT UNSIGNED) ← centiemes
+  ├── performance_brut_progression (VARCHAR 30)
+  ├── vent_progression (VARCHAR 10)
+  ├── date_progression (DATE)
+  ├── rang_perf_progression (SMALLINT UNSIGNED)
+  ├── ligue_dept_progression (VARCHAR 50)
+  └── id_ville (FK → villes, SET NULL)
+
+  athlete_records
+  ├── id_record (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── id_epreuve (FK → epreuves, SET NULL)
+  ├── id_categorie (FK → categories, SET NULL)
+  ├── performance_record (INT UNSIGNED)
+  ├── performance_brut_record (VARCHAR 30)
+  ├── date_record (DATE)
+  ├── id_club (FK → clubs, SET NULL)
+  ├── ligue_dept_record (VARCHAR 50)
+  └── id_ville (FK → villes, SET NULL)
+
+  athlete_podiums
+  ├── id_podium (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── annee_podium (SMALLINT UNSIGNED)
+  ├── niveau_competition (VARCHAR 30)
+  ├── place_podium (VARCHAR 100)
+  ├── rang_podium (TINYINT UNSIGNED)
+  ├── id_epreuve (FK → epreuves, SET NULL)
+  ├── performance_podium (INT UNSIGNED)
+  ├── performance_brut_podium (VARCHAR 30)
+  ├── vent_podium (VARCHAR 10)
+  ├── date_podium (DATE)
+  └── id_ville (FK → villes, SET NULL)
+
+  athlete_resultats
+  ├── id_resultat (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── annee_resultat (SMALLINT UNSIGNED)
+  ├── date_resultat (DATE)
+  ├── id_epreuve (FK → epreuves, SET NULL)
+  ├── performance_resultat (INT UNSIGNED)
+  ├── performance_brut_resultat (VARCHAR 30)
+  ├── vent_resultat (VARCHAR 10)
+  ├── tour_resultat (VARCHAR 30)
+  ├── place_resultat (TINYINT UNSIGNED)
+  ├── niveau_resultat (VARCHAR 10)
+  ├── points_resultat (SMALLINT UNSIGNED)
+  └── id_ville (FK → villes, SET NULL)
+
+  athlete_niveaux (parent)
+  ├── id_niveau (PK)
+  ├── id_athlete (FK → athletes, CASCADE)
+  ├── annee_niveau (SMALLINT UNSIGNED)
+  ├── code_niveau (VARCHAR 10)
+  ├── points_niveau (SMALLINT UNSIGNED)
+  └── id_club (FK → clubs, SET NULL)
+  Unique: (id_athlete, annee_niveau)
+
+  athlete_niv_perfs (enfant de athlete_niveaux)
+  ├── id_niveau_perf (PK)
+  ├── id_niveau (FK → athlete_niveaux, CASCADE)
+  ├── id_epreuve (FK → epreuves, SET NULL)
+  ├── performance_niveau_perf (INT UNSIGNED)
+  ├── performance_brut_niveau_perf (VARCHAR 30)
+  └── code_perf_niveau (VARCHAR 10)
+
+
+================================================================================
+  10. LES OPTIMISATIONS DE PERFORMANCE
+================================================================================
+
+Le projet a subi plusieurs rounds d'optimisation pour passer de ~17 jours
+de traitement a ~3.5 jours pour 300 000 athletes.
+
+PROBLEME INITIAL :
+  ~956 requetes SQL par athlete (SELECT + INSERT individuels)
+  × 300 000 athletes = 286 800 000 requetes
+
+OPTIMISATION 1 — Cache memoire des FK
+  Avant : pour chaque ville/club/epreuve → SELECT pour verifier si existe,
+          puis INSERT si absent = 2 requetes minimum par FK
+  Apres : loadRefCache() charge tout en memoire au demarrage
+          → lookup en O(1) dans un tableau PHP
+          → 0 SELECT pour les valeurs deja connues
+  Gain : elimine ~500 SELECT par athlete
+
+OPTIMISATION 2 — INSERT IGNORE + cache dynamique
+  Avant : SELECT ... WHERE nom = 'X' → si vide → INSERT
+  Apres : INSERT IGNORE (ignore les doublons silencieusement)
+          Si insert_id = 0 → l'element existait → 1 seul SELECT
+          Mise a jour du cache → plus jamais de requete pour cette valeur
+  Gain : elimine les doublons de SELECT
+
+OPTIMISATION 3 — Batch INSERT
+  Avant : INSERT INTO table VALUES (row1); INSERT INTO table VALUES (row2); ...
+  Apres : INSERT INTO table VALUES (row1), (row2), (row3), ...;
+  Gain : 1 requete au lieu de N par section → ~25 requetes par athlete
+
+OPTIMISATION 4 — Connexion directe $conn->query()
+  Avant : DatabaseHandler::action_sql() creait une NOUVELLE connexion
+          MySQL a chaque appel (new mysqli() dans la methode)
+  Apres : $conn = $databaseHandler->connection (reutilise la connexion)
+  Gain : elimine ~956 reconnexions MySQL par athlete
+
+OPTIMISATION 5 — Scraping parallele (curl_multi)
+  Avant : 3 pages telechargees une par une (3 × file_get_contents)
+  Apres : 7 athletes × 3 pages = 21 requetes HTTP simultanees
+  Gain : ~7x plus rapide pour le telechargement
+
+OPTIMISATION 6 — Cache local des URLs
+  Avant : requete BDD distante a chaque chargement de page
+  Apres : urls_cache.json local (charge 1 fois, reutilise ensuite)
+  Gain : elimine 1 requete distante par refresh
+
+RESULTAT FINAL :
+  Avant optimisation :  ~956 requetes/athlete  → ~17 jours
+  Apres optimisation :  ~25 requetes/athlete   → ~3.5 jours
+
+
+================================================================================
+  11. LE SYSTEME DE PROGRESSION ET AUTO-REFRESH
+================================================================================
+
+Le systeme doit tourner sur Hostinger qui a une limite de 30 secondes
+par execution PHP. La solution : traiter par batch et se rafraichir.
+
+MECANISME :
+  1. index.php demarre avec $TIME_LIMIT = 25 secondes
+  2. La boucle principale traite des batchs de 7 athletes
+  3. Apres chaque batch : verifie si le temps > 25s
+  4. Si oui : sort de la boucle
+  5. Sauvegarde la position dans progress.txt
+  6. Envoie header("Refresh: 1") → le navigateur recharge dans 1s
+  7. Au rechargement : reprend ou il s'est arrete
+
+FICHIERS DE PROGRESSION :
+  progress.txt         → index.php (scraping principal)
+  import_progress.txt  → import_bdd.php (import separee)
+
+PERSISTENCE :
+  - $_SESSION["url"] pour le scraping en cours
+  - progress.txt comme backup (survit aux redemarrages de session)
+  - Au demarrage : lit progress.txt si la session est vide
+
+BARRE DE PROGRESSION :
+  - Affichee en haut de page en rouge
+  - Calcul : ($done / $totalAthletes) * 100
+  - HTML : <div> avec width dynamique en pourcentage
+  - Mise a jour a chaque refresh
+
+ETA (Estimated Time of Arrival) :
+  - Calcul : ($remaining × $pageTime) / $batchDone
+  - Affiche en heures et minutes
+
+
+================================================================================
+  12. LES OUTILS D'ADMINISTRATION (admin/)
+================================================================================
+
+admin/reset.php
+  Usage :
+    admin/reset.php         → reset compteur uniquement
+    admin/reset.php?bdd=1   → reset compteur + vide toutes les tables
+  Actions (mode simple) :
+    - Detruit la session
+    - Ecrit "0" dans progress.txt
+    - Supprime urls_cache.json
+    - Redirige vers ../index.php
+  Actions (mode ?bdd=1) :
+    - Tout ce qui precede +
+    - SET FOREIGN_KEY_CHECKS = 0
+    - TRUNCATE les 16 tables
+    - SET FOREIGN_KEY_CHECKS = 1
+    - Re-insere les 12 categories FFA
+
+admin/drop_all.php
+  Usage : admin/drop_all.php
+  Actions :
+    - SET FOREIGN_KEY_CHECKS = 0
+    - DROP TABLE IF EXISTS pour chaque table du projet
+    - SET FOREIGN_KEY_CHECKS = 1
+    - Affiche le resultat de chaque DROP
+  ATTENTION : supprime les tables et les donnees de maniere irreversible
+
+admin/setup_bdd.php
+  Usage : admin/setup_bdd.php
+  Actions :
+    - CREATE DATABASE IF NOT EXISTS
+    - Connexion a la BDD
+    - Execute dbCheck_athle.php (cree les 16 tables)
+
+admin/cache_urls.php
+  Usage : admin/cache_urls.php
+  Actions :
+    - Requete BDD : SELECT * FROM nom_et_liens ORDER BY id_nom_et_liens
+    - Sauvegarde le resultat dans urls_cache.json (racine du projet)
+    - Affiche le nombre d'URLs recuperees
+
+
+================================================================================
+  13. LA PAGE D'AFFICHAGE (athlete.php)
+================================================================================
+
+Fichier : athlete.php (racine)
+
+Page web qui affiche les donnees d'un athlete de maniere visuelle.
+
+USAGE :
+  https://bokonzi.com/athlete.php?id=26134
+  https://bokonzi.com/athlete.php?id=809035
+
+FONCTIONNEMENT :
+  1. Recupere ?id= depuis l'URL
+  2. Charge le JSON depuis https://bokonzi.com/src/{id}.php
+  3. Decode le JSON
+  4. Affiche les 9 sections dans une interface dark mode
+
+SECTIONS AFFICHEES :
+  - Identite (nom, naissance, categorie, taille, poids, licence)
+  - Clubs (cards avec nom et periode)
+  - Medailles (tableau avec badges or/argent/bronze)
+  - Records personnels (tableau)
+  - Progressions (tableau)
+  - Podiums (tableau)
+  - Resultats (tableau detaille)
+  - Selections (tableau)
+  - Niveaux (cards avec sous-tableau de performances)
+  - Lien vers le JSON brut
+
+
+================================================================================
+  14. L'IMPORT SEPAREE (import_bdd.php)
+================================================================================
+
+Fichier : import_bdd.php (racine)
+
+Script autonome qui lit les fichiers JSON dans src/ et les insere en BDD.
+Utile si le scraping a ete fait sans insertion BDD, ou pour reimporter.
+
+FONCTIONNEMENT :
+  1. Scanne src/*.php pour lister tous les fichiers JSON
+  2. Connexion BDD + dbCheck + loadRefCache
+  3. Lit import_progress.txt pour la position
+  4. Pour chaque fichier :
+     a) Lit le contenu brut du fichier PHP
+     b) Extrait le JSON apres la balise "?>"
+     c) Decode le JSON
+     d) Cree un objet stdClass compatible avec insertAthleteData()
+     e) Appelle insertAthleteData()
+  5. Sauvegarde la progression
+  6. header("Refresh: 1") → fichier suivant
+
+PROGRESSION SEPAREE :
+  Utilise import_progress.txt (pas le meme que progress.txt)
+  Permet de faire tourner import_bdd.php independamment de index.php
+
+
+================================================================================
+  15. GESTION DES ERREURS (failed.json)
+================================================================================
+
+Fichier : failed.json (racine, auto-genere)
+
+Quand un athlete ne peut pas etre scrape (page vide, erreur HTTP, exception),
+il est enregistre dans failed.json pour pouvoir le retraiter plus tard.
+
+FORMAT :
+  [
+      {
+          "id_nom_et_liens": 793,
+          "athlete_id": 12345,
+          "date": "2025-02-16 14:30:00"
+      },
+      {
+          "id_nom_et_liens": 794,
+          "athlete_id": 12346,
+          "erreur": "Message d'erreur",
+          "date": "2025-02-16 14:30:01"
+      }
+  ]
+
+CAUSES D'ECHEC :
+  - Page bilans vide (HTTP 200 mais contenu vide)
+  - Timeout de la requete HTTP (15s depasses)
+  - Erreur de parsing HTML (structure inattendue)
+  - Rate-limiting d'athle.fr (trop de requetes)
+  - Athlete supprime/inexistant sur athle.fr
+
+Le fichier est cumulatif : chaque echec est ajoute a la suite.
+
+
+================================================================================
+  16. ESTIMATION DES TEMPS DE TRAITEMENT
+================================================================================
+
+CALCUL POUR 7 ATHLETES EN PARALLELE :
+
+  Temps scraping par batch : ~2-4 secondes (7 athletes x 3 pages)
+  Temps insertion BDD      : ~0.5-1 seconde (7 athletes x ~25 requetes)
+  Pause entre batchs       : 1 seconde
+  Total par batch           : ~4-6 secondes
+
+  Athletes par page (25s) : ~28-35 athletes
+  Athletes par heure      : ~3600-4500
+  Athletes par jour (24h) : ~86 000 - 108 000
+
+  300 000 athletes :
+    Optimiste : ~2.8 jours
+    Realiste  : ~3.5 jours
+    Pessimiste : ~5 jours (avec erreurs et ralentissements)
+
+FACTEURS DE VARIATION :
+  - Vitesse de reponse d'athle.fr (variable selon l'heure)
+  - Nombre d'athletes avec des pages vides (skip rapide)
+  - Taille des donnees par athlete (certains ont 0 resultats, d'autres 500)
+  - Stabilite de la connexion internet du serveur Hostinger
+  - Rate-limiting eventuel d'athle.fr
+
+
+================================================================================
+  17. DEPLOIEMENT SUR HOSTINGER
+================================================================================
+
+PREREQUIS :
+  - Hebergement PHP 8+ avec extensions curl et mysqli
+  - BDD MySQL (u489596434_bokonzi_on)
+
+FICHIERS A COPIER SUR LE SERVEUR (racine du site) :
+  index.php
+  athlete.php
+  import_bdd.php
+  admin/reset.php
+  admin/drop_all.php
+  admin/setup_bdd.php
+  admin/cache_urls.php
+  core/insert_athle.php
+  core/dbCheck_athle.php
+  Class/DatabaseHandler.php
+  Class/AthleteScraper.php
+
+NE PAS COPIER :
+  archive/         (fichiers obsoletes)
+  docs/            (documentation interne)
+  .claude/         (configuration IDE)
+
+LE DOSSIER src/ EST CREE AUTOMATIQUEMENT par index.php.
+
+LANCEMENT :
+  1. Ouvrir https://bokonzi.com/admin/setup_bdd.php (1ere fois uniquement)
+  2. Ouvrir https://bokonzi.com/index.php
+  3. Laisser tourner (ne pas fermer le navigateur)
+  4. La page se rafraichit toute seule toutes les secondes
+
+RESET :
+  - Compteur seul : https://bokonzi.com/admin/reset.php
+  - Compteur + BDD : https://bokonzi.com/admin/reset.php?bdd=1
+
+CONTRAINTES HOSTINGER :
+  - Limite 30s par execution PHP → resolu par Refresh: 1
+  - $TIME_LIMIT = 25s (marge de 5s)
+  - Pas de set_time_limit(0) possible
+
+
+================================================================================
+  18. GLOSSAIRE
+================================================================================
+
+  athlete_id_externe  ID de l'athlete sur athle.fr (ex: 26134)
+  id_athlete          ID interne auto-increment dans la table athletes
+  id_nom_et_liens     ID de la table source qui contient les URLs
+  batch               Groupe de N athletes traites ensemble
+  curl_multi          Extension PHP pour les requetes HTTP paralleles
+  FK                  Foreign Key (cle etrangere)
+  FFA                 Federation Francaise d'Athletisme
+  performance_brut    Performance en texte original ("10\"45")
+  performance         Performance convertie en centiemes (1045)
+  Refresh: 1          Header HTTP qui recharge la page apres 1 seconde
+  scraping            Extraction automatisee de donnees depuis un site web
+  INSERT IGNORE       INSERT qui ne leve pas d'erreur si la ligne existe deja
+  TRUNCATE            Vide une table completement (plus rapide que DELETE)
+  CASCADE             Quand la ligne parente est supprimee, les enfants aussi
+  SET NULL            Quand la ligne parente est supprimee, la FK devient NULL
+
+================================================================================
+  FIN DE LA DOCUMENTATION
+================================================================================

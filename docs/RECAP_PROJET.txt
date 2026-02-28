@@ -1,0 +1,266 @@
+================================================================================
+  RECAP COMPLET DU PROJET — Scraper Athle.fr
+  Généré le 15/02/2026
+================================================================================
+
+
+1. OBJECTIF DU PROJET
+================================================================================
+
+Scraper automatiquement les données d'athlètes depuis athle.fr (fédération
+française d'athlétisme) et les stocker dans une base de données MySQL normalisée.
+
+Le système parcourt une liste d'URLs d'athlètes stockée dans une BDD distante,
+scrape chaque athlète un par un (avec refresh auto toutes les 1 seconde), et
+insère toutes les données dans une BDD locale normalisée.
+
+
+2. FICHIERS DU PROJET
+================================================================================
+
+C:\xampp\htdocs\BK\
+├── index.php                   ← Script principal (scrape + insère en BDD)
+├── url.php                     ← Distributeur d'URLs (session + BDD distante)
+├── dbCheck_athle.php           ← Création du schéma BDD (16 tables, 30 FK)
+├── test_parser.php             ← Script de test du parser (debug local)
+├── temp_athle.html             ← HTML sauvegardé pour debug
+└── Class/
+    ├── AthleteScraper.php      ← Classe scraper (1367 lignes)
+    └── DatabaseHandler.php     ← Classe CRUD MySQL (2385 lignes)
+
+
+3. FLUX DE FONCTIONNEMENT
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  1. index.php démarre (ob_start + session_start)        │
+  │  2. url.php → SELECT FROM nom_et_liens WHERE id = N     │
+  │     → récupère l'URL athle.fr de l'athlète N            │
+  │  3. AthleteScraper scrape 3 pages :                     │
+  │     - /bilans  (identité, progressions, podiums, etc.)  │
+  │     - /records (records personnels)                     │
+  │     - /selections (sélections nationales)               │
+  │  4. Insertion en BDD locale (tables normalisées)        │
+  │  5. $_SESSION["url"]++ (passe à l'athlète suivant)      │
+  │  6. header("Refresh: 1") → recharge la page             │
+  │  7. Retour à l'étape 1 avec l'athlète N+1              │
+  └─────────────────────────────────────────────────────────┘
+
+
+4. BASE DE DONNÉES — 16 TABLES
+================================================================================
+
+  ┌──────────────────────────────────────────────────────────┐
+  │              TABLES DE RÉFÉRENCE (6)                     │
+  ├──────────────────────────────────────────────────────────┤
+  │  villes        │ id_ville, nom_ville, pays, dept, region │
+  │  clubs         │ id_club, nom_club, dept, region         │
+  │  epreuves      │ id_epreuve, nom_epreuve, sexe           │
+  │  competitions  │ id_competition, nom_competition         │
+  │  categories    │ id_categorie, code, nom, age_min/max    │
+  │  nationalites  │ id_nationalite, code_nationalite, nom   │
+  ├──────────────────────────────────────────────────────────┤
+  │              TABLE PRINCIPALE (1)                        │
+  ├──────────────────────────────────────────────────────────┤
+  │  athletes      │ id_athlete, id_externe, noms (x4),      │
+  │                │ naissance, ville, taille, poids,         │
+  │                │ catégorie, sexe, id_nationalite, licence │
+  ├──────────────────────────────────────────────────────────┤
+  │              TABLES ENFANTS (9)                          │
+  ├──────────────────────────────────────────────────────────┤
+  │  athlete_clubs         │ clubs + années début/fin        │
+  │  athlete_medailles     │ or/argent/bronze + compétition  │
+  │  athlete_selections    │ sélections nationales + perfs   │
+  │  athlete_progressions  │ meilleures perfs par saison     │
+  │  athlete_records       │ records personnels par épreuve  │
+  │  athlete_podiums       │ titres de champion (3 niveaux)  │
+  │  athlete_resultats     │ résultats par compétition       │
+  │  athlete_niveaux       │ classement annuel (parent)      │
+  │  athlete_niv_perfs     │ perfs du classement (enfant)    │
+  └──────────────────────────────────────────────────────────┘
+
+  Total : 16 tables, 30 clés étrangères
+
+
+5. CLASSE AthleteScraper — MÉTHODES D'EXTRACTION
+================================================================================
+
+Chaque section de la page athle.fr est parsée indépendamment :
+
+  Section HTML         │ Méthode              │ Données extraites
+  ─────────────────────┼──────────────────────┼──────────────────────────
+  <h1> + texte libre   │ extractIdentite()    │ Nom, naissance, taille,
+                       │                      │ poids, catégorie, nationalité
+  section_4            │ extractProgressions() │ Épreuve, année, perf, vent,
+                       │                      │ date, club, lieu, ligue
+  section_5 (records)  │ extractRecords()     │ Épreuve, perf, date,
+                       │                      │ catégorie, club, lieu
+  section_6            │ extractPodiums()     │ Niveau, place, rang, épreuve,
+                       │                      │ perf, date, lieu
+  section_3            │ extractResultats()   │ Date, épreuve, perf, vent,
+                       │                      │ tour, place, niveau, points
+  section_9            │ extractNiveaux()     │ Année, code niveau, points,
+                       │                      │ club, perfs détaillées
+  page /selections     │ extractSelections()  │ Type, date, durée, âge,
+                       │                      │ compétition, classement, perf
+  déduit des progs     │ extractClubs()       │ Nom club, année début/fin
+  texte libre          │ extractMedailles()   │ Type, année, lieu, épreuve
+
+  Pattern commun d'extraction :
+  1. Isoler la section par data-section="..." → </section>
+  2. preg_match_all sur les <tr>
+  3. Skip detail-row (lignes mobiles) et <th> (en-têtes)
+  4. Extraire les <td>, strip_tags, valider les données
+
+
+6. MÉTHODES UTILITAIRES
+================================================================================
+
+  splitNomPrenom($nom)
+    "VAN DER ZYPPE Antonine" → nom_famille + prenom_1 + prenom_2 + prenom_3
+    Règle : MAJUSCULES = nom de famille, Mixte = prénom
+
+  getCategorieCode($anneeNaissance, $anneeSaison)
+    Calcule le code catégorie FFA : EA, PO, BE, MI, CA, JU, ES, SE, V1-V4
+
+  performanceToInt($perf)
+    Convertit les performances en entier (centièmes) :
+    - "6''37"      → 637       (secondes + centièmes)
+    - "3'43''65"   → 22365     (minutes + secondes + centièmes)
+    - "1h23'45''12"→ 503512    (heures)
+    - "7.34"       → 734       (distance en cm)
+    - "6m30"       → 630       (distance en cm)
+
+  convertDateToSql($date)
+    - "25/07/1997"       → "1997-07-25"
+    - "25 Juil 1997"     → "1997-07-25"
+    - "26 Avr. 2025"     → "2025-04-26"
+
+
+7. SYSTÈME ANTI-DOUBLON
+================================================================================
+
+  Lors de l'insertion d'un athlète :
+
+  1. SELECT id_athlete WHERE athlete_id_externe = ?
+  2. SI EXISTE :
+     → UPDATE les infos de l'athlète (nom, naissance, etc.)
+     → DELETE toutes les données enfants (8 tables)
+       (athlete_niv_perfs se vide par CASCADE via athlete_niveaux)
+     → RE-INSERT les données fraîches
+  3. SI NOUVEAU :
+     → INSERT dans athletes → récupérer id_athlete
+     → INSERT toutes les données enfants
+
+  Les tables de référence (villes, clubs, epreuves, etc.) utilisent
+  getOrInsertId() : cherche d'abord, insère seulement si n'existe pas.
+
+
+8. SYSTÈME D'ITÉRATION AUTOMATIQUE (url.php + index.php)
+================================================================================
+
+  BDD distante (Hostinger) :
+    Table `nom_et_liens` contient les URLs des athlètes à scraper
+
+  Session PHP :
+    $_SESSION["url"] = compteur (commence à 0)
+
+  Boucle :
+    url.php → SELECT WHERE id_nom_et_liens = $_SESSION["url"]
+            → $mes_projets[0]["url"] = URL de l'athlète courant
+
+    index.php → scrape + insère → $_SESSION["url"]++
+              → header("Refresh: 1") → recharge après 1 seconde
+
+  ob_start() est utilisé pour permettre header() après les echo.
+
+
+9. PROBLÈMES RÉSOLUS
+================================================================================
+
+  A) Mélange épreuves/performances dans le parser
+     Cause : preg_replace pour supprimer detail-row échouait silencieusement
+             sur du HTML volumineux (limite backtracking PCRE)
+     Fix :  Vérifier detail-row dans les attributs <tr> au lieu de supprimer
+
+  B) Données de section_6 (Podiums) polluant les progressions
+     Cause : Pas de borne </section>, les colonnes de Podiums (différentes
+             de Progressions) étaient parsées comme des progressions
+     Fix :  Ajout de la borne </section> pour chaque section
+
+  C) "5m59 (NC)" apparaissait comme nom de club
+     Cause : La colonne "Performance" des Podiums tombait sur la position
+             "Club" quand parsée comme progression
+     Fix :  Borne </section> + validation de performance (contient chiffre, <20 chars)
+
+  D) Nom de FK trop long (67 chars > limite MySQL 64)
+     Cause : fk_athlete_niveau_performances_id_niveau_athlete_niveaux_id_niveau
+     Fix :  Renommé la table en athlete_niv_perfs
+
+  E) header("Refresh: 1") échouait
+     Cause : Du HTML déjà envoyé par echo avant le header()
+     Fix :  ob_start() au début du script
+
+
+10. TABLES DE RÉFÉRENCE — NORMALISATION
+================================================================================
+
+  Toute donnée répétitive est normalisée dans une table de référence :
+
+  Donnée brute          │ Table référence  │ Stocké comme
+  ──────────────────────┼──────────────────┼──────────────
+  "Paris"               │ villes           │ id_ville (INT)
+  "US Créteil"          │ clubs            │ id_club (INT)
+  "400m Haies"          │ epreuves         │ id_epreuve (INT)
+  "Champ. de France"    │ competitions     │ id_competition (INT)
+  "SE" (Senior)         │ categories       │ id_categorie (INT)
+  "FRA"                 │ nationalites     │ id_nationalite (INT)
+
+  Pattern getOrInsertId() :
+    1. SELECT id FROM table WHERE nom = 'valeur'
+    2. Si trouvé → retourne l'ID
+    3. Sinon → INSERT + retourne insert_id
+
+
+11. DONNÉES EXTRAITES PAR ATHLÈTE
+================================================================================
+
+  Identité :
+    nom (x4), nom_complet, date_naissance, année_naissance,
+    lieu_naissance, taille_cm, poids_kg, catégorie, sexe,
+    nationalité (code + id_nationalite), licence
+
+  Clubs :
+    nom_club, année_début, année_fin (déduit des progressions)
+
+  Médailles :
+    type (or/argent/bronze), année, compétition, épreuve, lieu, pays
+
+  Sélections :
+    type, date, durée_jours, âge, compétition, épreuve,
+    classement, performance
+
+  Progressions (par saison) :
+    épreuve, année, catégorie, performance (brut + int),
+    vent, date, lieu, club, ligue/dept
+
+  Records personnels :
+    épreuve, catégorie, performance (brut + int),
+    date, club, ligue/dept, lieu
+
+  Podiums :
+    année, niveau (Interrégional/Régional/Départemental),
+    place, rang (1/2/3), épreuve, performance, vent, date, lieu
+
+  Résultats :
+    année, date, épreuve, performance, vent, tour, place,
+    niveau, points, lieu
+
+  Niveaux (classement annuel) :
+    année, code_niveau (N2/IR3/R2...), points, club
+    + performances détaillées : épreuve, perf, code_niveau
+
+
+================================================================================
+  FIN DU RECAP
+================================================================================

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Generateur OG Image — Bokonzi</title>
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px; }
+        h1 { margin-bottom: 20px; }
+        canvas { border: 1px solid #30363d; border-radius: 8px; margin-bottom: 20px; }
+        button { background: #238636; color: #fff; border: none; padding: 12px 28px; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #2ea043; }
+        p { color: #8b949e; font-size: 14px; margin-top: 12px; }
+    </style>
+</head>
+<body>
+    <h1>OG Image Bokonzi</h1>
+    <canvas id="canvas" width="1200" height="630"></canvas>
+    <button onclick="download()">Telecharger og-image.png</button>
+    <p>Place le fichier a la racine du projet (BK/og-image.png)</p>
+
+    <script>
+    const c = document.getElementById('canvas');
+    const ctx = c.getContext('2d');
+
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, 1200, 630);
+    grad.addColorStop(0, '#0d1117');
+    grad.addColorStop(0.5, '#161b22');
+    grad.addColorStop(1, '#0d1117');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1200, 630);
+
+    // Border subtile
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(30, 30, 1140, 570);
+
+    // Accent line top
+    const accentGrad = ctx.createLinearGradient(100, 0, 1100, 0);
+    accentGrad.addColorStop(0, '#f59e0b');
+    accentGrad.addColorStop(0.5, '#ec4899');
+    accentGrad.addColorStop(1, '#8b5cf6');
+    ctx.fillStyle = accentGrad;
+    ctx.fillRect(100, 50, 1000, 4);
+
+    // Logo text "BOKONZI"
+    ctx.fillStyle = '#f0f6fc';
+    ctx.font = 'bold 90px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('BOKONZI', 600, 220);
+
+    // Subtitle line 1
+    ctx.fillStyle = '#c9d1d9';
+    ctx.font = '36px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('Base de données Athlétisme français', 600, 300);
+
+    // Subtitle line 2
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '26px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('Athletes · Clubs · Records · Classements · Statistiques', 600, 360);
+
+    // Stats badges
+    const badges = [
+        { icon: '🏃', text: 'Athletes' },
+        { icon: '🏟', text: 'Clubs' },
+        { icon: '🏅', text: 'Records' },
+        { icon: '📊', text: 'Stats' },
+        { icon: '🔍', text: 'Recherche' },
+    ];
+    const badgeW = 160;
+    const startX = 600 - (badges.length * badgeW) / 2;
+    badges.forEach((b, i) => {
+        const x = startX + i * badgeW + badgeW / 2;
+        const y = 460;
+        // Badge bg
+        ctx.fillStyle = '#21262d';
+        ctx.beginPath();
+        ctx.roundRect(x - 65, y - 25, 130, 50, 10);
+        ctx.fill();
+        ctx.strokeStyle = '#30363d';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Badge text
+        ctx.fillStyle = '#c9d1d9';
+        ctx.font = '18px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(b.icon + ' ' + b.text, x, y + 7);
+    });
+
+    // URL bottom
+    ctx.fillStyle = '#58a6ff';
+    ctx.font = '22px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('bokonzi.com', 600, 570);
+
+    // Accent line bottom
+    ctx.fillStyle = accentGrad;
+    ctx.fillRect(100, 580, 1000, 4);
+
+    function download() {
+        const link = document.createElement('a');
+        link.download = 'og-image.png';
+        link.href = c.toDataURL('image/png');
+        link.click();
+    }
+    </script>
+</body>
+</html>

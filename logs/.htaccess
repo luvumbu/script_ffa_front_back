@@ -1,0 +1,6 @@
+# Bloquer acces direct aux fichiers bruts, autoriser les .php (JSON accessible a distance)
+Order deny,allow
+Deny from all
+<Files "*.php">
+    Allow from all
+</Files>

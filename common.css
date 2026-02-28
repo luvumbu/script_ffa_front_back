@@ -1,0 +1,101 @@
+/* === RESET & BASE === */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0a0e17;
+    color: #c9d1d9;
+    min-height: 100vh;
+}
+
+/* === TYPOGRAPHY === */
+h1 { font-size: 22px; color: #fff; margin-bottom: 6px; }
+h1 span { color: #a78bfa; }
+h2.section-title { font-size: 16px; color: #8b949e; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 14px; margin-top: 10px; }
+.subtitle { color: #8b949e; font-size: 13px; margin-bottom: 24px; }
+
+/* === STAT BOXES === */
+.stats { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.stat { padding: 16px 24px; border-radius: 10px; text-align: center; min-width: 130px; }
+.stat .val { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; opacity: .7; }
+
+/* === PROGRESS BAR + SHIMMER === */
+.progress-wrap { background: #161b22; border-radius: 10px; height: 32px; margin-bottom: 10px; overflow: hidden; position: relative; border: 1px solid #1e2a3a; }
+.progress-bar { height: 100%; border-radius: 10px; transition: width .3s ease; position: relative; background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa); }
+.progress-bar::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.1) 50%, transparent 100%); animation: shimmer 2s infinite; }
+@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.progress-text { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; z-index: 1; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+
+/* === LOG CONTAINER === */
+.log { background: #0d1117; border: 1px solid #1e2a3a; border-radius: 10px; padding: 16px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; height: 350px; overflow-y: auto; margin-bottom: 20px; }
+
+/* === CARDS === */
+.card { background: #0d1117; border: 1px solid #1e2a3a; border-radius: 12px; padding: 20px; transition: border-color .2s, transform .2s; }
+.card:hover { border-color: #a78bfa40; transform: translateY(-2px); }
+.card-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.card-title .icon { font-size: 20px; }
+.card-desc { font-size: 13px; color: #8b949e; margin-bottom: 14px; line-height: 1.5; }
+.card-info { font-size: 12px; color: #6b7280; margin-bottom: 14px; }
+.card-info span { color: #a78bfa; font-weight: 600; }
+
+/* === BUTTONS === */
+.btn { display: inline-block; padding: 8px 20px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600; transition: all .2s; }
+.btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
+.btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+.btn-green { background: #34d39920; border: 1px solid #34d39940; color: #34d399; }
+.btn-green:hover { background: #34d39935; }
+.btn-orange { background: #fbbf2420; border: 1px solid #fbbf2440; color: #fbbf24; }
+.btn-orange:hover { background: #fbbf2435; }
+.btn-red { background: #f8717120; border: 1px solid #f8717140; color: #f87171; }
+.btn-red:hover { background: #f8717135; }
+.btn-blue { background: #60a5fa20; border: 1px solid #60a5fa40; color: #60a5fa; }
+.btn-blue:hover { background: #60a5fa35; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* === RESET LINK === */
+.reset { display: inline-block; padding: 8px 20px; background: #f8717120; border: 1px solid #f87171; color: #f87171; border-radius: 6px; text-decoration: none; font-size: 13px; }
+.reset:hover { background: #f8717140; }
+
+/* === DONE / RESULT BOX === */
+.done { border-radius: 10px; padding: 20px; text-align: center; margin-top: 20px; }
+.done h2 { font-size: 18px; margin-bottom: 8px; }
+.done p { color: #8b949e; font-size: 13px; }
+.done .file { color: #a78bfa; font-weight: 600; }
+
+/* === GRID === */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 32px; }
+
+/* === SEPARATOR === */
+.sep { border: none; border-top: 1px solid #1e2a3a; margin: 10px 0 24px; }
+
+/* === FORM INPUTS (dark theme) === */
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; color: #8b949e; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.form-group input, .form-group select { width: 100%; padding: 12px 16px; background: #0d1117; border: 1px solid #1e2a3a; border-radius: 8px; color: #c9d1d9; font-size: 15px; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #00d4ff; box-shadow: 0 0 0 3px #00d4ff22; }
+.form-group select { cursor: pointer; }
+.form-group select option { background: #0d1117; }
+.form-row { display: flex; gap: 12px; }
+.form-row .form-group { flex: 1; }
+
+/* === AUTH CARD (login/register) === */
+.auth-card { background: linear-gradient(135deg, #12182a 0%, #1a2035 100%); border: 1px solid #1e2a3a; border-radius: 16px; padding: 40px; width: 100%; max-width: 420px; margin: 20px; }
+.auth-logo { text-align: center; margin-bottom: 30px; }
+.auth-logo h1 { color: #00d4ff; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; text-shadow: 0 0 20px #00d4ff44; }
+.auth-logo p { color: #5a6580; margin-top: 8px; font-size: 14px; }
+.btn-submit { width: 100%; padding: 13px; background: linear-gradient(135deg, #00d4ff, #0099cc); border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+.btn-submit:hover { opacity: 0.9; }
+.btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.msg-error { background: #ff353520; border: 1px solid #ff353540; color: #ff6b6b; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+.auth-footer { text-align: center; margin-top: 20px; font-size: 14px; color: #5a6580; }
+.auth-footer a { color: #00d4ff; text-decoration: none; }
+.auth-footer a:hover { text-decoration: underline; }
+
+/* === AUTH BODY (centered layout) === */
+.auth-body { display: flex; align-items: center; justify-content: center; }
+
+/* === PANEL BODY (padded layout) === */
+.panel-body { padding: 30px; }
+
+/* === PHASE LABEL === */
+.phase-label { font-size: 12px; color: #8b949e; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }

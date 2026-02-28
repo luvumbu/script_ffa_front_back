@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:athle.fr)",
+      "Bash(php -r:*)",
+      "Bash(/c/xampp/php/php.exe:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:bokonzi.com)",
+      "Bash(git mv:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(php -l:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "WebFetch(domain:fr.pinterest.com)",
+      "Bash(find:*)",
+      "Bash(grep:)",
+      "WebSearch",
+      "WebFetch(domain:www.ip2location.com)",
+      "Bash(\"C:/xampp/php/php.exe\":*)",
+      "Bash(sed:*)",
+      "WebFetch(domain:localhost)"
+    ]
+  }
+}

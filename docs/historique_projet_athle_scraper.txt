@@ -1,0 +1,196 @@
+================================================================================
+  HISTORIQUE DES ÉCHANGES — Projet AthleteScraper (athle.fr)
+  Date : 15 février 2026
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+  1. CONTEXTE INITIAL
+────────────────────────────────────────────────────────────────────────────────
+
+Le fichier f.php récupère le contenu d'une page athle.fr :
+   <?php
+   $homepage = file_get_contents('https://athle.fr/athletes/123983/bilans');
+   echo $homepage;
+
+Le but : extraire et enregistrer de manière ordonnée toutes les informations
+de la page athlète dans une base de données.
+
+Fichiers existants :
+  - f.php                     → récupère le HTML brut
+  - index.php                 → connexion BDD existante (DatabaseHandler)
+  - Class/DatabaseHandler.php → classe CRUD complète (insert, select, update,
+                                 delete, create_table, jointures, etc.)
+
+
+────────────────────────────────────────────────────────────────────────────────
+  2. ANALYSE DE LA PAGE ATHLE.FR
+────────────────────────────────────────────────────────────────────────────────
+
+Page testée : https://athle.fr/athletes/123983/bilans (Cindy EGA)
+
+Données disponibles sur la page :
+  - Infos personnelles : nom, prénom, date/lieu naissance, taille, poids,
+    nationalité, licence, catégorie, sexe
+  - Historique des clubs : nom du club + période (ex: "Es Nanterre (2004-2006)")
+  - Médailles : type (or/argent/bronze), année, compétition, épreuve, lieu, pays
+  - Sélections : type (A/Jeune), date, durée, âge, compétition, épreuve,
+    classement, performance
+  - Progressions/bilans : épreuve, année, âge, performance, vent, date, lieu
+  - Records personnels : épreuve, performance, date, catégorie, club,
+    ligue/département, lieu
+
+
+────────────────────────────────────────────────────────────────────────────────
+  3. DEMANDE UTILISATEUR
+────────────────────────────────────────────────────────────────────────────────
+
+"Je veux que tu me crées en PHP la méthode pour pouvoir extraire toutes les
+informations possibles, tout sans exception. Et pense que tout ça je dois
+mettre dans ma base de données, alors il faut qu'il soit au meilleur format
+possible pour l'extraction."
+
+
+────────────────────────────────────────────────────────────────────────────────
+  4. CLASSE CRÉÉE : AthleteScraper.php
+────────────────────────────────────────────────────────────────────────────────
+
+Fichier : Class/AthleteScraper.php
+
+Fonctionnalités :
+  - Accepte un ID (123983) ou une URL complète
+    ("https://athle.fr/athletes/809035/bilans")
+  - Le constructeur détecte automatiquement le format et extrait l'ID
+  - Scrape 3 pages par athlète : /bilans, /records, /selections
+  - Extrait 6 catégories de données :
+
+    ┌─────────────────┬────────────────────────────────────────────────────┐
+    │ Catégorie       │ Champs extraits                                   │
+    ├─────────────────┼────────────────────────────────────────────────────┤
+    │ Identité        │ nom, prénom, date/lieu naissance, taille, poids,  │
+    │                 │ sexe, nationalité, licence                        │
+    ├─────────────────┼────────────────────────────────────────────────────┤
+    │ Clubs           │ nom du club, année début, année fin               │
+    ├─────────────────┼────────────────────────────────────────────────────┤
+    │ Médailles       │ type, année, compétition, épreuve, lieu, pays     │
+    ├─────────────────┼────────────────────────────────────────────────────┤
+    │ Sélections      │ type, date, durée, âge, compétition, épreuve,    │
+    │                 │ classement, performance                           │
+    ├─────────────────┼────────────────────────────────────────────────────┤
+    │ Progressions    │ épreuve, année, âge, performance, vent, date,    │
+    │                 │ lieu                                              │
+    ├─────────────────┼────────────────────────────────────────────────────┤
+    │ Records         │ épreuve, performance, date, catégorie, club,     │
+    │                 │ ligue/dept, lieu                                  │
+    └─────────────────┴────────────────────────────────────────────────────┘
+
+  - Dates converties automatiquement en format SQL (YYYY-MM-DD)
+  - Méthode saveToDatabase($db) pour insérer dans MySQL via DatabaseHandler
+  - Méthode toArray() pour afficher/debug
+
+Utilisation :
+    // Avec ID
+    $scraper = new AthleteScraper(123983);
+
+    // Avec URL
+    $scraper = new AthleteScraper("https://athle.fr/athletes/809035/bilans");
+
+    // Lancer le scraping
+    $scraper->scrapeAll();
+
+    // Voir les données
+    print_r($scraper->toArray());
+
+    // Sauver en BDD
+    $scraper->saveToDatabase($db);
+
+
+────────────────────────────────────────────────────────────────────────────────
+  5. QUESTION : JAVASCRIPT SUR LA PAGE ?
+────────────────────────────────────────────────────────────────────────────────
+
+Question : "Il y a du JavaScript, est-ce que tu arrives à voir la totalité
+du contenu ? Comment être sûr de pomper toutes les données ?"
+
+Réponse : BONNE NOUVELLE — Les données sont 100% dans le HTML statique.
+  - Pas de React / Vue / Angular
+  - Pas d'appels AJAX/fetch pour charger les données
+  - Le JS présent = juste du tracking (Google Analytics, Facebook Pixel)
+  - file_get_contents() récupère TOUT le contenu
+  - Le site athle.fr utilise du rendu côté serveur (SSR) classique
+
+
+────────────────────────────────────────────────────────────────────────────────
+  6. QUESTION : STOCKAGE BDD — SCHÉMA NORMALISÉ
+────────────────────────────────────────────────────────────────────────────────
+
+Question : "Comment stocker dans ma BDD de manière la moins gourmande, sachant
+que je voudrais faire des corrélations entre les données (Ville, Club, Nom,
+Prénom) ?"
+
+Réponse : Normaliser la base avec des tables de référence.
+
+Principe : au lieu de stocker "Ljubljana" 500 fois en texte, on le stocke
+UNE fois dans une table `villes` et on utilise un ID (4 octets) partout.
+
+Tables de référence :
+  - villes   (id, nom, pays)
+  - clubs    (id, nom)
+  - epreuves (id, nom)
+
+Tables de données avec des clés étrangères (IDs au lieu de texte) :
+  - athletes           → ville_naissance_id
+  - athlete_clubs      → athlete_id, club_id
+  - athlete_medailles  → athlete_id, epreuve_id, ville_id
+  - athlete_selections → athlete_id, epreuve_id
+  - athlete_progressions → athlete_id, epreuve_id, ville_id
+  - athlete_records    → athlete_id, epreuve_id, club_id, ville_id
+
+Exemples de corrélations possibles :
+  - Tous les athlètes d'un club
+  - Tous les athlètes nés dans une ville
+  - Tous les records sur une épreuve, triés
+  - Quels clubs ont produit le plus de médaillés
+
+
+────────────────────────────────────────────────────────────────────────────────
+  7. QUESTION : BDD OU FICHIER (EN DUR) ?
+────────────────────────────────────────────────────────────────────────────────
+
+Question : "Est-ce mieux de stocker pour des soucis de performance dans la
+BDD ou en dur ?"
+
+Réponse : LES DEUX, chacun pour son rôle.
+
+Comparaison :
+  - Fichier PHP/JSON : lecture ~0.1ms (ultra rapide), mais pas de corrélations
+  - BDD MySQL : lecture ~2-5ms, mais JOIN/WHERE/INDEX natifs
+
+Stratégie optimale : BDD + cache fichier
+
+  athle.fr ──scrape──► BDD MySQL (source de vérité, corrélations)
+                            │
+                        génère
+                            │
+                            ▼
+                   cache/ fichiers PHP (lecture rapide, affichage)
+
+  - BDD = stocker, chercher, croiser les données
+  - Fichier cache = afficher vite sans requête SQL
+  - Si les données changent → regénérer le cache
+
+
+────────────────────────────────────────────────────────────────────────────────
+  8. PROCHAINES ÉTAPES (TODO)
+────────────────────────────────────────────────────────────────────────────────
+
+  [ ] Implémenter le schéma BDD normalisé (tables de référence + FK)
+  [ ] Mettre à jour AthleteScraper pour insérer avec les IDs normalisés
+  [ ] Ajouter le système de cache fichier PHP
+  [ ] Tester avec plusieurs athlètes
+  [ ] Vérifier les corrélations SQL
+
+
+================================================================================
+  FIN DE L'HISTORIQUE
+================================================================================

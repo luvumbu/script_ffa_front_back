@@ -1,0 +1,24 @@
+# robots.txt — Bokonzi
+
+User-agent: *
+
+# Pages publiques autorisées
+Allow: /index.php
+Allow: /pages/
+Allow: /login.php
+Allow: /register.php
+
+# Bloquer les zones privées / techniques
+Disallow: /admin/
+Disallow: /scraping/
+Disallow: /api/
+Disallow: /core/
+Disallow: /cache/
+Disallow: /logs/
+Disallow: /archive/
+Disallow: /Class/
+Disallow: /src/
+Disallow: /panel.php
+
+# Sitemap
+Sitemap: https://bokonzi.com/sitemap.php
