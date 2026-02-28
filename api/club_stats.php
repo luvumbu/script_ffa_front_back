@@ -170,8 +170,8 @@ function getEpreuveDiscipline($nom) {
     if (preg_match('/poids|disque|javelot|marteau/i', $nom)) return ['disc' => 'Lancers', 'ord' => 8, 'clr' => '#6366f1'];
     if (preg_match('/hauteur|longueur|triple|perche/i', $nom)) return ['disc' => 'Sauts', 'ord' => 7, 'clr' => '#3b82f6'];
     if (preg_match('/marathon|cross|semi|trail|route|heure/i', $nom)) return ['disc' => 'Fond', 'ord' => 5, 'clr' => '#22c55e'];
-    if (preg_match('/^(\d+)\s*(m|km)/i', $nom, $m)) {
-        $dist = (int)$m[1];
+    if (preg_match('/^([\d\s]+?)\s*(m|km)/i', $nom, $m)) {
+        $dist = (int) str_replace(' ', '', $m[1]);
         if (strtolower($m[2]) === 'km') $dist *= 1000;
         if ($dist >= 3000) return ['disc' => 'Fond', 'ord' => 5, 'clr' => '#22c55e'];
         if ($dist >= 800) return ['disc' => 'Demi-fond', 'ord' => 3, 'clr' => '#f59e0b'];

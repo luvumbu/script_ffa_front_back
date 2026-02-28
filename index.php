@@ -5277,7 +5277,7 @@ function _renderClubTab(tab, suffix) {
         rec.forEach(function(r) { if (r.discipline && r.disc_color) recDiscMap[r.discipline] = r.disc_color; });
         var recDiscKeys = Object.keys(recDiscMap);
         var recDiscFilter = window['_clubRecDiscFilter' + s] || null;
-        if (recDiscKeys.length > 1) {
+        if (recDiscKeys.length >= 1) {
             html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">';
             var allActive = !recDiscFilter;
             html += '<button onclick="_clubToggleRecDisc(null,\'' + s + '\')" style="padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(allActive?'#a29bfe':'#1e2a3a')+';background:'+(allActive?'#a29bfe20':'transparent')+';color:'+(allActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
