@@ -5312,14 +5312,32 @@ function _renderClubTab(tab, suffix) {
         var totalPerfs = d.total_performances || perfs.length;
         var perfPage = d.perf_page || 1;
         var perfPages = d.perf_pages || 1;
+        var perfMode = window['_clubPerfMode' + s] || 'all';
         if (perfs.length === 0 && perfPage === 1) {
-            content.innerHTML = '<div class="loading-msg">Aucune performance trouvée</div>';
+            // Sous-onglets même si vide (pour pouvoir changer de mode)
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">';
+            ['all','perso'].forEach(function(m) {
+                var labels = {all:'Toutes les épreuves', perso:'Records personnels'};
+                var icons = {all:'&#127942;', perso:'&#128100;'};
+                var active = perfMode === m;
+                html += '<button onclick="_clubSetPerfMode(\'' + m + '\',\'' + s + '\')" style="padding:6px 16px;border-radius:8px;border:1px solid '+(active?'#a29bfe':'#1e2a3a')+';background:'+(active?'#a29bfe20':'transparent')+';color:'+(active?'#a29bfe':'#5a6580')+';font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;">' + icons[m] + ' ' + labels[m] + '</button>';
+            });
+            html += '</div>';
+            html += '<div class="loading-msg">Aucune performance trouvée</div>';
+            content.innerHTML = html;
             return;
         }
 
-        html += '<div style="margin-bottom:12px;color:#5a6580;font-size:13px;">'
-            + totalPerfs.toLocaleString('fr-FR') + ' performances au total — Page '
-            + perfPage + '/' + perfPages + '</div>';
+        // Sous-onglets Toutes les épreuves / Records personnels
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">';
+        ['all','perso'].forEach(function(m) {
+            var labels = {all:'Toutes les épreuves', perso:'Records personnels'};
+            var icons = {all:'&#127942;', perso:'&#128100;'};
+            var active = perfMode === m;
+            html += '<button onclick="_clubSetPerfMode(\'' + m + '\',\'' + s + '\')" style="padding:6px 16px;border-radius:8px;border:1px solid '+(active?'#a29bfe':'#1e2a3a')+';background:'+(active?'#a29bfe20':'transparent')+';color:'+(active?'#a29bfe':'#5a6580')+';font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;">' + icons[m] + ' ' + labels[m] + '</button>';
+        });
+        html += '<span style="color:#5a6580;font-size:13px;margin-left:auto;">' + totalPerfs.toLocaleString('fr-FR') + ' ' + (perfMode === 'perso' ? 'records' : 'performances') + ' — Page ' + perfPage + '/' + perfPages + '</span>';
+        html += '</div>';
 
         var thPerf = '<tr><th>#</th><th>Athlète</th><th>Cat</th><th>Épreuve</th>'
             + '<th>Performance</th><th>Niveau</th><th>Place</th><th>Ville</th><th>Date</th><th></th></tr>';
@@ -6233,11 +6251,31 @@ function loadClubPerfsPage(page, suffix) {
     var s = suffix || '';
     var d = window['_clubDetailData' + s];
     if (!d || !d.club) return;
-    var url = BASE_API + '/club_stats.php?id=' + d.club.id_club + '&pp=' + page;
+    var perfMode = window['_clubPerfMode' + s] || 'all';
+    var url = BASE_API + '/club_stats.php?id=' + d.club.id_club + '&pp=' + page + '&pm=' + perfMode;
     if (d.annee_filtree) url += '&annee=' + d.annee_filtree;
     url += _clubFilterParams(d);
     var content = document.getElementById('clubDetailContent' + s);
     if (content) content.innerHTML = '<div class="loading-msg">Chargement page ' + page + '...</div>';
+    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+        if (!data.success) return;
+        d.performances = data.performances;
+        d.total_performances = data.total_performances;
+        d.perf_page = data.perf_page;
+        d.perf_pages = data.perf_pages;
+        _renderClubTab('performances', s);
+    });
+}
+function _clubSetPerfMode(mode, suffix) {
+    var s = suffix || '';
+    window['_clubPerfMode' + s] = mode;
+    var d = window['_clubDetailData' + s];
+    if (!d || !d.club) return;
+    var url = BASE_API + '/club_stats.php?id=' + d.club.id_club + '&pp=1&pm=' + mode;
+    if (d.annee_filtree) url += '&annee=' + d.annee_filtree;
+    url += _clubFilterParams(d);
+    var content = document.getElementById('clubDetailContent' + s);
+    if (content) content.innerHTML = '<div class="loading-msg">Chargement...</div>';
     fetch(url).then(function(r) { return r.json(); }).then(function(data) {
         if (!data.success) return;
         d.performances = data.performances;

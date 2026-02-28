@@ -19,6 +19,7 @@ $perfPage = max(1, (int)($_GET['pp'] ?? 1));
 $perfLimit = 20;
 $perfOffset = ($perfPage - 1) * $perfLimit;
 $perso = isset($_GET['perso']) ? 1 : 0;
+$perfMode = trim($_GET['pm'] ?? 'all'); // 'all' = tous resultats, 'perso' = records personnels
 $natDetail = trim($_GET['nat_detail'] ?? '');
 $filterNat  = trim($_GET['nationalite'] ?? '');
 $filterSexe = trim($_GET['sexe'] ?? '');
@@ -31,7 +32,7 @@ if ($idClub <= 0 && $nomClub === '') {
 // ---- Cache fichier (24h) ----
 $cacheDir = __DIR__ . '/../cache';
 if (!is_dir($cacheDir)) @mkdir($cacheDir, 0755, true);
-$cacheKey = 'clubstats_' . md5($idClub . '_' . $nomClub . '_' . $annee . '_' . $epPage . '_' . $recPage . '_' . $perfPage . '_' . $perso . '_' . $natDetail . '_' . $filterNat . '_' . $filterSexe . '_' . $filterCat);
+$cacheKey = 'clubstats_' . md5($idClub . '_' . $nomClub . '_' . $annee . '_' . $epPage . '_' . $recPage . '_' . $perfPage . '_' . $perfMode . '_' . $perso . '_' . $natDetail . '_' . $filterNat . '_' . $filterSexe . '_' . $filterCat);
 $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
 $noCache = isset($_GET['nocache']);
 if (!$noCache && file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
@@ -364,47 +365,95 @@ if ($res) while ($row = $res->fetch_assoc()) {
     ];
 }
 
-// ---- Performances (tous les résultats en compétition) ----
-$perfAnneeFilter = $annee > 0 ? " AND ares.annee_resultat = $annee" : '';
+// ---- Performances (tous les résultats OU records personnels) ----
 $totalPerformances = 0;
-$resCount = $conn->query("
-    SELECT COUNT(*) as c
-    FROM athlete_resultats ares
-    JOIN athlete_clubs ac ON ac.id_athlete = ares.id_athlete AND ac.id_club = $cid $athFilter $mcRes
-    WHERE 1=1 $perfAnneeFilter
-");
-if ($resCount) {
-    $totalPerformances = (int) $resCount->fetch_assoc()['c'];
-}
-
 $performances = [];
-$res = $conn->query("
-    SELECT a.nom_complet_athlete, a.athlete_id_externe, a.categorie_athlete, a.sexe_athlete,
-           e.nom_epreuve, ares.performance_brut_resultat, ares.date_resultat, ares.annee_resultat,
-           ares.niveau_resultat, ares.place_resultat, v.nom_ville
-    FROM athlete_resultats ares
-    JOIN athlete_clubs ac ON ac.id_athlete = ares.id_athlete AND ac.id_club = $cid $athFilter $mcRes
-    JOIN athletes a ON a.id_athlete = ares.id_athlete
-    JOIN epreuves e ON e.id_epreuve = ares.id_epreuve
-    LEFT JOIN villes v ON v.id_ville = ares.id_ville
-    WHERE 1=1 $perfAnneeFilter
-    ORDER BY ares.date_resultat DESC, a.nom_complet_athlete ASC
-    LIMIT $perfLimit OFFSET $perfOffset
-");
-if ($res) while ($row = $res->fetch_assoc()) {
-    $performances[] = [
-        'athlete'     => $row['nom_complet_athlete'],
-        'athlete_id'  => (int) $row['athlete_id_externe'],
-        'categorie'   => $row['categorie_athlete'],
-        'sexe'        => $row['sexe_athlete'],
-        'epreuve'     => $row['nom_epreuve'],
-        'performance' => $row['performance_brut_resultat'],
-        'date'        => $row['date_resultat'],
-        'annee'       => $row['annee_resultat'],
-        'niveau'      => $row['niveau_resultat'],
-        'place'       => $row['place_resultat'],
-        'ville'       => $row['nom_ville'],
-    ];
+
+if ($perfMode === 'perso') {
+    // Mode Records personnels : table athlete_records, sans filtre période
+    $perfRecFilter = $annee > 0 ? " AND YEAR(ar.date_record) = $annee" : '';
+    $resCount = $conn->query("
+        SELECT COUNT(*) as c
+        FROM athlete_records ar
+        JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter
+        WHERE 1=1 $perfRecFilter
+    ");
+    if ($resCount) {
+        $totalPerformances = (int) $resCount->fetch_assoc()['c'];
+    }
+    $res = $conn->query("
+        SELECT a.nom_complet_athlete, a.athlete_id_externe, a.categorie_athlete, a.sexe_athlete,
+               e.nom_epreuve, ar.performance_brut_record, ar.date_record, v.nom_ville,
+               (SELECT GROUP_CONCAT(DISTINCT ares.niveau_resultat ORDER BY ares.niveau_resultat SEPARATOR ',')
+                FROM athlete_resultats ares
+                WHERE ares.id_athlete = ar.id_athlete AND ares.id_epreuve = ar.id_epreuve
+                  AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != '') as niveaux
+        FROM athlete_records ar
+        JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter
+        JOIN athletes a ON a.id_athlete = ar.id_athlete
+        JOIN epreuves e ON e.id_epreuve = ar.id_epreuve
+        LEFT JOIN villes v ON v.id_ville = ar.id_ville
+        WHERE 1=1 $perfRecFilter
+        ORDER BY ar.date_record DESC, a.nom_complet_athlete ASC
+        LIMIT $perfLimit OFFSET $perfOffset
+    ");
+    if ($res) while ($row = $res->fetch_assoc()) {
+        $nivList = array_filter(explode(',', $row['niveaux'] ?? ''));
+        $performances[] = [
+            'athlete'     => $row['nom_complet_athlete'],
+            'athlete_id'  => (int) $row['athlete_id_externe'],
+            'categorie'   => $row['categorie_athlete'],
+            'sexe'        => $row['sexe_athlete'],
+            'epreuve'     => $row['nom_epreuve'],
+            'performance' => $row['performance_brut_record'],
+            'date'        => $row['date_record'],
+            'annee'       => $row['date_record'] ? substr($row['date_record'], 0, 4) : null,
+            'niveau'      => highestNiveau(array_values($nivList)),
+            'niveaux'     => array_values($nivList),
+            'place'       => null,
+            'ville'       => $row['nom_ville'],
+        ];
+    }
+} else {
+    // Mode Toutes les épreuves : table athlete_resultats avec filtre période
+    $perfAnneeFilter = $annee > 0 ? " AND ares.annee_resultat = $annee" : '';
+    $resCount = $conn->query("
+        SELECT COUNT(*) as c
+        FROM athlete_resultats ares
+        JOIN athlete_clubs ac ON ac.id_athlete = ares.id_athlete AND ac.id_club = $cid $athFilter $mcRes
+        WHERE 1=1 $perfAnneeFilter
+    ");
+    if ($resCount) {
+        $totalPerformances = (int) $resCount->fetch_assoc()['c'];
+    }
+    $res = $conn->query("
+        SELECT a.nom_complet_athlete, a.athlete_id_externe, a.categorie_athlete, a.sexe_athlete,
+               e.nom_epreuve, ares.performance_brut_resultat, ares.date_resultat, ares.annee_resultat,
+               ares.niveau_resultat, ares.place_resultat, v.nom_ville
+        FROM athlete_resultats ares
+        JOIN athlete_clubs ac ON ac.id_athlete = ares.id_athlete AND ac.id_club = $cid $athFilter $mcRes
+        JOIN athletes a ON a.id_athlete = ares.id_athlete
+        JOIN epreuves e ON e.id_epreuve = ares.id_epreuve
+        LEFT JOIN villes v ON v.id_ville = ares.id_ville
+        WHERE 1=1 $perfAnneeFilter
+        ORDER BY ares.date_resultat DESC, a.nom_complet_athlete ASC
+        LIMIT $perfLimit OFFSET $perfOffset
+    ");
+    if ($res) while ($row = $res->fetch_assoc()) {
+        $performances[] = [
+            'athlete'     => $row['nom_complet_athlete'],
+            'athlete_id'  => (int) $row['athlete_id_externe'],
+            'categorie'   => $row['categorie_athlete'],
+            'sexe'        => $row['sexe_athlete'],
+            'epreuve'     => $row['nom_epreuve'],
+            'performance' => $row['performance_brut_resultat'],
+            'date'        => $row['date_resultat'],
+            'annee'       => $row['annee_resultat'],
+            'niveau'      => $row['niveau_resultat'],
+            'place'       => $row['place_resultat'],
+            'ville'       => $row['nom_ville'],
+        ];
+    }
 }
 
 // Top 10 epreuves legacy (par nombre de records)
@@ -831,6 +880,7 @@ $response = [
     'total_performances'  => $totalPerformances,
     'perf_page'           => $perfPage,
     'perf_pages'          => (int) ceil($totalPerformances / $perfLimit),
+    'perf_mode'           => $perfMode,
     'top_epreuves'        => $topEpreuves,
     'top_athletes'        => $topAthletes,
     'top_villes'          => $topVilles,
