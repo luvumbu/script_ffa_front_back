@@ -5274,7 +5274,7 @@ function _renderClubTab(tab, suffix) {
 
         html += '<div style="margin-bottom:12px;color:#5a6580;font-size:13px;">' + totalRec.toLocaleString('fr-FR') + ' records au total — Page ' + recPage + '/' + recPages + '</div>';
 
-        var thRec = '<tr><th>#</th><th>Athlète</th><th>Cat</th><th>Sexe</th><th>Épreuve</th><th>Performance</th><th>Niveaux</th><th>Date</th><th></th></tr>';
+        var thRec = '<tr><th>#</th><th>Athlète</th><th>Cat</th><th>Sexe</th><th>Épreuve</th><th>Discipline</th><th>Performance</th><th>Niveaux</th><th>Date</th><th></th></tr>';
         html += '<div class="table-wrap">';
         html += '<table class="bk-table">' + thRec + '</table>';
         html += '<table class="bk-table">';
@@ -5286,6 +5286,7 @@ function _renderClubTab(tab, suffix) {
             html += '<td><a href="?page=recherche&categorie=' + encodeURIComponent(r.categorie||'') + '&club=' + encodeURIComponent(_clubR) + '" style="text-decoration:none;"><span class="badge badge-cat">' + escapeHtml(r.categorie || '-') + '</span></a></td>';
             html += '<td><a href="?page=recherche&sexe=' + encodeURIComponent(r.sexe||'') + '&club=' + encodeURIComponent(_clubR) + '" style="text-decoration:none;">' + escapeHtml(r.sexe || '-') + '</a></td>';
             html += '<td><a href="?page=recherche&epreuve=' + encodeURIComponent(r.epreuve||'') + '&club=' + encodeURIComponent(_clubR) + '" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(r.epreuve || '-') + '</a></td>';
+            html += '<td>' + (r.disc_color ? '<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:' + r.disc_color + '20;color:' + r.disc_color + ';border:1px solid ' + r.disc_color + '40;">' + escapeHtml(r.discipline || '') + '</span>' : '-') + '</td>';
             html += '<td><span class="perf-val">' + escapeHtml(r.performance || '-') + '</span></td>';
             html += '<td>' + _nivBadge(r.top_niveau || _highestNiveau(r.niveaux)) + '</td>';
             html += '<td>' + dateFR(r.date || '-') + '</td>';

@@ -352,12 +352,15 @@ $res = $conn->query("
 ");
 if ($res) while ($row = $res->fetch_assoc()) {
     $nivList = array_filter(explode(',', $row['niveaux'] ?? ''));
+    $disc = getEpreuveDiscipline($row['nom_epreuve']);
     $records[] = [
         'athlete'     => $row['nom_complet_athlete'],
         'athlete_id'  => (int) $row['athlete_id_externe'],
         'categorie'   => $row['categorie_athlete'],
         'sexe'        => $row['sexe_athlete'],
         'epreuve'     => $row['nom_epreuve'],
+        'discipline'  => $disc['disc'],
+        'disc_color'  => $disc['clr'],
         'performance' => $row['performance_brut_record'],
         'date'        => $row['date_record'],
         'niveaux'     => array_values($nivList),
