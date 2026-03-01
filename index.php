@@ -4673,7 +4673,7 @@ elseif ($page === 'tuto'):
 
 <!-- Progress bar -->
 <div class="tuto-progress" id="tutoProgress">
-<?php for ($ts = 1; $ts <= 10; $ts++): ?>
+<?php for ($ts = 1; $ts <= 9; $ts++): ?>
     <div class="tuto-progress-step" data-step="<?= $ts ?>" onclick="tutoGoStep(<?= $ts ?>)" style="cursor:pointer;">
         <span class="tuto-progress-dot"><?= $ts ?></span>
     </div>
@@ -4778,39 +4778,8 @@ elseif ($page === 'tuto'):
     </div>
 </div>
 
-<!-- ========== ÉTAPE 6 : RECHERCHE AVANCÉE ========== -->
+<!-- ========== ÉTAPE 6 : ÉPREUVES & VILLES ========== -->
 <div class="tuto-step" data-step="6" id="tutoStep6" style="display:none;">
-    <div class="tuto-title" style="color:#6366f1;">Recherche avancée</div>
-    <p class="tuto-subtitle">Combinez plusieurs filtres pour affiner vos résultats. Testez avec les champs ci-dessous.</p>
-
-    <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;">
-        <div style="flex:1;min-width:140px;">
-            <label style="display:block;color:#8b949e;font-size:11px;font-weight:600;margin-bottom:4px;">Nom</label>
-            <input type="text" id="tutoAdvNom" placeholder="Ex: dupont" autocomplete="off" style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #253049;border-radius:8px;color:#c9d1d9;font-size:13px;">
-        </div>
-        <div style="flex:1;min-width:140px;">
-            <label style="display:block;color:#8b949e;font-size:11px;font-weight:600;margin-bottom:4px;">Club</label>
-            <input type="text" id="tutoAdvClub" placeholder="Ex: Lille" autocomplete="off" style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #253049;border-radius:8px;color:#c9d1d9;font-size:13px;">
-        </div>
-        <div style="min-width:80px;">
-            <label style="display:block;color:#8b949e;font-size:11px;font-weight:600;margin-bottom:4px;">Sexe</label>
-            <select id="tutoAdvSexe" style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #253049;border-radius:8px;color:#c9d1d9;font-size:13px;">
-                <option value="">Tous</option><option value="M">M</option><option value="F">F</option>
-            </select>
-        </div>
-        <div style="display:flex;align-items:flex-end;">
-            <button onclick="_tutoRunAdvSearch()" class="tuto-next-btn" style="padding:8px 20px;font-size:13px;">Rechercher</button>
-        </div>
-    </div>
-    <div id="tutoAdvResults" style="display:none;margin-top:10px;"></div>
-    <div id="tutoAdvDone" style="display:none;text-align:center;margin-top:14px;">
-        <div class="tuto-complete-badge">&#10003; Recherche effectuée !</div>
-        <button class="tuto-next-btn" onclick="tutoGoStep(7)" style="margin-top:10px;">Continuer &rarr;</button>
-    </div>
-</div>
-
-<!-- ========== ÉTAPE 7 : ÉPREUVES & VILLES ========== -->
-<div class="tuto-step" data-step="7" id="tutoStep7" style="display:none;">
     <div class="tuto-title" style="color:#f59e0b;">Épreuves & Villes</div>
     <p class="tuto-subtitle">Explorez les données par <b>épreuve</b> (100m, saut en hauteur...) ou par <b>ville</b> de compétition.</p>
 
@@ -4834,12 +4803,12 @@ elseif ($page === 'tuto'):
     </div>
     <p class="tuto-subtitle" style="margin-top:16px;">Chaque épreuve et chaque ville a son panneau détaillé avec graphiques, records et résumé.</p>
     <div style="text-align:center;margin-top:14px;">
-        <button class="tuto-next-btn" onclick="tutoGoStep(8)">Continuer &rarr;</button>
+        <button class="tuto-next-btn" onclick="tutoGoStep(7)">Continuer &rarr;</button>
     </div>
 </div>
 
-<!-- ========== ÉTAPE 8 : COMPARER ========== -->
-<div class="tuto-step" data-step="8" id="tutoStep8" style="display:none;">
+<!-- ========== ÉTAPE 7 : COMPARER ========== -->
+<div class="tuto-step" data-step="7" id="tutoStep7" style="display:none;">
     <div class="tuto-title" style="color:#f59e0b;">Comparer</div>
     <p class="tuto-subtitle">Ajoutez des athlètes ou clubs au <b>panier de comparaison</b> avec le bouton <b style="color:#a29bfe;">+</b>, puis comparez-les visuellement.</p>
 
@@ -4863,12 +4832,12 @@ elseif ($page === 'tuto'):
     </div>
     <div style="text-align:center;margin-top:14px;">
         <a href="?page=comparer" class="tuto-try" style="margin-right:10px;">&#128073; Aller au Comparateur</a>
-        <button class="tuto-next-btn" onclick="tutoGoStep(9)" style="margin-top:10px;">Continuer &rarr;</button>
+        <button class="tuto-next-btn" onclick="tutoGoStep(8)" style="margin-top:10px;">Continuer &rarr;</button>
     </div>
 </div>
 
-<!-- ========== ÉTAPE 9 : SUIVRE & NOTIFICATIONS ========== -->
-<div class="tuto-step" data-step="9" id="tutoStep9" style="display:none;">
+<!-- ========== ÉTAPE 8 : SUIVRE & NOTIFICATIONS ========== -->
+<div class="tuto-step" data-step="8" id="tutoStep8" style="display:none;">
     <div class="tuto-title" style="color:#10b981;">Suivre & Notifications</div>
     <p class="tuto-subtitle">Restez informé des athlètes et clubs qui vous intéressent.</p>
 
@@ -4879,12 +4848,12 @@ elseif ($page === 'tuto'):
         <div class="tuto-feature"><span class="icon">&#128196;</span><div><div class="title">Télécharger PDF</div><div class="desc">Sur chaque profil, le bouton PDF génère une fiche imprimable complète.</div></div></div>
     </div>
     <div style="text-align:center;margin-top:14px;">
-        <button class="tuto-next-btn" onclick="tutoGoStep(10)">Terminer &rarr;</button>
+        <button class="tuto-next-btn" onclick="tutoGoStep(9)">Terminer &rarr;</button>
     </div>
 </div>
 
-<!-- ========== ÉTAPE 10 : C'EST PARTI ! ========== -->
-<div class="tuto-step" data-step="10" id="tutoStep10" style="display:none;">
+<!-- ========== ÉTAPE 9 : C'EST PARTI ! ========== -->
+<div class="tuto-step" data-step="9" id="tutoStep9" style="display:none;">
     <div class="tuto-title" style="background:linear-gradient(135deg,#6c5ce7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Vous êtes prêt !</div>
     <p class="tuto-subtitle">Voici les codes couleurs des <b>niveaux de compétition</b> que vous verrez partout :</p>
 
@@ -4935,9 +4904,12 @@ try {
 // ——— Navigation ———
 function tutoGoStep(n) {
     // Hide all steps
-    for (var i = 1; i <= 10; i++) {
+    for (var i = 1; i <= 9; i++) {
         var el = document.getElementById('tutoStep' + i);
-        if (el) { el.style.display = (i === n) ? '' : 'none'; if (i === n) el.classList.add('visible'); }
+        if (el) {
+            if (i === n) { el.style.display = ''; el.classList.add('visible','tuto-enter'); }
+            else { el.style.display = 'none'; el.classList.remove('tuto-enter'); }
+        }
     }
     _tutoState.current = n;
     // Update progress bar
@@ -4972,7 +4944,7 @@ function tutoGoStep(n) {
         _tutoLoadAthPreview(_tutoState.selectedAthlete.id);
     }
     // Mark descriptive steps as auto-complete
-    if ([7, 8, 9].indexOf(n) >= 0) {
+    if ([6, 7, 8].indexOf(n) >= 0) {
         _tutoMarkComplete(n);
     }
 }
@@ -4994,7 +4966,7 @@ function tutoSkip() {
 
 function tutoComplete() {
     try { localStorage.setItem('bk_tuto_seen', '1'); } catch(e) {}
-    _tutoMarkComplete(10);
+    _tutoMarkComplete(9);
     window.location.href = '?page=accueil';
 }
 
@@ -5261,53 +5233,6 @@ function _tutoLoadAthPreview(id) {
 }
 
 // ——— Step 6: Advanced search ———
-function _tutoRunAdvSearch() {
-    var nom = (document.getElementById('tutoAdvNom').value || '').trim();
-    var club = (document.getElementById('tutoAdvClub').value || '').trim();
-    var sexe = document.getElementById('tutoAdvSexe').value;
-    if (!nom && !club && !sexe) {
-        alert('Remplissez au moins un champ');
-        return;
-    }
-    var resultsDiv = document.getElementById('tutoAdvResults');
-    resultsDiv.style.display = 'block';
-    resultsDiv.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Recherche...</div>';
-    var params = [];
-    if (nom) params.push('nom=' + encodeURIComponent(nom));
-    if (club) params.push('club=' + encodeURIComponent(club));
-    if (sexe) params.push('sexe=' + encodeURIComponent(sexe));
-    params.push('limit=10');
-    fetch(BASE_API + '/search.php?' + params.join('&'))
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (!data.success || !data.athletes || data.athletes.length === 0) {
-                resultsDiv.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Aucun résultat. Essayez d\'autres filtres.</div>';
-                return;
-            }
-            var html = '<div style="padding:8px;background:#10b98110;border:1px solid #10b98130;border-radius:8px;text-align:center;font-size:13px;color:#34d399;margin-bottom:10px;">'
-                + data.total + ' résultats trouvés</div>';
-            data.athletes.forEach(function(a) {
-                var aNom = a.nom_complet || ((a.prenom_athlete || '') + ' ' + (a.nom_athlete || '')).trim();
-                var extId = a.athlete_id || a.athlete_id_externe || a.id;
-                var cat = a.categorie || a.categorie_athlete || '';
-                var sexe = a.sexe || a.sexe_athlete || '';
-                html += '<a href="?page=profil&id=' + extId + '" target="_blank" class="tuto-ath-result" style="text-decoration:none;">'
-                    + '<div style="flex:1;">'
-                    + '<span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(aNom) + '</span>'
-                    + (cat ? ' <span class="badge badge-cat" style="font-size:10px;">' + escapeHtml(cat) + '</span>' : '')
-                    + (sexe ? ' <span class="badge badge-' + sexe.toLowerCase() + '" style="font-size:10px;">' + escapeHtml(sexe) + '</span>' : '')
-                    + '</div>'
-                    + '</a>';
-            });
-            resultsDiv.innerHTML = html;
-            document.getElementById('tutoAdvDone').style.display = 'block';
-            _tutoMarkComplete(6);
-        })
-        .catch(function() {
-            resultsDiv.innerHTML = '<div style="padding:12px;color:#ef4444;text-align:center;">Erreur de connexion</div>';
-        });
-}
-
 // ——— Init ———
 document.addEventListener('DOMContentLoaded', function() {
     // Step 1 is visible by default, trigger its animation

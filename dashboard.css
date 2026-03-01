@@ -516,33 +516,247 @@ h3 { color: #e2e8f0; font-size: 15px; margin: 15px 0 8px; }
 @keyframes tutoBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes tutoSlideRight { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
 
-/* Interactive tuto extras */
-.tuto-skip-btn { position:fixed;bottom:20px;right:20px;z-index:100;padding:10px 20px;background:#1e2a3a;border:1px solid #30363d;border-radius:8px;color:#8b949e;font-size:13px;cursor:pointer;transition:all .2s; }
-.tuto-skip-btn:hover { background:#253049;color:#c9d1d9;border-color:#6c5ce7; }
-.tuto-next-btn { display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,#6c5ce7,#5541d0);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;margin-top:16px; }
-.tuto-next-btn:disabled { opacity:.4;cursor:not-allowed; }
-.tuto-next-btn:not(:disabled):hover { box-shadow:0 0 20px #6c5ce740;transform:translateY(-1px); }
+/* ═══ Interactive tuto — animations & style ═══ */
+
+/* Entrance animation for steps */
+.tuto-enter { animation: tutoSlideUp .5s cubic-bezier(.16,1,.3,1) both; }
+@keyframes tutoSlideUp {
+    from { opacity:0; transform:translateY(30px) scale(.97); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+}
+
+/* Stagger animation for children */
+.tuto-enter .tuto-title   { animation: tutoFadeSlide .5s ease .1s both; }
+.tuto-enter .tuto-subtitle { animation: tutoFadeSlide .5s ease .2s both; }
+.tuto-enter .tuto-cards    { animation: tutoFadeSlide .5s ease .3s both; }
+.tuto-enter .tuto-mock     { animation: tutoFadeSlide .5s ease .25s both; }
+.tuto-enter .tuto-features { animation: tutoFadeSlide .5s ease .3s both; }
+.tuto-enter .tuto-live-search { animation: tutoFadeSlide .5s ease .2s both; }
+.tuto-enter .tuto-inline-panel { animation: tutoFadeSlide .6s ease .3s both; }
+.tuto-enter .tuto-niv-demo { animation: tutoFadeSlide .5s ease .3s both; }
+.tuto-enter .tuto-next-btn { animation: tutoFadeSlide .4s ease .4s both; }
+@keyframes tutoFadeSlide {
+    from { opacity:0; transform:translateY(16px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+
+/* Skip button — glass effect */
+.tuto-skip-btn {
+    position:fixed;bottom:24px;right:24px;z-index:100;
+    padding:10px 22px;
+    background:rgba(13,21,32,.85);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:1px solid #30363d;border-radius:10px;
+    color:#8b949e;font-size:13px;font-weight:500;
+    cursor:pointer;transition:all .3s ease;
+    box-shadow:0 4px 16px rgba(0,0,0,.3);
+}
+.tuto-skip-btn:hover {
+    background:rgba(30,42,58,.95);color:#c9d1d9;
+    border-color:#6c5ce7;
+    box-shadow:0 4px 24px rgba(108,92,231,.2);
+    transform:translateY(-2px);
+}
+
+/* Next button — gradient glow */
+.tuto-next-btn {
+    display:inline-flex;align-items:center;gap:8px;
+    padding:12px 28px;
+    background:linear-gradient(135deg,#6c5ce7,#5541d0);
+    color:#fff;border:none;border-radius:12px;
+    font-size:14px;font-weight:700;
+    cursor:pointer;transition:all .3s ease;
+    position:relative;overflow:hidden;
+}
+.tuto-next-btn::before {
+    content:'';position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);
+    opacity:0;transition:opacity .3s;
+}
+.tuto-next-btn:not(:disabled):hover {
+    box-shadow:0 0 30px #6c5ce750,0 4px 12px rgba(0,0,0,.3);
+    transform:translateY(-2px);
+}
+.tuto-next-btn:not(:disabled):hover::before { opacity:1; }
+.tuto-next-btn:disabled { opacity:.35;cursor:not-allowed; }
+.tuto-next-btn:not(:disabled):active { transform:translateY(0);box-shadow:0 0 16px #6c5ce740; }
+
+/* Step completion */
 .tuto-step.completed { border-left:3px solid #34d399; }
-.tuto-complete-badge { display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:#10b98120;border:1px solid #10b98140;border-radius:8px;color:#34d399;font-size:13px;font-weight:600;animation:tutoFadeIn .4s ease; }
-.tuto-club-result,.tuto-ath-result { display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #1e2a3a;cursor:pointer;transition:background .2s; }
-.tuto-club-result:hover,.tuto-ath-result:hover { background:#1e2a3a40; }
-.tuto-live-search { display:flex;align-items:center;gap:8px;padding:12px 16px;background:#080c14;border:2px solid #253049;border-radius:10px;margin:12px 0;transition:border-color .2s; }
-.tuto-live-search:focus-within { border-color:#6c5ce7; }
-.tuto-live-search input { flex:1;background:transparent;border:none;outline:none;color:#c9d1d9;font-size:14px; }
+
+/* Badge "Action complétée" — pulse */
+.tuto-complete-badge {
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 18px;
+    background:linear-gradient(135deg,#10b98118,#10b98108);
+    border:1px solid #10b98140;border-radius:10px;
+    color:#34d399;font-size:13px;font-weight:600;
+    animation: tutoBadgeAppear .5s cubic-bezier(.16,1,.3,1) both, tutoBadgePulse 2s ease 1s infinite;
+}
+@keyframes tutoBadgeAppear {
+    from { opacity:0; transform:scale(.8); }
+    to   { opacity:1; transform:scale(1); }
+}
+@keyframes tutoBadgePulse {
+    0%,100% { box-shadow:0 0 0 0 #34d39900; }
+    50%     { box-shadow:0 0 0 6px #34d39920; }
+}
+
+/* Club/Athlete result items — smooth hover */
+.tuto-club-result,.tuto-ath-result {
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 16px;border-bottom:1px solid #1e2a3a20;
+    cursor:pointer;transition:all .25s ease;
+    border-left:3px solid transparent;
+}
+.tuto-club-result:hover,.tuto-ath-result:hover {
+    background:linear-gradient(90deg,#6c5ce708,transparent);
+    border-left-color:#6c5ce7;
+    transform:translateX(4px);
+}
+.tuto-club-result:first-child,.tuto-ath-result:first-child { border-radius:10px 10px 0 0; }
+.tuto-club-result:last-child,.tuto-ath-result:last-child { border-bottom:none;border-radius:0 0 10px 10px; }
+
+/* Search bar — glow on focus */
+.tuto-live-search {
+    display:flex;align-items:center;gap:10px;
+    padding:14px 18px;
+    background:linear-gradient(135deg,#080c14,#0d1520);
+    border:2px solid #253049;border-radius:12px;
+    margin:14px 0;transition:all .3s ease;
+    box-shadow:0 2px 8px rgba(0,0,0,.2);
+}
+.tuto-live-search:focus-within {
+    border-color:#6c5ce7;
+    box-shadow:0 0 0 3px #6c5ce720,0 4px 16px rgba(0,0,0,.3);
+}
+.tuto-live-search input { flex:1;background:transparent;border:none;outline:none;color:#c9d1d9;font-size:15px; }
 .tuto-live-search input::placeholder { color:#3a4560; }
-.tuto-live-results { background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;max-height:300px;overflow-y:auto;display:none; }
+
+/* Results dropdown — slide down */
+.tuto-live-results {
+    background:#0d1520;border:1px solid #1e2a3a;border-radius:12px;
+    max-height:350px;overflow-y:auto;display:none;
+    box-shadow:0 8px 32px rgba(0,0,0,.3);
+    animation: tutoDropDown .3s ease both;
+}
+@keyframes tutoDropDown {
+    from { opacity:0; transform:translateY(-8px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+.tuto-live-results::-webkit-scrollbar { width:6px; }
+.tuto-live-results::-webkit-scrollbar-track { background:transparent; }
+.tuto-live-results::-webkit-scrollbar-thumb { background:#253049;border-radius:3px; }
+
+/* Highlight pulse */
 .tuto-highlight { animation:tutoHighlight 2s ease infinite; }
-@keyframes tutoHighlight { 0%,100%{box-shadow:0 0 0 0 #6c5ce700;} 50%{box-shadow:0 0 0 4px #6c5ce740;} }
-.tuto-inline-panel { background:#0d1520;border:1px solid #1e2a3a;border-radius:12px;padding:0;margin:16px 0;overflow:hidden; }
-.tuto-inline-panel .club-detail-header { padding:16px;border-bottom:1px solid #1e2a3a; }
-.tuto-inline-panel .club-detail-tabs { padding:8px 16px;border-bottom:1px solid #1e2a3a; }
+@keyframes tutoHighlight {
+    0%,100% { box-shadow:0 0 0 0 #6c5ce700; }
+    50%     { box-shadow:0 0 0 5px #6c5ce730,0 0 20px #6c5ce715; }
+}
+
+/* Inline panel — elevated */
+.tuto-inline-panel {
+    background:#0d1520;
+    border:1px solid #1e2a3a;border-radius:14px;
+    padding:0;margin:16px 0;overflow:hidden;
+    box-shadow:0 4px 24px rgba(0,0,0,.25);
+}
+.tuto-inline-panel .club-detail-header {
+    padding:18px 20px;
+    border-bottom:1px solid #1e2a3a;
+    background:linear-gradient(135deg,#0d152080,#12182a80);
+}
+.tuto-inline-panel .club-detail-tabs {
+    padding:10px 16px;border-bottom:1px solid #1e2a3a;
+    background:#0a0f18;
+}
 .tuto-inline-panel .club-detail-content { padding:16px; }
 
+/* Progress bar — active dot glow */
+.tuto-progress-step.active .tuto-progress-dot {
+    box-shadow:0 0 12px #6c5ce760,0 0 4px #6c5ce7;
+}
+.tuto-progress-step.done .tuto-progress-dot {
+    box-shadow:0 0 8px #34d39940;
+}
+
+/* Step number indicator */
+.tuto-step .tuto-title::before {
+    display:inline-block;
+    font-size:12px;font-weight:700;
+    color:#5a6580;letter-spacing:1px;
+    margin-bottom:6px;
+    text-transform:uppercase;
+}
+.tuto-step[data-step="1"] .tuto-title::before { content:"Étape 1/9"; display:block; }
+.tuto-step[data-step="2"] .tuto-title::before { content:"Étape 2/9"; display:block; }
+.tuto-step[data-step="3"] .tuto-title::before { content:"Étape 3/9"; display:block; }
+.tuto-step[data-step="4"] .tuto-title::before { content:"Étape 4/9"; display:block; }
+.tuto-step[data-step="5"] .tuto-title::before { content:"Étape 5/9"; display:block; }
+.tuto-step[data-step="6"] .tuto-title::before { content:"Étape 6/9"; display:block; }
+.tuto-step[data-step="7"] .tuto-title::before { content:"Étape 7/9"; display:block; }
+.tuto-step[data-step="8"] .tuto-title::before { content:"Étape 8/9"; display:block; }
+.tuto-step[data-step="9"] .tuto-title::before { content:"Étape 9/9"; display:block; }
+
+/* Tuto step cards — glass morph */
+.tuto-step .tuto-card {
+    background:linear-gradient(135deg,rgba(108,92,231,.08),rgba(13,21,32,.5));
+    border:1px solid #6c5ce720;
+    transition:transform .3s ease, box-shadow .3s ease;
+}
+.tuto-step .tuto-card:hover {
+    transform:translateY(-3px);
+    box-shadow:0 8px 24px rgba(108,92,231,.15);
+}
+
+/* Feature cards — animated reveal */
+.tuto-enter .tuto-feature:nth-child(1) { animation: tutoFadeSlide .4s ease .2s both; }
+.tuto-enter .tuto-feature:nth-child(2) { animation: tutoFadeSlide .4s ease .3s both; }
+.tuto-enter .tuto-feature:nth-child(3) { animation: tutoFadeSlide .4s ease .4s both; }
+.tuto-enter .tuto-feature:nth-child(4) { animation: tutoFadeSlide .4s ease .5s both; }
+.tuto-enter .tuto-feature:nth-child(5) { animation: tutoFadeSlide .4s ease .6s both; }
+.tuto-enter .tuto-feature:nth-child(6) { animation: tutoFadeSlide .4s ease .7s both; }
+
+/* Tuto feature — hover lift */
+.tuto-feature {
+    transition:transform .2s ease, box-shadow .2s ease;
+}
+.tuto-feature:hover {
+    transform:translateY(-2px);
+    box-shadow:0 4px 16px rgba(0,0,0,.2);
+}
+
+/* Mock elements — shimmer border */
+.tuto-mock {
+    position:relative;overflow:hidden;
+}
+.tuto-mock::after {
+    content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;
+    background:linear-gradient(90deg,transparent,rgba(108,92,231,.04),transparent);
+    animation:tutoShimmer 4s ease infinite;
+    pointer-events:none;
+}
+@keyframes tutoShimmer {
+    0%   { left:-100%; }
+    100% { left:200%; }
+}
+
+/* Niv demo badges — hover scale */
+.tuto-niv-demo span {
+    transition:transform .2s ease;
+}
+.tuto-niv-demo span:hover {
+    transform:scale(1.08);
+}
+
+/* Grid épreuves/villes — column gap on mobile */
 @media (max-width: 700px) {
     .tuto-cards { grid-template-columns: repeat(2, 1fr); }
     .tuto-features { grid-template-columns: 1fr; }
     .tuto-title { font-size: 22px; }
-    .tuto-skip-btn { bottom:10px;right:10px;padding:8px 14px;font-size:12px; }
+    .tuto-skip-btn { bottom:12px;right:12px;padding:8px 16px;font-size:12px; }
+    .tuto-step[data-step="6"] div[style*="grid-template-columns"] { grid-template-columns:1fr !important; }
 }
 
 /* TEST — forcer padding tableaux */
