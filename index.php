@@ -325,6 +325,20 @@ if (count($_bcItems) > 1):
     <style>.qr-share{text-align:center;padding:20px;margin-top:20px;border-top:1px solid #1a2540}.qr-share img{border-radius:8px;background:#fff;padding:6px}.qr-share .qr-label{color:#5a6580;font-size:12px;margin-top:8px}</style>
     <script>function bkQR(url){return '<div class="qr-share"><img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(url)+'" alt="QR Code" width="120" height="120"><div class="qr-label">Scannez pour partager</div></div>';}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script>
+    (function(){
+        try { if (localStorage.getItem('bk_tuto_seen')) return; } catch(e) { return; }
+        var p = new URLSearchParams(window.location.search);
+        var pg = p.get('page') || 'accueil';
+        if (pg === 'tuto') return;
+        if (pg === 'profil' && p.get('id')) return;
+        if (pg === 'recherche' && (p.get('club') || p.get('epreuve') || p.get('nom'))) return;
+        if (pg === 'villes' && p.get('open')) return;
+        if (pg === 'clubs' && p.get('open')) return;
+        if (pg === 'epreuves' && p.get('nom')) return;
+        window.location.replace(window.location.pathname + '?page=tuto');
+    })();
+    </script>
     <style>
     /* PANIER COMPARAISON FLOTTANT */
     .cmp-basket {
@@ -4654,152 +4668,143 @@ elseif ($page === 'tuto'):
 
 <div class="tuto-container">
 
+<!-- Skip button -->
+<button class="tuto-skip-btn" onclick="tutoSkip()">Passer &rarr;</button>
+
 <!-- Progress bar -->
 <div class="tuto-progress" id="tutoProgress">
-<?php for ($ts = 1; $ts <= 8; $ts++): ?>
-    <div class="tuto-progress-step" data-step="<?= $ts ?>" onclick="document.querySelector('.tuto-step[data-step=&quot;<?= $ts ?>&quot;]').scrollIntoView({behavior:'smooth',block:'start'});" style="cursor:pointer;">
+<?php for ($ts = 1; $ts <= 10; $ts++): ?>
+    <div class="tuto-progress-step" data-step="<?= $ts ?>" onclick="tutoGoStep(<?= $ts ?>)" style="cursor:pointer;">
         <span class="tuto-progress-dot"><?= $ts ?></span>
     </div>
 <?php endfor; ?>
 </div>
 
 <!-- ========== ÉTAPE 1 : BIENVENUE ========== -->
-<div class="tuto-step" data-step="1">
+<div class="tuto-step visible" data-step="1" id="tutoStep1">
     <div class="tuto-title" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
         <span id="tutoTyping"></span><span class="tuto-cursor"></span>
     </div>
     <p class="tuto-subtitle">
-        Bokonzi est une base de données complète de l'athlétisme français. Explorez des centaines de milliers d'athlètes, clubs, épreuves, records et résultats. Ce tutoriel vous guide pas à pas.
+        Bokonzi est la base de données la plus complète de l'athlétisme français. Ce tutoriel interactif vous apprend à l'utiliser en quelques minutes.
     </p>
     <div class="tuto-cards">
         <div class="tuto-card"><div class="num" data-count="<?= $nbAth ?>">0</div><div class="label">Athlètes</div></div>
         <div class="tuto-card"><div class="num" data-count="<?= $nbClub ?>">0</div><div class="label">Clubs</div></div>
         <div class="tuto-card"><div class="num" data-count="<?= $nbEp ?>">0</div><div class="label">Épreuves</div></div>
     </div>
-    <p class="tuto-subtitle" style="margin-top:20px;">Commençons par découvrir comment naviguer dans l'application.</p>
+    <div style="text-align:center;margin-top:24px;">
+        <button class="tuto-next-btn" onclick="tutoGoStep(2)" style="font-size:16px;padding:14px 36px;">Commencer le tutoriel &rarr;</button>
+    </div>
 </div>
 
-<!-- ========== ÉTAPE 2 : EXPLORER LES CLUBS ========== -->
-<div class="tuto-step" data-step="2">
-    <div class="tuto-title" style="color:#34d399;">Explorer les Clubs</div>
-    <p class="tuto-subtitle">La page <b>Clubs</b> liste tous les clubs d'athlétisme. Vous pouvez les rechercher, les explorer et voir leurs athlètes.</p>
+<!-- ========== ÉTAPE 2 : RECHERCHER UN CLUB ========== -->
+<div class="tuto-step" data-step="2" id="tutoStep2" style="display:none;">
+    <div class="tuto-title" style="color:#34d399;">Recherchez un club</div>
+    <p class="tuto-subtitle">Tapez le nom d'un club pour le trouver. Essayez par exemple <b>"Lille"</b>, <b>"Paris"</b> ou le nom de votre club.</p>
 
-    <div class="tuto-mock">
-        <div class="tuto-mock-nav">
-            <span>Accueil</span><span>Athlètes</span><span>Recherche</span>
-            <span class="hl">Clubs</span><span>Épreuves</span><span>Villes</span>
-        </div>
-        <div class="tuto-mock-search">
-            <span class="icon">&#128269;</span>
-            <span class="text" id="tutoClubSearch"></span><span class="tuto-cursor" id="tutoClubCursor" style="display:none;"></span>
-        </div>
-        <div style="margin-top:10px;">
-            <div class="tuto-mock-row" style="animation: tutoSlideRight .5s ease .3s both;">
-                <span style="color:#a29bfe;font-weight:700;">Lille Metropole Athletisme</span>
-                <span class="tuto-mock-badge" style="background:#10b98120;color:#34d399;">1 247 athlètes</span>
-            </div>
-            <div class="tuto-mock-row" style="animation: tutoSlideRight .5s ease .5s both;">
-                <span style="color:#a29bfe;font-weight:700;">Haute Bretagne Athletisme</span>
-                <span class="tuto-mock-badge" style="background:#10b98120;color:#34d399;">892 athlètes</span>
-            </div>
-            <div class="tuto-mock-row" style="animation: tutoSlideRight .5s ease .7s both;">
-                <span style="color:#a29bfe;font-weight:700;">Paris Saint-Germain</span>
-                <span class="tuto-mock-badge" style="background:#10b98120;color:#34d399;">654 athlètes</span>
-            </div>
-        </div>
+    <div class="tuto-live-search tuto-highlight" id="tutoClubSearchWrap">
+        <span style="font-size:18px;flex-shrink:0;">&#128269;</span>
+        <input type="text" id="tutoClubInput" placeholder="Tapez un nom de club..." autocomplete="off" oninput="_tutoSearchClubs(this.value)">
     </div>
-    <p class="tuto-subtitle">Cliquez sur un club pour voir tous ses athlètes et statistiques.</p>
-    <a href="?page=clubs" class="tuto-try">&#128073; Essayer la page Clubs</a>
+    <div class="tuto-live-results" id="tutoClubResults"></div>
+    <div id="tutoClubDone" style="display:none;text-align:center;margin-top:14px;">
+        <div class="tuto-complete-badge">&#10003; Club sélectionné !</div>
+        <button class="tuto-next-btn" onclick="tutoGoStep(3)" style="margin-top:10px;">Explorer le panneau club &rarr;</button>
+    </div>
 </div>
 
-<!-- ========== ÉTAPE 3 : PANNEAU CLUB ========== -->
-<div class="tuto-step" data-step="3">
-    <div class="tuto-title" style="color:#a29bfe;">Le panneau Club</div>
-    <p class="tuto-subtitle">Quand vous cliquez sur un club, un panneau détaillé s'ouvre avec <b>5 onglets</b> :</p>
+<!-- ========== ÉTAPE 3 : PANNEAU CLUB (EMBEDDED) ========== -->
+<div class="tuto-step" data-step="3" id="tutoStep3" style="display:none;">
+    <div class="tuto-title" style="color:#a29bfe;">Le panneau club</div>
+    <p class="tuto-subtitle">Explorez les onglets du club. Naviguez dans au moins <b>2 onglets</b> pour continuer.</p>
+    <p class="tuto-subtitle" id="tutoClubTabsProgress" style="font-size:12px;color:#5a6580;">Onglets visités : <span id="tutoTabsCount">0</span>/2</p>
 
-    <div class="tuto-mock">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span style="color:#c9d1d9;font-weight:700;font-size:15px;">Lille Metropole Athletisme</span>
-            <span style="color:#5a6580;font-size:11px;">1 247 athlètes | 2004-2025</span>
+    <div id="clubDetailPanelTuto" class="tuto-inline-panel">
+        <div class="club-detail-header">
+            <h2 id="clubDetailNameTuto" style="margin:0;"></h2>
+            <span class="meta-info" id="clubDetailMetaTuto"></span>
         </div>
-        <div class="tuto-mock-tabs">
-            <span class="active">Épreuves</span>
-            <span>Nationalités</span>
-            <span>Records</span>
-            <span>Stats</span>
-            <span>Résumé</span>
+        <div class="club-detail-tabs" id="clubTabsTuto">
+            <button class="club-detail-tab active" data-tab="epreuves" onclick="switchClubTabTuto('epreuves')">Épreuves</button>
+            <button class="club-detail-tab" data-tab="nationalites" onclick="switchClubTabTuto('nationalites')">Nationalités</button>
+            <button class="club-detail-tab" data-tab="stats" onclick="switchClubTabTuto('stats')">Stats</button>
+            <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabTuto('performances')">Performances</button>
+            <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabTuto('resume')">Résumé</button>
         </div>
-        <div class="tuto-mock-panel">
-            <div class="tuto-mock-row"><span style="color:#a29bfe;">100m</span><span style="color:#60a5fa;">10"52</span><span style="color:#5a6580;">DUPONT Jean</span><span class="tuto-mock-badge" style="background:#e11d4820;color:#fb7185;">N2</span></div>
-            <div class="tuto-mock-row"><span style="color:#a29bfe;">200m</span><span style="color:#60a5fa;">21"38</span><span style="color:#5a6580;">MARTIN Pierre</span><span class="tuto-mock-badge" style="background:#0891b220;color:#22d3ee;">R1</span></div>
-            <div class="tuto-mock-row"><span style="color:#a29bfe;">400m</span><span style="color:#60a5fa;">47"85</span><span style="color:#5a6580;">BERNARD Marie</span><span class="tuto-mock-badge" style="background:#f9731620;color:#fb923c;">D2</span></div>
+        <div id="clubDetailContentTuto" class="club-detail-content">
+            <div class="loading-msg">Sélectionnez un club à l'étape précédente</div>
         </div>
     </div>
-
-    <div class="tuto-features">
-        <div class="tuto-feature"><span class="icon">&#127942;</span><div><div class="title">Épreuves</div><div class="desc">Records du club par discipline, meilleur H et F</div></div></div>
-        <div class="tuto-feature"><span class="icon">&#127760;</span><div><div class="title">Nationalités</div><div class="desc">Répartition, comparaison entre nationalités</div></div></div>
-        <div class="tuto-feature"><span class="icon">&#128200;</span><div><div class="title">Records</div><div class="desc">Tous les records personnels des athlètes</div></div></div>
-        <div class="tuto-feature"><span class="icon">&#128202;</span><div><div class="title">Stats</div><div class="desc">Graphiques sexe, catégories, évolution, médailles</div></div></div>
+    <div id="tutoClubTabsDone" style="display:none;text-align:center;margin-top:14px;">
+        <div class="tuto-complete-badge">&#10003; Onglets explorés !</div>
+        <button class="tuto-next-btn" onclick="tutoGoStep(4)" style="margin-top:10px;">Chercher un athlète &rarr;</button>
     </div>
-
-    <a href="?page=recherche&club=Lille+Metropole+Athletisme" class="tuto-try">&#128073; Explorer Lille Metropole</a>
 </div>
 
-<!-- ========== ÉTAPE 4 : RECHERCHE AVANCÉE ========== -->
-<div class="tuto-step" data-step="4">
-    <div class="tuto-title" style="color:#818cf8;">Recherche avancée</div>
-    <p class="tuto-subtitle">Combinez plusieurs filtres pour trouver exactement ce que vous cherchez. Tous les filtres sont <b>cumulables</b>.</p>
+<!-- ========== ÉTAPE 4 : CHERCHER UN ATHLÈTE ========== -->
+<div class="tuto-step" data-step="4" id="tutoStep4" style="display:none;">
+    <div class="tuto-title" style="color:#818cf8;">Cherchez un athlète</div>
+    <p class="tuto-subtitle">Recherchez un athlète dans le club <b id="tutoAthClubName">sélectionné</b>. Tapez un nom ou laissez vide pour voir tous les athlètes.</p>
 
-    <div class="tuto-mock">
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-            <div style="flex:1;min-width:120px;padding:8px 12px;background:#080c14;border:1px solid #253049;border-radius:8px;font-size:12px;color:#8b949e;">Nom : <span style="color:#a29bfe;">dupont</span></div>
-            <div style="padding:8px 12px;background:#080c14;border:1px solid #253049;border-radius:8px;font-size:12px;color:#8b949e;">Club : <span style="color:#34d399;">Lille...</span></div>
-            <div style="padding:8px 12px;background:#080c14;border:1px solid #253049;border-radius:8px;font-size:12px;color:#8b949e;">Sexe : <span style="color:#60a5fa;">M</span></div>
-            <div style="padding:8px 12px;background:#080c14;border:1px solid #253049;border-radius:8px;font-size:12px;color:#8b949e;">NAT : <span style="color:#f472b6;">BEL</span></div>
-        </div>
-        <div style="text-align:center;padding:8px;">
-            <span style="display:inline-block;padding:8px 20px;background:linear-gradient(135deg,#6c5ce7,#5541d0);color:#fff;border-radius:8px;font-size:12px;font-weight:700;">Rechercher</span>
-        </div>
-        <div style="margin-top:8px;padding:8px;background:#10b98110;border:1px solid #10b98130;border-radius:8px;text-align:center;font-size:12px;color:#34d399;">3 résultats trouvés — athlètes belges de Lille nommés "dupont"</div>
+    <div class="tuto-live-search tuto-highlight" id="tutoAthSearchWrap">
+        <span style="font-size:18px;flex-shrink:0;">&#128100;</span>
+        <input type="text" id="tutoAthInput" placeholder="Tapez un nom d'athlète..." autocomplete="off" oninput="_tutoSearchAthletes(this.value)">
     </div>
-
-    <p class="tuto-subtitle">La <b>barre de recherche rapide</b> en haut donne des résultats en temps réel pendant que vous tapez.</p>
-    <a href="?page=recherche" class="tuto-try">&#128073; Essayer la Recherche</a>
+    <div class="tuto-live-results" id="tutoAthResults"></div>
+    <div id="tutoAthDone" style="display:none;text-align:center;margin-top:14px;">
+        <div class="tuto-complete-badge">&#10003; Athlète sélectionné !</div>
+        <button class="tuto-next-btn" onclick="tutoGoStep(5)" style="margin-top:10px;">Voir l'aperçu profil &rarr;</button>
+    </div>
 </div>
 
-<!-- ========== ÉTAPE 5 : PROFIL ATHLÈTE ========== -->
-<div class="tuto-step" data-step="5">
-    <div class="tuto-title" style="color:#ec4899;">Profil d'un athlète</div>
-    <p class="tuto-subtitle">Chaque athlète a une fiche complète avec son parcours, ses records, médailles et un résumé auto-généré.</p>
+<!-- ========== ÉTAPE 5 : APERÇU PROFIL ATHLÈTE ========== -->
+<div class="tuto-step" data-step="5" id="tutoStep5" style="display:none;">
+    <div class="tuto-title" style="color:#ec4899;">Profil athlète</div>
+    <p class="tuto-subtitle">Voici un aperçu du profil. Chaque élément est <b>cliquable</b> : clubs, épreuves, villes, catégories...</p>
 
-    <div class="tuto-mock">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-            <span style="font-size:18px;font-weight:800;color:#c9d1d9;">DUPONT Jean-Marc</span>
-            <span class="tuto-mock-badge" style="background:#3b82f620;color:#60a5fa;">Homme</span>
-            <span class="tuto-mock-badge" style="background:#6c5ce720;color:#a29bfe;">SE</span>
-            <span class="tuto-mock-badge" style="background:#30363d;color:#c9d1d9;">FRA</span>
-        </div>
-        <div style="color:#5a6580;font-size:12px;margin-bottom:10px;">Naissance : 1995 — Taille : 1,82 m — Poids : 73 kg</div>
-        <div style="padding:12px;background:#080c14;border-left:3px solid #6c5ce7;border-radius:0 8px 8px 0;margin:10px 0;">
-            <div style="color:#a29bfe;font-size:11px;font-weight:700;margin-bottom:6px;">&#128221; Résumé auto-généré</div>
-            <div style="color:#8b949e;font-size:12px;line-height:1.7;font-style:italic;">"Jean-Marc Dupont est un athlète français évoluant en catégorie Senior. Spécialisé sur le 100m avec un record de 10"52, il évolue au Lille Metropole Athletisme depuis 2018..."</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-            <span style="padding:4px 10px;border-radius:6px;font-size:11px;background:#0d1520;border:1px solid #1e2a3a;color:#5a6580;">Clubs</span>
-            <span style="padding:4px 10px;border-radius:6px;font-size:11px;background:#0d1520;border:1px solid #1e2a3a;color:#5a6580;">Médailles</span>
-            <span style="padding:4px 10px;border-radius:6px;font-size:11px;background:#6c5ce730;border:1px solid #6c5ce7;color:#a29bfe;">Records</span>
-            <span style="padding:4px 10px;border-radius:6px;font-size:11px;background:#0d1520;border:1px solid #1e2a3a;color:#5a6580;">Progressions</span>
-            <span style="padding:4px 10px;border-radius:6px;font-size:11px;background:#0d1520;border:1px solid #1e2a3a;color:#5a6580;">Podiums</span>
-            <span style="padding:4px 10px;border-radius:6px;font-size:11px;background:#0d1520;border:1px solid #1e2a3a;color:#5a6580;">Résultats</span>
-        </div>
+    <div id="tutoAthPreview" class="tuto-inline-panel">
+        <div class="loading-msg">Sélectionnez un athlète à l'étape précédente</div>
     </div>
-    <p class="tuto-subtitle">Tous les éléments sont <b>cliquables</b> : clubs, épreuves, villes, catégories, nationalités...</p>
-    <a href="?page=profil&id=539676" class="tuto-try">&#128073; Voir un profil réel</a>
+    <div id="tutoAthDoneStep5" style="display:none;text-align:center;margin-top:14px;">
+        <a href="#" id="tutoAthProfileLink" class="tuto-try" target="_blank" style="margin-right:10px;">&#128073; Voir le profil complet</a>
+        <button class="tuto-next-btn" onclick="tutoGoStep(6)" style="margin-top:10px;">Continuer &rarr;</button>
+    </div>
 </div>
 
-<!-- ========== ÉTAPE 6 : ÉPREUVES & VILLES ========== -->
-<div class="tuto-step" data-step="6">
+<!-- ========== ÉTAPE 6 : RECHERCHE AVANCÉE ========== -->
+<div class="tuto-step" data-step="6" id="tutoStep6" style="display:none;">
+    <div class="tuto-title" style="color:#6366f1;">Recherche avancée</div>
+    <p class="tuto-subtitle">Combinez plusieurs filtres pour affiner vos résultats. Testez avec les champs ci-dessous.</p>
+
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0;">
+        <div style="flex:1;min-width:140px;">
+            <label style="display:block;color:#8b949e;font-size:11px;font-weight:600;margin-bottom:4px;">Nom</label>
+            <input type="text" id="tutoAdvNom" placeholder="Ex: dupont" autocomplete="off" style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #253049;border-radius:8px;color:#c9d1d9;font-size:13px;">
+        </div>
+        <div style="flex:1;min-width:140px;">
+            <label style="display:block;color:#8b949e;font-size:11px;font-weight:600;margin-bottom:4px;">Club</label>
+            <input type="text" id="tutoAdvClub" placeholder="Ex: Lille" autocomplete="off" style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #253049;border-radius:8px;color:#c9d1d9;font-size:13px;">
+        </div>
+        <div style="min-width:80px;">
+            <label style="display:block;color:#8b949e;font-size:11px;font-weight:600;margin-bottom:4px;">Sexe</label>
+            <select id="tutoAdvSexe" style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #253049;border-radius:8px;color:#c9d1d9;font-size:13px;">
+                <option value="">Tous</option><option value="M">M</option><option value="F">F</option>
+            </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+            <button onclick="_tutoRunAdvSearch()" class="tuto-next-btn" style="padding:8px 20px;font-size:13px;">Rechercher</button>
+        </div>
+    </div>
+    <div id="tutoAdvResults" style="display:none;margin-top:10px;"></div>
+    <div id="tutoAdvDone" style="display:none;text-align:center;margin-top:14px;">
+        <div class="tuto-complete-badge">&#10003; Recherche effectuée !</div>
+        <button class="tuto-next-btn" onclick="tutoGoStep(7)" style="margin-top:10px;">Continuer &rarr;</button>
+    </div>
+</div>
+
+<!-- ========== ÉTAPE 7 : ÉPREUVES & VILLES ========== -->
+<div class="tuto-step" data-step="7" id="tutoStep7" style="display:none;">
     <div class="tuto-title" style="color:#f59e0b;">Épreuves & Villes</div>
     <p class="tuto-subtitle">Explorez les données par <b>épreuve</b> (100m, saut en hauteur...) ou par <b>ville</b> de compétition.</p>
 
@@ -4810,28 +4815,31 @@ elseif ($page === 'tuto'):
             <div class="tuto-mock-row"><span style="color:#f59e0b;">Demi-fond</span> 800m, 1500m</div>
             <div class="tuto-mock-row"><span style="color:#3b82f6;">Sauts</span> Hauteur, Longueur, Perche</div>
             <div class="tuto-mock-row"><span style="color:#6366f1;">Lancers</span> Poids, Disque, Javelot</div>
-            <div style="margin-top:10px;"><a href="?page=epreuves" class="tuto-try" style="font-size:12px;padding:8px 16px;">Voir les Épreuves</a></div>
+            <div style="margin-top:10px;"><a href="?page=epreuves" class="tuto-try" style="font-size:12px;padding:8px 16px;">Essayer les Épreuves</a></div>
         </div>
         <div class="tuto-mock" style="margin:0;">
             <div style="color:#60a5fa;font-weight:700;font-size:14px;margin-bottom:8px;">&#127961; Villes</div>
-            <div class="tuto-mock-row"><span style="color:#60a5fa;">Paris</span> 12 456 résultats</div>
-            <div class="tuto-mock-row"><span style="color:#60a5fa;">Lyon</span> 8 932 résultats</div>
-            <div class="tuto-mock-row"><span style="color:#60a5fa;">Marseille</span> 6 721 résultats</div>
-            <div class="tuto-mock-row"><span style="color:#60a5fa;">Lille</span> 5 418 résultats</div>
-            <div style="margin-top:10px;"><a href="?page=villes" class="tuto-try" style="font-size:12px;padding:8px 16px;">Voir les Villes</a></div>
+            <div class="tuto-mock-row"><span style="color:#60a5fa;">Paris</span> Stade de France</div>
+            <div class="tuto-mock-row"><span style="color:#60a5fa;">Lyon</span> Stade Gerland</div>
+            <div class="tuto-mock-row"><span style="color:#60a5fa;">Marseille</span> Stade Delort</div>
+            <div class="tuto-mock-row"><span style="color:#60a5fa;">Lille</span> Stadium Nord</div>
+            <div style="margin-top:10px;"><a href="?page=villes" class="tuto-try" style="font-size:12px;padding:8px 16px;">Essayer les Villes</a></div>
         </div>
     </div>
     <p class="tuto-subtitle" style="margin-top:16px;">Chaque épreuve et chaque ville a son panneau détaillé avec graphiques, records et résumé.</p>
+    <div style="text-align:center;margin-top:14px;">
+        <button class="tuto-next-btn" onclick="tutoGoStep(8)">Continuer &rarr;</button>
+    </div>
 </div>
 
-<!-- ========== ÉTAPE 7 : COMPARER ========== -->
-<div class="tuto-step" data-step="7">
+<!-- ========== ÉTAPE 8 : COMPARER ========== -->
+<div class="tuto-step" data-step="8" id="tutoStep8" style="display:none;">
     <div class="tuto-title" style="color:#f59e0b;">Comparer</div>
     <p class="tuto-subtitle">Ajoutez des athlètes ou clubs au <b>panier de comparaison</b> avec le bouton <b style="color:#a29bfe;">+</b>, puis comparez-les visuellement.</p>
 
     <div class="tuto-mock">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-            <span style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:#6c5ce730;border:1px solid #6c5ce7;border-radius:6px;color:#a29bfe;font-weight:700;font-size:14px;cursor:pointer;">+</span>
+            <span style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:#6c5ce730;border:1px solid #6c5ce7;border-radius:6px;color:#a29bfe;font-weight:700;font-size:14px;">+</span>
             <span style="color:#8b949e;font-size:12px;">Cliquez ce bouton sur n'importe quel athlète ou club pour l'ajouter</span>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:12px;">
@@ -4843,16 +4851,34 @@ elseif ($page === 'tuto'):
             <div style="flex:1;height:80px;background:#ec489920;border:1px solid #ec489940;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#f472b6;">Graphique radar</div>
         </div>
     </div>
-
     <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;background:#f59e0b10;border:1px solid #f59e0b30;border-radius:10px;">
         <span style="font-size:20px;">&#128161;</span>
         <span style="color:#fbbf24;font-size:13px;">Le panier flottant en bas à droite de l'écran affiche le nombre d'éléments sélectionnés.</span>
     </div>
-    <a href="?page=comparer" class="tuto-try" style="margin-top:14px;">&#128073; Aller au Comparateur</a>
+    <div style="text-align:center;margin-top:14px;">
+        <a href="?page=comparer" class="tuto-try" style="margin-right:10px;">&#128073; Aller au Comparateur</a>
+        <button class="tuto-next-btn" onclick="tutoGoStep(9)" style="margin-top:10px;">Continuer &rarr;</button>
+    </div>
 </div>
 
-<!-- ========== ÉTAPE 8 : RÉSUMÉ & ASTUCES ========== -->
-<div class="tuto-step" data-step="8">
+<!-- ========== ÉTAPE 9 : SUIVRE & NOTIFICATIONS ========== -->
+<div class="tuto-step" data-step="9" id="tutoStep9" style="display:none;">
+    <div class="tuto-title" style="color:#10b981;">Suivre & Notifications</div>
+    <p class="tuto-subtitle">Restez informé des athlètes et clubs qui vous intéressent.</p>
+
+    <div class="tuto-features">
+        <div class="tuto-feature"><span class="icon">&#9825;</span><div><div class="title">Suivre un athlète</div><div class="desc">Cliquez le bouton &#9825; sur un profil pour le suivre. Renseignez votre email une seule fois.</div></div></div>
+        <div class="tuto-feature"><span class="icon">&#127963;</span><div><div class="title">Suivre un club</div><div class="desc">Le bouton &#9825; dans le panneau club permet de suivre un club entier.</div></div></div>
+        <div class="tuto-feature"><span class="icon">&#128233;</span><div><div class="title">Newsletter</div><div class="desc">Inscrivez-vous à la newsletter pour recevoir les actualités de l'athlétisme français.</div></div></div>
+        <div class="tuto-feature"><span class="icon">&#128196;</span><div><div class="title">Télécharger PDF</div><div class="desc">Sur chaque profil, le bouton PDF génère une fiche imprimable complète.</div></div></div>
+    </div>
+    <div style="text-align:center;margin-top:14px;">
+        <button class="tuto-next-btn" onclick="tutoGoStep(10)">Terminer &rarr;</button>
+    </div>
+</div>
+
+<!-- ========== ÉTAPE 10 : C'EST PARTI ! ========== -->
+<div class="tuto-step" data-step="10" id="tutoStep10" style="display:none;">
     <div class="tuto-title" style="background:linear-gradient(135deg,#6c5ce7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Vous êtes prêt !</div>
     <p class="tuto-subtitle">Voici les codes couleurs des <b>niveaux de compétition</b> que vous verrez partout :</p>
 
@@ -4874,26 +4900,103 @@ elseif ($page === 'tuto'):
     </div>
 
     <div style="text-align:center;margin-top:24px;">
-        <a href="?page=accueil" class="tuto-try" style="font-size:15px;padding:14px 32px;background:linear-gradient(135deg,#6c5ce7,#5541d0);">&#127881; Commencer l'exploration !</a>
+        <button class="tuto-next-btn" onclick="tutoComplete()" style="font-size:16px;padding:14px 36px;background:linear-gradient(135deg,#6c5ce7,#ec4899);">&#127881; Commencer l'exploration !</button>
     </div>
 </div>
-
 
 </div>
 
 <script>
-// Typing effect
-function tutoTypeText(el, text, speed, cb) {
-    var i = 0;
-    el.textContent = '';
+// ═══════════════════════════════════════════════════
+// TUTORIEL INTERACTIF — JS
+// ═══════════════════════════════════════════════════
+
+var _tutoState = {
+    current: 1,
+    completed: [],
+    selectedClub: null,   // {id, name}
+    selectedAthlete: null, // {id, name}
+    visitedTabs: [],
+    searchTimer: null
+};
+
+// Restore progress from localStorage
+try {
+    var saved = JSON.parse(localStorage.getItem('bk_tuto_progress') || '[]');
+    if (Array.isArray(saved)) _tutoState.completed = saved;
+} catch(e) {}
+
+// ——— Navigation ———
+function tutoGoStep(n) {
+    // Hide all steps
+    for (var i = 1; i <= 10; i++) {
+        var el = document.getElementById('tutoStep' + i);
+        if (el) { el.style.display = (i === n) ? '' : 'none'; if (i === n) el.classList.add('visible'); }
+    }
+    _tutoState.current = n;
+    // Update progress bar
+    document.querySelectorAll('.tuto-progress-step').forEach(function(ps) {
+        var s = parseInt(ps.dataset.step);
+        ps.classList.remove('active', 'done');
+        if (_tutoState.completed.indexOf(s) >= 0) ps.classList.add('done');
+        if (s === n) ps.classList.add('active');
+    });
+    // Trigger step-specific animations
+    _tutoTriggerStep(n);
+    // Scroll to top of tuto container
+    var container = document.querySelector('.tuto-container');
+    if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Auto-load step 3 club panel if club selected
+    if (n === 3 && _tutoState.selectedClub && !document.getElementById('clubDetailNameTuto').textContent) {
+        _tutoLoadClubPanel(_tutoState.selectedClub.id, _tutoState.selectedClub.name);
+    }
+    // Auto-load step 4 with club name
+    if (n === 4 && _tutoState.selectedClub) {
+        var cn = document.getElementById('tutoAthClubName');
+        if (cn) cn.textContent = _tutoState.selectedClub.name;
+        // Auto-search all athletes of club
+        _tutoSearchAthletes('');
+    }
+    // Auto-load step 5 athlete preview
+    if (n === 5 && _tutoState.selectedAthlete) {
+        _tutoLoadAthPreview(_tutoState.selectedAthlete.id);
+    }
+    // Mark descriptive steps as auto-complete
+    if ([7, 8, 9].indexOf(n) >= 0) {
+        _tutoMarkComplete(n);
+    }
+}
+
+function _tutoMarkComplete(n) {
+    if (_tutoState.completed.indexOf(n) < 0) {
+        _tutoState.completed.push(n);
+        try { localStorage.setItem('bk_tuto_progress', JSON.stringify(_tutoState.completed)); } catch(e) {}
+    }
+    // Update progress dot
+    var dot = document.querySelector('.tuto-progress-step[data-step="' + n + '"]');
+    if (dot) dot.classList.add('done');
+}
+
+function tutoSkip() {
+    try { localStorage.setItem('bk_tuto_seen', '1'); } catch(e) {}
+    window.location.href = '?page=accueil';
+}
+
+function tutoComplete() {
+    try { localStorage.setItem('bk_tuto_seen', '1'); } catch(e) {}
+    _tutoMarkComplete(10);
+    window.location.href = '?page=accueil';
+}
+
+// ——— Typing + Counter animations ———
+function _tutoTypeText(el, text, speed, cb) {
+    var i = 0; el.textContent = '';
     var iv = setInterval(function() {
         if (i < text.length) { el.textContent += text[i]; i++; }
         else { clearInterval(iv); if (cb) cb(); }
     }, speed || 50);
 }
-
-// Counter animation
-function tutoAnimateCounter(el, target) {
+function _tutoAnimateCounter(el, target) {
     var duration = 1500, startTime = null;
     function step(ts) {
         if (!startTime) startTime = ts;
@@ -4905,53 +5008,276 @@ function tutoAnimateCounter(el, target) {
     requestAnimationFrame(step);
 }
 
-// Animations spécifiques par étape (déclenchées une seule fois)
 var _tutoAnimated = {};
-function tutoTriggerStep(n) {
+function _tutoTriggerStep(n) {
     if (_tutoAnimated[n]) return;
     _tutoAnimated[n] = true;
     if (n === 1) {
         var typEl = document.getElementById('tutoTyping');
-        if (typEl) tutoTypeText(typEl, 'Bienvenue sur Bokonzi', 60);
+        if (typEl) _tutoTypeText(typEl, 'Bienvenue sur Bokonzi', 60);
         setTimeout(function() {
             document.querySelectorAll('.tuto-step[data-step="1"] .tuto-card .num').forEach(function(el) {
                 var target = parseInt(el.dataset.count);
-                if (target) tutoAnimateCounter(el, target);
+                if (target) _tutoAnimateCounter(el, target);
             });
         }, 800);
     }
-    if (n === 2) {
-        var el = document.getElementById('tutoClubSearch');
-        var cur = document.getElementById('tutoClubCursor');
-        if (el && cur) {
-            el.textContent = '';
-            cur.style.display = 'inline-block';
-            setTimeout(function() { tutoTypeText(el, 'Lille Metropole...', 80); }, 400);
-        }
+}
+
+// ——— Step 2: Club search ———
+function _tutoSearchClubs(query) {
+    clearTimeout(_tutoState.searchTimer);
+    var results = document.getElementById('tutoClubResults');
+    if (!query || query.length < 2) { results.style.display = 'none'; return; }
+    _tutoState.searchTimer = setTimeout(function() {
+        results.style.display = 'block';
+        results.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Recherche...</div>';
+        fetch(BASE_API + '/clubs.php?nom=' + encodeURIComponent(query) + '&limit=10')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success || !data.clubs || data.clubs.length === 0) {
+                    results.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Aucun club trouvé</div>';
+                    return;
+                }
+                var html = '';
+                data.clubs.forEach(function(c) {
+                    html += '<div class="tuto-club-result" onclick="_tutoSelectClub(' + c.id_club + ', \'' + escapeHtml(c.nom_club).replace(/'/g, "\\'") + '\')">'
+                        + '<div style="flex:1;"><span style="color:#a29bfe;font-weight:600;">' + escapeHtml(c.nom_club) + '</span></div>'
+                        + '<span style="color:#34d399;font-size:12px;">' + (c.nb_athletes || 0) + ' athlètes</span>'
+                        + '</div>';
+                });
+                results.innerHTML = html;
+            })
+            .catch(function() {
+                results.innerHTML = '<div style="padding:12px;color:#ef4444;text-align:center;">Erreur de connexion</div>';
+            });
+    }, 300);
+}
+
+function _tutoSelectClub(id, name) {
+    _tutoState.selectedClub = { id: id, name: name };
+    document.getElementById('tutoClubResults').style.display = 'none';
+    document.getElementById('tutoClubInput').value = name;
+    document.getElementById('tutoClubDone').style.display = 'block';
+    document.getElementById('tutoClubSearchWrap').classList.remove('tuto-highlight');
+    _tutoMarkComplete(2);
+}
+
+// ——— Step 3: Club panel (embedded) ———
+function _tutoLoadClubPanel(id, name) {
+    var content = document.getElementById('clubDetailContentTuto');
+    if (!content) return;
+    content.innerHTML = '<div class="loading-msg">Chargement de ' + escapeHtml(name) + '...</div>';
+    document.getElementById('clubDetailNameTuto').textContent = name;
+    document.getElementById('clubDetailMetaTuto').textContent = 'Chargement...';
+    var url = BASE_API + '/club_stats.php?id=' + id;
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success) { content.innerHTML = '<div class="loading-msg">Club non trouvé</div>'; return; }
+            _fillClubPanel(data, 'Tuto');
+            _tutoState.visitedTabs = ['epreuves'];
+            _tutoUpdateTabCount();
+        })
+        .catch(function() { content.innerHTML = '<div class="loading-msg">Erreur de chargement</div>'; });
+}
+
+function switchClubTabTuto(tab) {
+    _switchClubTab(tab, 'Tuto');
+    // Track visited tabs
+    if (_tutoState.visitedTabs.indexOf(tab) < 0) {
+        _tutoState.visitedTabs.push(tab);
+    }
+    _tutoUpdateTabCount();
+}
+function closeClubDetailTuto() {} // no-op for embedded panel
+
+function _tutoUpdateTabCount() {
+    var cnt = _tutoState.visitedTabs.length;
+    var el = document.getElementById('tutoTabsCount');
+    if (el) el.textContent = cnt;
+    if (cnt >= 2) {
+        _tutoMarkComplete(3);
+        document.getElementById('tutoClubTabsDone').style.display = 'block';
     }
 }
 
-// IntersectionObserver pour révéler les étapes au scroll
-document.addEventListener('DOMContentLoaded', function() {
-    var steps = document.querySelectorAll('.tuto-step');
-    var observer = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-            if (entry.isIntersecting) {
-                var el = entry.target;
-                el.classList.add('visible');
-                var n = parseInt(el.dataset.step);
-                tutoTriggerStep(n);
-                // Mettre à jour la progress bar
-                document.querySelectorAll('.tuto-progress-step').forEach(function(ps) {
-                    var s = parseInt(ps.dataset.step);
-                    ps.classList.remove('active', 'done');
-                    if (s < n) ps.classList.add('done');
-                    if (s === n) ps.classList.add('active');
+// ——— Step 4: Athlete search ———
+function _tutoSearchAthletes(query) {
+    clearTimeout(_tutoState.searchTimer);
+    var results = document.getElementById('tutoAthResults');
+    if (!_tutoState.selectedClub) {
+        results.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Sélectionnez d\'abord un club</div>';
+        results.style.display = 'block';
+        return;
+    }
+    _tutoState.searchTimer = setTimeout(function() {
+        results.style.display = 'block';
+        results.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Recherche...</div>';
+        var params = 'club=' + encodeURIComponent(_tutoState.selectedClub.name) + '&limit=15';
+        if (query && query.length >= 2) params += '&nom=' + encodeURIComponent(query);
+        fetch(BASE_API + '/search.php?' + params)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success || !data.athletes || data.athletes.length === 0) {
+                    results.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Aucun athlète trouvé</div>';
+                    return;
+                }
+                var html = '';
+                data.athletes.forEach(function(a) {
+                    var extId = a.athlete_id_externe || a.id;
+                    var nom = (a.prenom_athlete || '') + ' ' + (a.nom_athlete || '');
+                    html += '<div class="tuto-ath-result" onclick="_tutoSelectAthlete(' + extId + ', \'' + escapeHtml(nom.trim()).replace(/'/g, "\\'") + '\')">'
+                        + '<div style="flex:1;">'
+                        + '<span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(nom.trim()) + '</span>'
+                        + (a.categorie_athlete ? ' <span class="badge badge-cat" style="font-size:10px;">' + escapeHtml(a.categorie_athlete) + '</span>' : '')
+                        + (a.sexe_athlete ? ' <span class="badge badge-' + (a.sexe_athlete||'').toLowerCase() + '" style="font-size:10px;">' + escapeHtml(a.sexe_athlete) + '</span>' : '')
+                        + '</div>'
+                        + (a.nationalite_athlete ? '<span style="color:#8b949e;font-size:11px;">' + escapeHtml(a.nationalite_athlete) + '</span>' : '')
+                        + '</div>';
                 });
+                results.innerHTML = html;
+            })
+            .catch(function() {
+                results.innerHTML = '<div style="padding:12px;color:#ef4444;text-align:center;">Erreur de connexion</div>';
+            });
+    }, 300);
+}
+
+function _tutoSelectAthlete(id, name) {
+    _tutoState.selectedAthlete = { id: id, name: name };
+    document.getElementById('tutoAthResults').style.display = 'none';
+    document.getElementById('tutoAthInput').value = name;
+    document.getElementById('tutoAthDone').style.display = 'block';
+    document.getElementById('tutoAthSearchWrap').classList.remove('tuto-highlight');
+    _tutoMarkComplete(4);
+}
+
+// ——— Step 5: Athlete preview ———
+function _tutoLoadAthPreview(id) {
+    var container = document.getElementById('tutoAthPreview');
+    if (!container) return;
+    container.innerHTML = '<div class="loading-msg">Chargement du profil...</div>';
+    fetch(BASE_API + '/athlete.php?id=' + id)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success) { container.innerHTML = '<div class="loading-msg">Athlète non trouvé</div>'; return; }
+            var a = data.athlete || data;
+            var nom = (a.prenom_athlete || '') + ' ' + (a.nom_athlete || '');
+            var html = '<div style="padding:16px;">';
+            // Header
+            html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">';
+            html += '<span style="font-size:18px;font-weight:800;color:#c9d1d9;">' + escapeHtml(nom.trim()) + '</span>';
+            if (a.sexe_athlete) html += '<span class="badge badge-' + (a.sexe_athlete||'').toLowerCase() + '">' + escapeHtml(a.sexe_athlete) + '</span>';
+            if (a.categorie_athlete) html += '<span class="badge badge-cat">' + escapeHtml(a.categorie_athlete) + '</span>';
+            if (a.nationalite_athlete) html += '<span style="padding:3px 8px;border-radius:6px;font-size:11px;background:#30363d;color:#c9d1d9;">' + escapeHtml(a.nationalite_athlete) + '</span>';
+            html += '</div>';
+            // Infos
+            var infos = [];
+            if (a.date_naissance && a.date_naissance.indexOf('0000') !== 0) infos.push('Né(e) : ' + a.date_naissance.substring(0, 4));
+            if (a.lieu_naissance) infos.push('Lieu : ' + a.lieu_naissance);
+            if (infos.length) html += '<div style="color:#5a6580;font-size:12px;margin-bottom:10px;">' + escapeHtml(infos.join(' — ')) + '</div>';
+            // Clubs
+            if (data.clubs && data.clubs.length > 0) {
+                html += '<div style="margin-bottom:10px;"><span style="color:#8b949e;font-size:11px;font-weight:600;">CLUBS :</span> ';
+                data.clubs.forEach(function(c) {
+                    html += '<span style="display:inline-block;margin:2px 4px;padding:3px 10px;background:#10b98115;border:1px solid #10b98130;border-radius:6px;font-size:12px;color:#34d399;">' + escapeHtml((c.nom_club||'').replace(/\*\s*$/, '')) + '</span>';
+                });
+                html += '</div>';
             }
+            // Records summary
+            if (data.records && data.records.length > 0) {
+                html += '<div style="margin-bottom:10px;"><span style="color:#8b949e;font-size:11px;font-weight:600;">TOP RECORDS :</span>';
+                var topRec = data.records.slice(0, 5);
+                topRec.forEach(function(r) {
+                    html += '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #1e2a3a15;">'
+                        + '<span style="color:#a29bfe;font-size:12px;min-width:80px;">' + escapeHtml(r.epreuve || '') + '</span>'
+                        + '<span style="color:#60a5fa;font-weight:600;font-size:13px;">' + escapeHtml(r.performance || '') + '</span>'
+                        + '</div>';
+                });
+                html += '</div>';
+            }
+            // Stats summary
+            var stats = [];
+            if (data.medailles) {
+                var m = data.medailles;
+                if (m.or > 0) stats.push('<span style="color:#fbbf24;">&#129351;' + m.or + '</span>');
+                if (m.argent > 0) stats.push('<span style="color:#94a3b8;">&#129352;' + m.argent + '</span>');
+                if (m.bronze > 0) stats.push('<span style="color:#d97706;">&#129353;' + m.bronze + '</span>');
+            }
+            if (data.podiums && data.podiums.length > 0) stats.push('<span style="color:#34d399;">' + data.podiums.length + ' podiums</span>');
+            if (data.selections && data.selections.length > 0) stats.push('<span style="color:#818cf8;">' + data.selections.length + ' sélections</span>');
+            if (stats.length) html += '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-top:8px;">' + stats.join('') + '</div>';
+            html += '</div>';
+            container.innerHTML = html;
+            // Show link + done
+            var link = document.getElementById('tutoAthProfileLink');
+            if (link) link.href = '?page=profil&id=' + id;
+            document.getElementById('tutoAthDoneStep5').style.display = 'block';
+            _tutoMarkComplete(5);
+        })
+        .catch(function() { container.innerHTML = '<div class="loading-msg">Erreur de chargement</div>'; });
+}
+
+// ——— Step 6: Advanced search ———
+function _tutoRunAdvSearch() {
+    var nom = (document.getElementById('tutoAdvNom').value || '').trim();
+    var club = (document.getElementById('tutoAdvClub').value || '').trim();
+    var sexe = document.getElementById('tutoAdvSexe').value;
+    if (!nom && !club && !sexe) {
+        alert('Remplissez au moins un champ');
+        return;
+    }
+    var resultsDiv = document.getElementById('tutoAdvResults');
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Recherche...</div>';
+    var params = [];
+    if (nom) params.push('nom=' + encodeURIComponent(nom));
+    if (club) params.push('club=' + encodeURIComponent(club));
+    if (sexe) params.push('sexe=' + encodeURIComponent(sexe));
+    params.push('limit=10');
+    fetch(BASE_API + '/search.php?' + params.join('&'))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success || !data.athletes || data.athletes.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Aucun résultat. Essayez d\'autres filtres.</div>';
+                return;
+            }
+            var html = '<div style="padding:8px;background:#10b98110;border:1px solid #10b98130;border-radius:8px;text-align:center;font-size:13px;color:#34d399;margin-bottom:10px;">'
+                + data.total + ' résultats trouvés</div>';
+            data.athletes.forEach(function(a) {
+                var nom = (a.prenom_athlete || '') + ' ' + (a.nom_athlete || '');
+                var extId = a.athlete_id_externe || a.id;
+                html += '<a href="?page=profil&id=' + extId + '" target="_blank" class="tuto-ath-result" style="text-decoration:none;">'
+                    + '<div style="flex:1;">'
+                    + '<span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(nom.trim()) + '</span>'
+                    + (a.categorie_athlete ? ' <span class="badge badge-cat" style="font-size:10px;">' + escapeHtml(a.categorie_athlete) + '</span>' : '')
+                    + (a.sexe_athlete ? ' <span class="badge badge-' + (a.sexe_athlete||'').toLowerCase() + '" style="font-size:10px;">' + escapeHtml(a.sexe_athlete) + '</span>' : '')
+                    + '</div>'
+                    + (a.club ? '<span style="color:#34d399;font-size:11px;">' + escapeHtml(a.club.replace(/\*\s*$/, '')) + '</span>' : '')
+                    + '</a>';
+            });
+            resultsDiv.innerHTML = html;
+            document.getElementById('tutoAdvDone').style.display = 'block';
+            _tutoMarkComplete(6);
+        })
+        .catch(function() {
+            resultsDiv.innerHTML = '<div style="padding:12px;color:#ef4444;text-align:center;">Erreur de connexion</div>';
         });
-    }, { threshold: 0.25 });
-    steps.forEach(function(s) { observer.observe(s); });
+}
+
+// ——— Init ———
+document.addEventListener('DOMContentLoaded', function() {
+    // Step 1 is visible by default, trigger its animation
+    _tutoTriggerStep(1);
+    // Update progress bar from saved state
+    _tutoState.completed.forEach(function(n) {
+        var dot = document.querySelector('.tuto-progress-step[data-step="' + n + '"]');
+        if (dot) dot.classList.add('done');
+    });
+    // Mark step 1 as active
+    var dot1 = document.querySelector('.tuto-progress-step[data-step="1"]');
+    if (dot1) dot1.classList.add('active');
 });
 </script>
 

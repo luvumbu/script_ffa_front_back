@@ -516,10 +516,33 @@ h3 { color: #e2e8f0; font-size: 15px; margin: 15px 0 8px; }
 @keyframes tutoBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes tutoSlideRight { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
 
+/* Interactive tuto extras */
+.tuto-skip-btn { position:fixed;bottom:20px;right:20px;z-index:100;padding:10px 20px;background:#1e2a3a;border:1px solid #30363d;border-radius:8px;color:#8b949e;font-size:13px;cursor:pointer;transition:all .2s; }
+.tuto-skip-btn:hover { background:#253049;color:#c9d1d9;border-color:#6c5ce7; }
+.tuto-next-btn { display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,#6c5ce7,#5541d0);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;margin-top:16px; }
+.tuto-next-btn:disabled { opacity:.4;cursor:not-allowed; }
+.tuto-next-btn:not(:disabled):hover { box-shadow:0 0 20px #6c5ce740;transform:translateY(-1px); }
+.tuto-step.completed { border-left:3px solid #34d399; }
+.tuto-complete-badge { display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:#10b98120;border:1px solid #10b98140;border-radius:8px;color:#34d399;font-size:13px;font-weight:600;animation:tutoFadeIn .4s ease; }
+.tuto-club-result,.tuto-ath-result { display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #1e2a3a;cursor:pointer;transition:background .2s; }
+.tuto-club-result:hover,.tuto-ath-result:hover { background:#1e2a3a40; }
+.tuto-live-search { display:flex;align-items:center;gap:8px;padding:12px 16px;background:#080c14;border:2px solid #253049;border-radius:10px;margin:12px 0;transition:border-color .2s; }
+.tuto-live-search:focus-within { border-color:#6c5ce7; }
+.tuto-live-search input { flex:1;background:transparent;border:none;outline:none;color:#c9d1d9;font-size:14px; }
+.tuto-live-search input::placeholder { color:#3a4560; }
+.tuto-live-results { background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;max-height:300px;overflow-y:auto;display:none; }
+.tuto-highlight { animation:tutoHighlight 2s ease infinite; }
+@keyframes tutoHighlight { 0%,100%{box-shadow:0 0 0 0 #6c5ce700;} 50%{box-shadow:0 0 0 4px #6c5ce740;} }
+.tuto-inline-panel { background:#0d1520;border:1px solid #1e2a3a;border-radius:12px;padding:0;margin:16px 0;overflow:hidden; }
+.tuto-inline-panel .club-detail-header { padding:16px;border-bottom:1px solid #1e2a3a; }
+.tuto-inline-panel .club-detail-tabs { padding:8px 16px;border-bottom:1px solid #1e2a3a; }
+.tuto-inline-panel .club-detail-content { padding:16px; }
+
 @media (max-width: 700px) {
     .tuto-cards { grid-template-columns: repeat(2, 1fr); }
     .tuto-features { grid-template-columns: 1fr; }
     .tuto-title { font-size: 22px; }
+    .tuto-skip-btn { bottom:10px;right:10px;padding:8px 14px;font-size:12px; }
 }
 
 /* TEST — forcer padding tableaux */
