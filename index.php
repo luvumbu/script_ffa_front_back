@@ -5332,20 +5332,16 @@ function _renderClubTab(tab, suffix) {
         });
         var nivChartKeys = Object.keys(nivCounts).sort(function(a,b){ return (nivOrd[a]||0) - (nivOrd[b]||0); });
         var nivParAnnee = d.niveaux_par_annee || [];
-        if (nivChartKeys.length > 2 || nivParAnnee.length > 1) {
-            html += '<div style="display:flex;gap:16px;margin-bottom:16px;overflow-x:auto;">';
-            if (nivChartKeys.length > 2) {
-                html += '<div style="flex:1;min-width:0;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
-                html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">Distribution des niveaux</h4>';
-                html += '<canvas id="clubNivChart' + s + '" height="160"></canvas>';
-                html += '</div>';
-            }
-            if (nivParAnnee.length > 1) {
-                html += '<div style="flex:1;min-width:0;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
-                html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">\u00c9volution par ann\u00e9e</h4>';
-                html += '<canvas id="clubNivYearChart' + s + '" height="160"></canvas>';
-                html += '</div>';
-            }
+        if (nivChartKeys.length > 2) {
+            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">Distribution des niveaux</h4>';
+            html += '<canvas id="clubNivChart' + s + '" height="200"></canvas>';
+            html += '</div>';
+        }
+        if (nivParAnnee.length > 1) {
+            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">\u00c9volution par ann\u00e9e</h4>';
+            html += '<canvas id="clubNivYearChart' + s + '" height="200"></canvas>';
             html += '</div>';
         }
 
