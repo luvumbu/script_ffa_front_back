@@ -28,6 +28,7 @@ BK/
 │   ├── follow.php      Suivi athletes + clubs (POST=toggle, GET=status)
 │   ├── subscribe.php   Collecte email (newsletter, PDF)
 │   ├── performances.php CRUD perfs manuelles (auth requise)
+│   ├── top_searched.php Top clubs/athletes recherchés (logs BDD, cache 1h)
 │   ├── epreuve_records.php Records paginés par épreuve
 │   ├── ville_epreuves.php Épreuves par ville
 │   ├── competitions.php Liste des compétitions
@@ -35,6 +36,7 @@ BK/
 ├── cache/              Cache JSON fichier (24h, protege .htaccess)
 │   ├── stats_base.json           Cache stats sans detail
 │   ├── stats_detail_30.json      Cache stats avec detail (top 30)
+│   ├── topsearched_*.json        Cache top recherchés (1h TTL)
 │   ├── clubstats_*.json          Cache club_stats par params
 │   ├── villestats_*.json         Cache ville_stats par params
 │   ├── ep_*.json                 Cache epreuve_stats par params
@@ -200,6 +202,7 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 - `nat_detail` : codes nat pour comparaison detaillee
 - `perso` : mode records personnels (relache filtre periode)
 - `nocache` : bypass cache
+- **Retourne aussi** : `niveaux_par_annee` (D/R/N/I par année), `annees_disponibles`, `annee_filtree`
 
 ## API epreuve_stats.php — Parametres
 - `nom` : nom de l'epreuve (requis)
@@ -238,6 +241,72 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 - `epreuve` (int, requis), `sexe`, `categorie`, `annee`, `limit`, `offset`
 - ROW_NUMBER() pour meilleure perf par athlete
 - PAS de cache (temps reel)
+
+## API top_searched.php
+- `type` (requis) : `clubs` ou `athletes`
+- `limit` : max items (defaut 50, max 50)
+- `days` : periode en jours (defaut 30, max 365)
+- **Clubs** : compte les `page_view` avec `page LIKE '%page=recherche%club=%'` dans table `logs`
+- **Athletes** : compte les `page_view` avec `page LIKE '%page=profil%id=%'` dans table `logs`
+- Dedup clubs : merge URL-encoded variants via PHP `urldecode()` + aggregation
+- Cache 1h : `topsearched_{type}_{limit}_{days}.json`
+- `days=1` = aujourd'hui (calcul : `strtotime("-" . ($days - 1) . " days")`)
+
+## Page Accueil — Top Recherchés
+- 2 sections apres les stat cards, avant les courbes
+- **Top Clubs Recherchés** + **Top Athlètes Recherchés**
+- Filtres période : Jour (1j), Semaine (7j), Mois (30j), Année (365j)
+- Pagination : 10/page, max 5 pages + bouton "Voir tout"
+- Fallback : si logs vides, utilise `$detailData` de stats.php
+- Pattern 3-tables : header / `<tbody id="topSearchClubsBody">` / footer
+- JS : `_loadTopClubs(days)`, `_loadTopAth(days)`, `_renderTopClubs(items)`, `_renderTopAth(items)`
+
+## Panneau club — Onglet Épreuves (filtres avancés)
+### Filtres disponibles
+1. **Mode** : Records du club / Records personnels (server-side via `&perso=1`)
+2. **Discipline** : client-side, multi-select, `window['_clubDiscFilter' + s]`
+3. **Niveaux** : client-side, multi-select D1-D8/R1-R6/N1-N4/IE/IR, `window['_clubNivFilter' + s]`
+4. **Année** : server-side via `&annee=XXXX`, 2 modes :
+   - **Filtrer** : 1 année, recharge via `_clubSetEpYear(year, suffix)`
+   - **Comparer** : 2-5 années, `_clubRunEpYearCmp(suffix)` fetch parallèle
+
+### Mode Comparer années
+- Toggle via `_clubEpYearModeSet('compare', suffix)`
+- Multi-select : `window['_clubEpYearCmp' + s]` (max 5)
+- Résultats : `window['_clubEpYearCmpData' + s]`
+- Affichage : tableau comparatif (3-tables) + graphique barres + top épreuves + résumé textuel
+- **Résumé auto-généré** (`_buildEpYearCmpHTML`) : meilleure année par métrique, tendances %, médailles, niveaux D/R/N/I
+
+### Courbes niveaux (dans onglet Stats)
+- **Distribution des niveaux** : courbe Bezier (tension 0.4) des codes D1-IE
+- **Évolution par année** : 4 courbes D/R/N/I sur niveaux_par_annee
+- Données : `d.niveaux_par_annee` (ajouté dans club_stats.php)
+
+## Pattern 3-tables (CONVENTION OBLIGATOIRE)
+Toutes les tables `bk-table` DOIVENT utiliser ce pattern :
+```html
+<div class="table-wrap">
+  <table class="bk-table"><tr><th>Col1</th><th>Col2</th></tr></table>
+  <table class="bk-table"><!-- data rows only --></table>
+  <table class="bk-table"><tr><th>Col1</th><th>Col2</th></tr></table>
+</div>
+```
+En JS, stocker le TH dans une variable :
+```javascript
+var thRow = '<tr><th>#</th><th>Nom</th></tr>';
+html += '<div class="table-wrap">';
+html += '<table class="bk-table">' + thRow + '</table>';
+html += '<table class="bk-table">';
+// ... data rows ...
+html += '</table>';
+html += '<table class="bk-table">' + thRow + '</table>';
+html += '</div>';
+```
+
+## Vider le cache prod à distance
+- Tout : `https://bokonzi.com/admin/clear_cache.php`
+- Ciblé : `https://bokonzi.com/admin/clear_cache.php?prefix=clubstats`
+- Prefixes : `clubstats`, `villestats`, `ep`, `search`, `athlete`, `liste`, `stats`, `topsearched`
 
 ## Tables MySQL principales
 | Table | Cle | Notes |
