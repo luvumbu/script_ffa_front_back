@@ -103,6 +103,7 @@ function _updateBestBySex(&$epBestBySex, $row) {
     $eid = (int)$row['id_epreuve'];
     $sex = $row['sexe_athlete'] ?: '?';
     $perfInt = (int)$row['perf_int'];
+    if ($perfInt <= 0) return; // ignorer les performances invalides (conversion echouee)
     $isDistance = preg_match('/(poids|disque|javelot|marteau|hauteur|perche|longueur|triple|decathlon|heptathlon|pentathlon)/i', $row['nom_epreuve']);
     $recDate = $row['perf_date'] ? substr($row['perf_date'], 0, 4) : null;
     $entry = [
@@ -309,7 +310,7 @@ if (!empty($epIds)) {
         JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
         JOIN athletes a ON a.id_athlete = ar.id_athlete
         JOIN epreuves e ON e.id_epreuve = ar.id_epreuve
-        WHERE ar.id_epreuve IN ($epIdsList2) $recordFilter
+        WHERE ar.id_epreuve IN ($epIdsList2) AND ar.performance_record > 0 $recordFilter
     ");
     if ($bRes) while ($br = $bRes->fetch_assoc()) {
         _updateBestBySex($epBestBySex, $br);
@@ -325,7 +326,7 @@ if (!empty($epIds)) {
             FROM athlete_progressions ap
             JOIN athletes a ON a.id_athlete = ap.id_athlete
             JOIN epreuves e ON e.id_epreuve = ap.id_epreuve
-            WHERE ap.id_club = $cid AND ap.id_epreuve IN ($epIdsList2) $athFilterProg $progFilterYear
+            WHERE ap.id_club = $cid AND ap.id_epreuve IN ($epIdsList2) AND ap.performance_progression > 0 $athFilterProg $progFilterYear
         ");
         if ($bRes2) while ($br = $bRes2->fetch_assoc()) {
             _updateBestBySex($epBestBySex, $br);
@@ -365,7 +366,7 @@ $recUnionSub = "
            ar.date_record AS perf_date
     FROM athlete_records ar
     JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
-    WHERE 1=1 $recordFilter
+    WHERE ar.performance_record > 0 $recordFilter
 ";
 if (!$perso) {
     $recUnionSub .= "
@@ -375,7 +376,7 @@ if (!$perso) {
            ap.performance_brut_progression AS performance_brut,
            ap.date_progression AS perf_date
     FROM athlete_progressions ap
-    WHERE ap.id_club = $cid AND ap.id_epreuve IS NOT NULL $athFilterProg $progFilterYear
+    WHERE ap.id_club = $cid AND ap.id_epreuve IS NOT NULL AND ap.performance_progression > 0 $athFilterProg $progFilterYear
     ";
 }
 
