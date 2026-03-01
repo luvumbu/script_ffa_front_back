@@ -869,6 +869,28 @@ if ($res) while ($row = $res->fetch_assoc()) {
     $resultatsParAnnee[] = ['annee' => (int)$row['annee'], 'nb_resultats' => (int)$row['nb'], 'nb_athletes' => (int)$row['nb_ath']];
 }
 
+// Niveaux par année (courbe évolution)
+$niveauxParAnnee = [];
+$res = $conn->query("
+    SELECT ares.annee_resultat as annee,
+           SUBSTRING(ares.niveau_resultat, 1, 1) as famille,
+           COUNT(*) as nb
+    FROM athlete_resultats ares
+    JOIN athlete_clubs ac ON ac.id_athlete = ares.id_athlete AND ac.id_club = $cid $athFilter $mcRes
+    WHERE ares.annee_resultat > 0
+      AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != ''
+    GROUP BY ares.annee_resultat, famille
+    ORDER BY ares.annee_resultat
+");
+if ($res) while ($row = $res->fetch_assoc()) {
+    $a = (int)$row['annee'];
+    $f = $row['famille'];
+    if (!in_array($f, ['D','R','N','I'])) continue;
+    if (!isset($niveauxParAnnee[$a])) $niveauxParAnnee[$a] = ['annee' => $a, 'D' => 0, 'R' => 0, 'N' => 0, 'I' => 0];
+    $niveauxParAnnee[$a][$f] += (int)$row['nb'];
+}
+$niveauxParAnnee = array_values($niveauxParAnnee);
+
 // Compteurs supplementaires pour comparaison annuelle
 $nbResultats = null;
 $nbEpreuves = null;
@@ -967,6 +989,7 @@ $response = [
     'top_podium_epreuves'      => $topPodiumEpreuves,
     'athletes_selectionnes'    => $athletesSelectionnes,
     'resultats_par_annee'      => $resultatsParAnnee,
+    'niveaux_par_annee'        => $niveauxParAnnee,
     'annee_debut'              => $periode['d'] ? (int) $periode['d'] : null,
     'annee_fin'                => $periode['f'] ? (int) $periode['f'] : null,
     'annees_disponibles'       => $anneesDisponibles,

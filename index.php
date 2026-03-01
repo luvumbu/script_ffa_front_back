@@ -717,6 +717,28 @@ if ($page === 'accueil'):
     </div></a>
 </div>
 
+<!-- ======== TOP CLUBS RECHERCHES ======== -->
+<div style="margin-top:24px;margin-bottom:24px;">
+    <h2><span class="chart-icon" style="background:#8b5cf620;color:#a78bfa;">&#127963;</span> Top Clubs Recherch&#233;s <span id="topSearchClubsCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
+    <div id="topSearchClubsFilters" style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;"></div>
+    <div class="table-wrap">
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Recherches</th></tr></table>
+    <table class="bk-table"><tbody id="topSearchClubsBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
+    </div>
+    <div id="topSearchClubsPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
+</div>
+
+<!-- ======== TOP ATHLETES RECHERCHES ======== -->
+<div style="margin-bottom:24px;">
+    <h2><span class="chart-icon" style="background:#ec489920;color:#f472b6;">&#127939;</span> Top Athl&#232;tes Recherch&#233;s <span id="topSearchAthCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
+    <div id="topSearchAthFilters" style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;"></div>
+    <div class="table-wrap">
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Recherches</th></tr></table>
+    <table class="bk-table"><tbody id="topSearchAthBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
+    </div>
+    <div id="topSearchAthPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
+</div>
+
 <!-- ======== GRAPHIQUES LIGNE 1 : Sexe + Categories ======== -->
 <div class="charts-row">
     <div class="chart-card">
@@ -752,7 +774,6 @@ if ($page === 'accueil'):
     <div class="club-detail-tabs">
         <button class="club-detail-tab active" data-tab="epreuves" onclick="switchClubTabAccueil('epreuves')">Épreuves</button>
         <button class="club-detail-tab" data-tab="nationalites" onclick="switchClubTabAccueil('nationalites')">Nationalités</button>
-        <button class="club-detail-tab" data-tab="records" onclick="switchClubTabAccueil('records')">Records</button>
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTabAccueil('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabAccueil('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabAccueil('resume')">Resume</button>
@@ -954,6 +975,160 @@ document.addEventListener('DOMContentLoaded', function(){
             });
         });
     <?php endif; ?>
+});
+</script>
+
+<!-- ======== TOP RECHERCHES JS ======== -->
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    function _esc2(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    // Fallback : donnees stats injectees par PHP (si logs vides)
+    <?php
+    $fbClubs = [];
+    $fbAthletes = [];
+    if ($detailData && !empty($detailData['top_clubs'])) {
+        $fbClubs = array_slice($detailData['top_clubs'], 0, 50);
+    }
+    if ($detailData && !empty($detailData['top_athletes'])) {
+        $fbAthletes = array_slice($detailData['top_athletes'], 0, 50);
+    }
+    ?>
+    var _fbClubs = <?= json_encode($fbClubs, JSON_UNESCAPED_UNICODE) ?>;
+    var _fbAthletes = <?= json_encode($fbAthletes, JSON_UNESCAPED_UNICODE) ?>;
+
+    // Periodes
+    var _periods = [
+        {label:'Jour', days:1},
+        {label:'Semaine', days:7},
+        {label:'Mois', days:30},
+        {label:'Ann\u00e9e', days:365}
+    ];
+
+    function _topSearchPag(items, bodyId, pagId, perPage, maxPages, renderRow) {
+        var pg = 0, expanded = false;
+        function render() {
+            var pp = expanded ? 25 : perPage;
+            var maxItems = expanded ? items.length : Math.min(items.length, perPage * maxPages);
+            var visible = items.slice(0, maxItems);
+            var totalPages = Math.ceil(visible.length / pp);
+            var start = pg * pp, end = Math.min(start + pp, visible.length);
+            var html = '';
+            for (var i = start; i < end; i++) html += renderRow(visible[i], i);
+            if (!html) html = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
+            document.getElementById(bodyId).innerHTML = html;
+            var ph = '';
+            if (totalPages > 1) {
+                if (pg > 0) ph += '<button onclick="window._tsp_'+bodyId+'('+(pg-1)+')" style="padding:5px 12px;background:#1a2540;border:1px solid #253560;border-radius:6px;color:#d0d7e0;cursor:pointer;font-size:12px;">\u2190</button>';
+                ph += '<span style="color:#5a6580;font-size:12px;padding:4px 8px;">'+(pg+1)+' / '+totalPages+'</span>';
+                if (pg < totalPages - 1) ph += '<button onclick="window._tsp_'+bodyId+'('+(pg+1)+')" style="padding:5px 12px;background:#1a2540;border:1px solid #253560;border-radius:6px;color:#d0d7e0;cursor:pointer;font-size:12px;">\u2192</button>';
+            }
+            if (!expanded && items.length > perPage * maxPages) {
+                ph += '<button onclick="window._tse_'+bodyId+'()" style="padding:5px 14px;background:#6c5ce722;border:1px solid #6c5ce7;border-radius:6px;color:#a29bfe;cursor:pointer;font-size:12px;margin-left:8px;">Voir tout ('+items.length+')</button>';
+            }
+            if (expanded && totalPages > 1) {
+                ph += '<button onclick="window._tsc_'+bodyId+'()" style="padding:5px 14px;background:transparent;border:1px solid #253560;border-radius:6px;color:#5a6580;cursor:pointer;font-size:11px;margin-left:8px;">R\u00e9duire</button>';
+            }
+            document.getElementById(pagId).innerHTML = ph;
+        }
+        window['_tsp_'+bodyId] = function(p) { pg = p; render(); };
+        window['_tse_'+bodyId] = function() { expanded = true; pg = 0; render(); };
+        window['_tsc_'+bodyId] = function() { expanded = false; pg = 0; render(); };
+        render();
+    }
+
+    // ---- Boutons filtres periode ----
+    function _buildPeriodBtns(filterId, activeDays, onSelect) {
+        var h = '';
+        _periods.forEach(function(p) {
+            var active = p.days === activeDays;
+            var bg = active ? '#6c5ce7' : '#1a2540';
+            var bc = active ? '#6c5ce7' : '#253560';
+            var tc = active ? '#fff' : '#8b949e';
+            h += '<button onclick="window._tsf_'+filterId+'('+p.days+')" style="padding:5px 14px;background:'+bg+';border:1px solid '+bc+';border-radius:6px;color:'+tc+';cursor:pointer;font-size:12px;font-weight:'+(active?'600':'400')+';">'+p.label+'</button>';
+        });
+        document.getElementById(filterId).innerHTML = h;
+        window['_tsf_'+filterId] = function(days) { onSelect(days); };
+    }
+
+    // ---- Load & render clubs ----
+    function _loadTopClubs(days) {
+        _buildPeriodBtns('topSearchClubsFilters', days, _loadTopClubs);
+        document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
+        document.getElementById('topSearchClubsPag').innerHTML = '';
+        fetch(BASE_API + '/top_searched.php?type=clubs&days=' + days)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success && d.items && d.items.length) {
+                    _renderTopClubs(d.items);
+                } else {
+                    _renderTopClubs(_fbMapClubs(_fbClubs));
+                }
+            })
+            .catch(function() { _renderTopClubs(_fbMapClubs(_fbClubs)); });
+    }
+    function _renderTopClubs(items) {
+        if (!items || !items.length) {
+            document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
+            document.getElementById('topSearchClubsCount').textContent = '';
+            return;
+        }
+        document.getElementById('topSearchClubsCount').textContent = '(' + items.length + ')';
+        _topSearchPag(items, 'topSearchClubsBody', 'topSearchClubsPag', 10, 5, function(c, i) {
+            return '<tr>'
+                + '<td style="color:#5a6580;width:40px;">' + (i+1) + '</td>'
+                + '<td><a href="?page=recherche&club=' + encodeURIComponent(c.nom) + '" style="color:#a29bfe;text-decoration:none;font-weight:500;">' + _esc2(c.nom) + '</a></td>'
+                + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:600;">' + c.vues + '</span></td>'
+                + '</tr>';
+        });
+    }
+
+    // ---- Load & render athletes ----
+    function _loadTopAth(days) {
+        _buildPeriodBtns('topSearchAthFilters', days, _loadTopAth);
+        document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
+        document.getElementById('topSearchAthPag').innerHTML = '';
+        fetch(BASE_API + '/top_searched.php?type=athletes&days=' + days)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success && d.items && d.items.length) {
+                    _renderTopAth(d.items);
+                } else {
+                    _renderTopAth(_fbMapAth(_fbAthletes));
+                }
+            })
+            .catch(function() { _renderTopAth(_fbMapAth(_fbAthletes)); });
+    }
+    function _renderTopAth(items) {
+        if (!items || !items.length) {
+            document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
+            document.getElementById('topSearchAthCount').textContent = '';
+            return;
+        }
+        document.getElementById('topSearchAthCount').textContent = '(' + items.length + ')';
+        _topSearchPag(items, 'topSearchAthBody', 'topSearchAthPag', 10, 5, function(a, i) {
+            return '<tr>'
+                + '<td style="color:#5a6580;width:40px;">' + (i+1) + '</td>'
+                + '<td><a href="?page=profil&id=' + a.id + '" style="color:#a29bfe;text-decoration:none;font-weight:600;">' + _esc2(a.nom) + '</a></td>'
+                + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:600;">' + a.vues + '</span></td>'
+                + '</tr>';
+        });
+    }
+
+    // ---- Fallback mappers ----
+    function _fbMapClubs(arr) {
+        return arr.map(function(c) { return { nom: c.club, vues: c.nb_athletes||0 }; });
+    }
+    function _fbMapAth(arr) {
+        return arr.map(function(a) {
+            var sc = (a.nb_medailles||0)*5 + (a.nb_podiums||0)*3 + (a.nb_selections||0)*4 + (a.nb_records||0);
+            return { id: a.athlete_id, nom: a.nom, vues: sc };
+        });
+    }
+
+    // Init : charger avec periode Mois par defaut
+    _loadTopClubs(30);
+    _loadTopAth(30);
 });
 </script>
 
@@ -1634,7 +1809,6 @@ if ($clubFilter !== ''):
     <div class="club-detail-tabs">
         <button class="club-detail-tab active" data-tab="epreuves" onclick="switchClubTab('epreuves')">Épreuves</button>
         <button class="club-detail-tab" data-tab="nationalites" onclick="switchClubTab('nationalites')">Nationalités</button>
-        <button class="club-detail-tab" data-tab="records" onclick="switchClubTab('records')">Records</button>
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
@@ -2746,7 +2920,6 @@ elseif ($page === 'clubs'):
     <div class="club-detail-tabs">
         <button class="club-detail-tab active" data-tab="epreuves" onclick="switchClubTab('epreuves')">Épreuves</button>
         <button class="club-detail-tab" data-tab="nationalites" onclick="switchClubTab('nationalites')">Nationalités</button>
-        <button class="club-detail-tab" data-tab="records" onclick="switchClubTab('records')">Records</button>
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
@@ -5102,7 +5275,83 @@ function _renderClubTab(tab, suffix) {
             });
             html += '</div>';
         }
-        var filteredEp = discFilter ? ep.filter(function(e) { return discFilter.indexOf(e.discipline) !== -1; }) : ep;
+        // Filtres par niveau de competition
+        var nivMap = {};
+        ep.forEach(function(e) {
+            (e.niveaux || []).forEach(function(n) { if (n) nivMap[n] = 1; });
+        });
+        var nivKeys = Object.keys(nivMap).sort(function(a, b) {
+            var ord = {IE:100,IR:99};
+            for (var p in {N:90,R:80,D:70}) for (var i=1;i<=8;i++) ord[p+i] = {N:90,R:80,D:70}[p] - i;
+            return (ord[b]||0) - (ord[a]||0);
+        });
+        var nivFilter = window['_clubNivFilter' + s] || null;
+        if (nivKeys.length > 1) {
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;align-items:center;">';
+            html += '<span style="color:#5a6580;font-size:11px;margin-right:4px;">Niveaux :</span>';
+            var nivAllActive = !nivFilter;
+            html += '<button onclick="_clubToggleNiv(null,\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(nivAllActive?'#a29bfe':'#1e2a3a')+';background:'+(nivAllActive?'#a29bfe20':'transparent')+';color:'+(nivAllActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
+            nivKeys.forEach(function(nk) {
+                var nc = nk.charAt(0);
+                var clr = nc==='N'?'#fb7185': nc==='I'?'#e879f9': nc==='R'?'#22d3ee': '#fb923c';
+                var isOn = nivFilter && nivFilter.indexOf(nk) !== -1;
+                html += '<button onclick="_clubToggleNiv(\'' + nk + '\',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?clr:'#1e2a3a')+';background:'+(isOn?clr+'20':'transparent')+';color:'+(isOn?clr:'#5a6580')+';transition:all .2s;">' + nk + '</button>';
+            });
+            html += '</div>';
+        }
+        // Filtre par année (server-side)
+        var anneesDisp = d.annees_disponibles || [];
+        var yearFilter = d.annee_filtree || null;
+        if (anneesDisp.length > 1) {
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;align-items:center;">';
+            html += '<span style="color:#5a6580;font-size:11px;margin-right:4px;">Année :</span>';
+            var yrAllActive = !yearFilter;
+            html += '<button onclick="_clubSetEpYear(null,\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(yrAllActive?'#a29bfe':'#1e2a3a')+';background:'+(yrAllActive?'#a29bfe20':'transparent')+';color:'+(yrAllActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
+            // Show last 15 years to avoid clutter, most recent first
+            var recentYears = anneesDisp.slice(-15).reverse();
+            recentYears.forEach(function(yr) {
+                var isOn = yearFilter && yearFilter == yr;
+                html += '<button onclick="_clubSetEpYear(' + yr + ',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?'#a29bfe':'#1e2a3a')+';background:'+(isOn?'#a29bfe20':'transparent')+';color:'+(isOn?'#a29bfe':'#5a6580')+';transition:all .2s;">' + yr + '</button>';
+            });
+            if (anneesDisp.length > 15) {
+                html += '<select onchange="_clubSetEpYear(this.value ? parseInt(this.value) : null,\'' + s + '\')" style="padding:3px 8px;border-radius:6px;font-size:11px;background:#0d1117;border:1px solid #1e2a3a;color:#5a6580;cursor:pointer;">';
+                html += '<option value="">+ anciennes</option>';
+                anneesDisp.slice(0, anneesDisp.length - 15).forEach(function(yr) {
+                    html += '<option value="' + yr + '"' + (yearFilter == yr ? ' selected' : '') + '>' + yr + '</option>';
+                });
+                html += '</select>';
+            }
+            html += '</div>';
+        }
+        // Courbe niveaux de performance
+        var nivCounts = {};
+        var nivOrd = {IE:100,IR:99};
+        ['N','R','D'].forEach(function(p){var b={N:90,R:80,D:70}[p];for(var i=1;i<=8;i++) nivOrd[p+i]=b-i;});
+        ep.forEach(function(e) {
+            (e.niveaux || []).forEach(function(n) { if (n && nivOrd[n]) nivCounts[n] = (nivCounts[n]||0) + 1; });
+        });
+        var nivChartKeys = Object.keys(nivCounts).sort(function(a,b){ return (nivOrd[a]||0) - (nivOrd[b]||0); });
+        var nivParAnnee = d.niveaux_par_annee || [];
+        if (nivChartKeys.length > 2 || nivParAnnee.length > 1) {
+            html += '<div style="display:flex;gap:16px;margin-bottom:16px;overflow-x:auto;">';
+            if (nivChartKeys.length > 2) {
+                html += '<div style="flex:1;min-width:0;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+                html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">Distribution des niveaux</h4>';
+                html += '<canvas id="clubNivChart' + s + '" height="160"></canvas>';
+                html += '</div>';
+            }
+            if (nivParAnnee.length > 1) {
+                html += '<div style="flex:1;min-width:0;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+                html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">\u00c9volution par ann\u00e9e</h4>';
+                html += '<canvas id="clubNivYearChart' + s + '" height="160"></canvas>';
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        var filteredEp = ep;
+        if (discFilter) filteredEp = filteredEp.filter(function(e) { return discFilter.indexOf(e.discipline) !== -1; });
+        if (nivFilter) filteredEp = filteredEp.filter(function(e) { return (e.niveaux||[]).some(function(n) { return nivFilter.indexOf(n) !== -1; }); });
         var thEp = '<tr><th>#</th><th>Épreuve</th><th style="color:#3b82f6;">Record ♂</th><th style="color:#3b82f6;">Par</th><th style="color:#3b82f6;">Année</th><th style="color:#ec4899;">Record ♀</th><th style="color:#ec4899;">Par</th><th style="color:#ec4899;">Année</th><th>Niveaux</th></tr>';
         html += '<div class="table-wrap">';
         html += '<table class="bk-table">' + thEp + '</table>';
@@ -5504,6 +5753,117 @@ function _renderClubTab(tab, suffix) {
         }
     }
     content.innerHTML = html;
+    // Post-render: courbe niveaux pour onglet épreuves
+    if (tab === 'epreuves') {
+        var _ep = d.epreuves || [];
+        var _nivC = {}, _nivO = {IE:100,IR:99};
+        ['N','R','D'].forEach(function(p){var b={N:90,R:80,D:70}[p];for(var i=1;i<=8;i++) _nivO[p+i]=b-i;});
+        _ep.forEach(function(e) { (e.niveaux||[]).forEach(function(n){ if(n&&_nivO[n]) _nivC[n]=(_nivC[n]||0)+1; }); });
+        var _nck = Object.keys(_nivC).sort(function(a,b){ return (_nivO[a]||0)-(_nivO[b]||0); });
+        var _cvs = document.getElementById('clubNivChart' + s);
+        if (_cvs && _nck.length > 2) {
+            var _clrs = _nck.map(function(k){
+                var c=k.charAt(0);
+                return c==='I'?'#e879f9': c==='N'?'#fb7185': c==='R'?'#22d3ee': '#fb923c';
+            });
+            var _bgClrs = _nck.map(function(k){
+                var c=k.charAt(0);
+                return c==='I'?'#e879f920': c==='N'?'#fb718520': c==='R'?'#22d3ee20': '#fb923c20';
+            });
+            new Chart(_cvs, {
+                type: 'line',
+                data: {
+                    labels: _nck,
+                    datasets: [{
+                        label: '\u00c9preuves',
+                        data: _nck.map(function(k){ return _nivC[k]; }),
+                        borderColor: '#a29bfe',
+                        backgroundColor: '#a29bfe15',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: _clrs,
+                        pointBorderColor: _clrs,
+                        pointRadius: 5,
+                        pointHoverRadius: 8,
+                        borderWidth: 2.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) { return ctx.parsed.y + ' \u00e9preuve' + (ctx.parsed.y > 1 ? 's' : ''); }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#1e2a3a' },
+                            ticks: {
+                                color: function(ctx) {
+                                    var lbl = ctx.tick.label || '';
+                                    var c = lbl.charAt(0);
+                                    return c==='I'?'#e879f9': c==='N'?'#fb7185': c==='R'?'#22d3ee': '#fb923c';
+                                },
+                                font: { weight: 'bold', size: 11 }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#1e2a3a' },
+                            ticks: { color: '#5a6580', stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        }
+        // Courbe évolution niveaux par année
+        var _npa = d.niveaux_par_annee || [];
+        var _ycvs = document.getElementById('clubNivYearChart' + s);
+        if (_ycvs && _npa.length > 1) {
+            var _yLabels = _npa.map(function(r){ return r.annee; });
+            var _families = [
+                { key:'D', label:'D\u00e9partemental', color:'#fb923c', bg:'#fb923c20' },
+                { key:'R', label:'R\u00e9gional', color:'#22d3ee', bg:'#22d3ee20' },
+                { key:'N', label:'National', color:'#fb7185', bg:'#fb718520' },
+                { key:'I', label:'International', color:'#e879f9', bg:'#e879f920' }
+            ];
+            var _yds = [];
+            _families.forEach(function(f) {
+                var hasData = _npa.some(function(r){ return (r[f.key]||0) > 0; });
+                if (hasData) {
+                    _yds.push({
+                        label: f.label,
+                        data: _npa.map(function(r){ return r[f.key]||0; }),
+                        borderColor: f.color,
+                        backgroundColor: f.bg,
+                        tension: 0.4,
+                        fill: false,
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        borderWidth: 2.5
+                    });
+                }
+            });
+            new Chart(_ycvs, {
+                type: 'line',
+                data: { labels: _yLabels, datasets: _yds },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyleWidth: 10, font: { size: 11 }, color: '#8b949e' } }
+                    },
+                    scales: {
+                        x: { grid: { color: '#1e2a3a' }, ticks: { color: '#8b949e', font: { size: 11 } } },
+                        y: { beginAtZero: true, grid: { color: '#1e2a3a' }, ticks: { color: '#5a6580' } }
+                    }
+                }
+            });
+        }
+    }
     // Post-render: charts for nationalités tab
     if (tab === 'nationalites') {
         var _nat = d.nationalites || {};
@@ -6347,6 +6707,40 @@ function _clubToggleDisc(disc, suffix) {
         window['_clubDiscFilter' + s] = cur.length > 0 ? cur : null;
     }
     _renderClubTab('epreuves', s);
+}
+function _clubToggleNiv(niv, suffix) {
+    var s = suffix || '';
+    if (niv === null) {
+        window['_clubNivFilter' + s] = null;
+    } else {
+        var cur = window['_clubNivFilter' + s] || [];
+        var idx = cur.indexOf(niv);
+        if (idx === -1) { cur.push(niv); } else { cur.splice(idx, 1); }
+        window['_clubNivFilter' + s] = cur.length > 0 ? cur : null;
+    }
+    _renderClubTab('epreuves', s);
+}
+function _clubSetEpYear(year, suffix) {
+    var s = suffix || '';
+    var d = window['_clubDetailData' + s];
+    if (!d || !d.club) return;
+    var epMode = window['_clubEpMode' + s] || 'club';
+    var url = BASE_API + '/club_stats.php?id=' + d.club.id_club + '&ep=1';
+    if (year) url += '&annee=' + year;
+    if (epMode === 'perso') url += '&perso=1';
+    url += _clubFilterParams(d);
+    var content = document.getElementById('clubDetailContent' + s);
+    if (content) content.innerHTML = '<div class="loading-msg">Chargement...</div>';
+    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+        if (!data.success) return;
+        d.epreuves = data.epreuves;
+        d.total_epreuves = data.total_epreuves;
+        d.ep_page = data.ep_page;
+        d.ep_pages = data.ep_pages;
+        d.annee_filtree = year || null;
+        if (data.niveaux_par_annee) d.niveaux_par_annee = data.niveaux_par_annee;
+        _renderClubTab('epreuves', s);
+    });
 }
 function _clubSetEpMode(mode, suffix) {
     var s = suffix || '';
