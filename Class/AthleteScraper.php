@@ -959,13 +959,13 @@ class AthleteScraper
 
         // 1h23'45''12 ou 1h23'45 (heures)
         if (preg_match("/^(\d+)h\s*(\d{1,2})'(\d{2})(?:''(\d{1,2}))?$/", $perf, $m)) {
-            $cent = isset($m[4]) && $m[4] !== '' ? (int)$m[4] : 0;
+            $cent = isset($m[4]) && $m[4] !== '' ? (int)str_pad($m[4], 2, '0', STR_PAD_RIGHT) : 0;
             return (((int)$m[1] * 3600 + (int)$m[2] * 60 + (int)$m[3]) * 100) + $cent;
         }
 
-        // 3'43''65 (minutes + secondes + centièmes)
+        // 3'43''65 ou 3'43''6 (minutes + secondes + centièmes/dixièmes)
         if (preg_match("/^(\d+)'(\d{2})''(\d{1,2})$/", $perf, $m)) {
-            return ((int)$m[1] * 60 + (int)$m[2]) * 100 + (int)$m[3];
+            return ((int)$m[1] * 60 + (int)$m[2]) * 100 + (int)str_pad($m[3], 2, '0', STR_PAD_RIGHT);
         }
 
         // 12'09 (minutes + secondes, sans centièmes)
@@ -973,9 +973,9 @@ class AthleteScraper
             return ((int)$m[1] * 60 + (int)$m[2]) * 100;
         }
 
-        // 10''45 ou 6''37 (secondes + centièmes)
+        // 10''48 ou 10''9 (secondes + centièmes/dixièmes)
         if (preg_match("/^(\d+)''(\d{1,2})$/", $perf, $m)) {
-            return (int)$m[1] * 100 + (int)$m[2];
+            return (int)$m[1] * 100 + (int)str_pad($m[2], 2, '0', STR_PAD_RIGHT);
         }
 
         // 6m30 ou 14m52 (distance mètres + centimètres avec "m")
