@@ -5299,29 +5299,63 @@ function _renderClubTab(tab, suffix) {
             });
             html += '</div>';
         }
-        // Filtre par année (server-side)
+        // Filtre par année (server-side) + mode comparaison
         var anneesDisp = d.annees_disponibles || [];
         var yearFilter = d.annee_filtree || null;
+        var epYearMode = window['_clubEpYearMode' + s] || 'filter';
+        var cmpYears = window['_clubEpYearCmp' + s] || [];
         if (anneesDisp.length > 1) {
             html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;align-items:center;">';
             html += '<span style="color:#5a6580;font-size:11px;margin-right:4px;">Année :</span>';
-            var yrAllActive = !yearFilter;
-            html += '<button onclick="_clubSetEpYear(null,\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(yrAllActive?'#a29bfe':'#1e2a3a')+';background:'+(yrAllActive?'#a29bfe20':'transparent')+';color:'+(yrAllActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
-            // Show last 15 years to avoid clutter, most recent first
-            var recentYears = anneesDisp.slice(-15).reverse();
-            recentYears.forEach(function(yr) {
-                var isOn = yearFilter && yearFilter == yr;
-                html += '<button onclick="_clubSetEpYear(' + yr + ',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?'#a29bfe':'#1e2a3a')+';background:'+(isOn?'#a29bfe20':'transparent')+';color:'+(isOn?'#a29bfe':'#5a6580')+';transition:all .2s;">' + yr + '</button>';
-            });
-            if (anneesDisp.length > 15) {
-                html += '<select onchange="_clubSetEpYear(this.value ? parseInt(this.value) : null,\'' + s + '\')" style="padding:3px 8px;border-radius:6px;font-size:11px;background:#0d1117;border:1px solid #1e2a3a;color:#5a6580;cursor:pointer;">';
-                html += '<option value="">+ anciennes</option>';
-                anneesDisp.slice(0, anneesDisp.length - 15).forEach(function(yr) {
-                    html += '<option value="' + yr + '"' + (yearFilter == yr ? ' selected' : '') + '>' + yr + '</option>';
-                });
-                html += '</select>';
-            }
+            var isFilter = epYearMode === 'filter';
+            var isCmp = epYearMode === 'compare';
+            html += '<button onclick="_clubEpYearModeSet(\'filter\',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isFilter?'#a29bfe':'#1e2a3a')+';background:'+(isFilter?'#a29bfe20':'transparent')+';color:'+(isFilter?'#a29bfe':'#5a6580')+';transition:all .2s;">Filtrer</button>';
+            html += '<button onclick="_clubEpYearModeSet(\'compare\',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isCmp?'#ffd700':'#1e2a3a')+';background:'+(isCmp?'#ffd70020':'transparent')+';color:'+(isCmp?'#ffd700':'#5a6580')+';transition:all .2s;">Comparer</button>';
             html += '</div>';
+            var recentYears = anneesDisp.slice(-15).reverse();
+            if (isFilter) {
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;align-items:center;">';
+                var yrAllActive = !yearFilter;
+                html += '<button onclick="_clubSetEpYear(null,\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(yrAllActive?'#a29bfe':'#1e2a3a')+';background:'+(yrAllActive?'#a29bfe20':'transparent')+';color:'+(yrAllActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
+                recentYears.forEach(function(yr) {
+                    var isOn = yearFilter && yearFilter == yr;
+                    html += '<button onclick="_clubSetEpYear(' + yr + ',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?'#a29bfe':'#1e2a3a')+';background:'+(isOn?'#a29bfe20':'transparent')+';color:'+(isOn?'#a29bfe':'#5a6580')+';transition:all .2s;">' + yr + '</button>';
+                });
+                if (anneesDisp.length > 15) {
+                    html += '<select onchange="_clubSetEpYear(this.value ? parseInt(this.value) : null,\'' + s + '\')" style="padding:3px 8px;border-radius:6px;font-size:11px;background:#0d1117;border:1px solid #1e2a3a;color:#5a6580;cursor:pointer;">';
+                    html += '<option value="">+ anciennes</option>';
+                    anneesDisp.slice(0, anneesDisp.length - 15).forEach(function(yr) {
+                        html += '<option value="' + yr + '"' + (yearFilter == yr ? ' selected' : '') + '>' + yr + '</option>';
+                    });
+                    html += '</select>';
+                }
+                html += '</div>';
+            } else {
+                // Mode comparaison : multi-select
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;align-items:center;">';
+                html += '<span style="color:#ffd700;font-size:11px;margin-right:4px;">Sélectionnez 2 à 5 années :</span>';
+                recentYears.forEach(function(yr) {
+                    var isOn = cmpYears.indexOf(yr) !== -1;
+                    html += '<button onclick="_clubToggleEpYearCmp(' + yr + ',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?'#ffd700':'#1e2a3a')+';background:'+(isOn?'#ffd70020':'transparent')+';color:'+(isOn?'#ffd700':'#5a6580')+';transition:all .2s;">' + yr + '</button>';
+                });
+                if (anneesDisp.length > 15) {
+                    html += '<select onchange="if(this.value)_clubToggleEpYearCmp(parseInt(this.value),\'' + s + '\');this.selectedIndex=0;" style="padding:3px 8px;border-radius:6px;font-size:11px;background:#0d1117;border:1px solid #1e2a3a;color:#5a6580;cursor:pointer;">';
+                    html += '<option value="">+ anciennes</option>';
+                    anneesDisp.slice(0, anneesDisp.length - 15).forEach(function(yr) {
+                        html += '<option value="' + yr + '">' + yr + (cmpYears.indexOf(yr)!==-1?' ✓':'') + '</option>';
+                    });
+                    html += '</select>';
+                }
+                html += '</div>';
+                if (cmpYears.length >= 2) {
+                    html += '<div style="margin-bottom:12px;"><button onclick="_clubRunEpYearCmp(\'' + s + '\')" style="padding:6px 20px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid #ffd700;background:linear-gradient(135deg,#ffd700,#ffaa00);color:#000;transition:all .2s;">Comparer ' + cmpYears.sort().join(', ') + '</button></div>';
+                }
+                // Afficher résultats comparaison si disponibles
+                var cmpData = window['_clubEpYearCmpData' + s];
+                if (cmpData && Object.keys(cmpData).length >= 2) {
+                    html += _buildEpYearCmpHTML(cmpData, s);
+                }
+            }
         }
         // Courbe niveaux de performance
         var nivCounts = {};
@@ -5855,6 +5889,41 @@ function _renderClubTab(tab, suffix) {
                     scales: {
                         x: { grid: { color: '#1e2a3a' }, ticks: { color: '#8b949e', font: { size: 11 } } },
                         y: { beginAtZero: true, grid: { color: '#1e2a3a' }, ticks: { color: '#5a6580' } }
+                    }
+                }
+            });
+        }
+        // Graphique comparaison années
+        var _cmpChartEl = document.getElementById('clubEpYearCmpChart' + s);
+        var _cmpData = window['_clubEpYearCmpData' + s];
+        if (_cmpChartEl && _cmpData) {
+            var _cmpYrs = Object.keys(_cmpData).map(Number).sort();
+            var _cmpColors = ['#6c5ce7','#00cec9','#fdcb6e','#e17055','#55efc4'];
+            var _cmpDS = [
+                { label:'Épreuves', key:'total_epreuves' },
+                { label:'Athlètes', key:'total_athletes' },
+                { label:'Records', key:'total_records' },
+                { label:'Résultats', key:'nb_resultats' }
+            ];
+            new Chart(_cmpChartEl, {
+                type: 'bar',
+                data: {
+                    labels: _cmpYrs.map(String),
+                    datasets: _cmpDS.map(function(ds, di) {
+                        return {
+                            label: ds.label,
+                            data: _cmpYrs.map(function(y) { return _cmpData[y][ds.key] || 0; }),
+                            backgroundColor: _cmpColors[di]
+                        };
+                    })
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position:'bottom', labels: { color:'#8b949e', padding:12, font:{size:11} } } },
+                    scales: {
+                        x: { grid:{color:'#1e2a3a'}, ticks:{color:'#8b949e'} },
+                        y: { beginAtZero:true, grid:{color:'#1e2a3a'}, ticks:{color:'#5a6580'} }
                     }
                 }
             });
@@ -6715,6 +6784,137 @@ function _clubToggleNiv(niv, suffix) {
         window['_clubNivFilter' + s] = cur.length > 0 ? cur : null;
     }
     _renderClubTab('epreuves', s);
+}
+function _clubEpYearModeSet(mode, suffix) {
+    var s = suffix || '';
+    window['_clubEpYearMode' + s] = mode;
+    if (mode === 'filter') {
+        window['_clubEpYearCmp' + s] = [];
+        window['_clubEpYearCmpData' + s] = null;
+    }
+    _renderClubTab('epreuves', s);
+}
+function _clubToggleEpYearCmp(yr, suffix) {
+    var s = suffix || '';
+    var cmp = window['_clubEpYearCmp' + s] || [];
+    var idx = cmp.indexOf(yr);
+    if (idx === -1) {
+        if (cmp.length < 5) cmp.push(yr);
+    } else {
+        cmp.splice(idx, 1);
+    }
+    window['_clubEpYearCmp' + s] = cmp;
+    window['_clubEpYearCmpData' + s] = null;
+    _renderClubTab('epreuves', s);
+}
+function _clubRunEpYearCmp(suffix) {
+    var s = suffix || '';
+    var d = window['_clubDetailData' + s];
+    var cmpYears = (window['_clubEpYearCmp' + s] || []).slice().sort();
+    if (!d || !d.club || cmpYears.length < 2) return;
+    var content = document.getElementById('clubDetailContent' + s);
+    if (content) content.innerHTML = '<div class="loading-msg">Chargement comparaison ' + cmpYears.join(' vs ') + '...</div>';
+    var epMode = window['_clubEpMode' + s] || 'club';
+    var results = {};
+    var done = 0;
+    cmpYears.forEach(function(yr) {
+        var url = BASE_API + '/club_stats.php?id=' + d.club.id_club + '&annee=' + yr;
+        if (epMode === 'perso') url += '&perso=1';
+        url += _clubFilterParams(d);
+        fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.success) results[yr] = data;
+            done++;
+            if (done === cmpYears.length) {
+                window['_clubEpYearCmpData' + s] = results;
+                _renderClubTab('epreuves', s);
+            }
+        }).catch(function() {
+            done++;
+            if (done === cmpYears.length) {
+                window['_clubEpYearCmpData' + s] = results;
+                _renderClubTab('epreuves', s);
+            }
+        });
+    });
+}
+function _buildEpYearCmpHTML(cmpData, suffix) {
+    var s = suffix || '';
+    var years = Object.keys(cmpData).map(Number).sort();
+    var h = '';
+    // Tableau comparatif
+    h += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
+    h += '<h4 style="margin:0 0 12px;color:#c9d1d9;font-size:14px;">Comparaison ' + years.join(' / ') + '</h4>';
+    h += '<div class="table-wrap"><table class="bk-table"><tr><th>Métrique</th>';
+    years.forEach(function(y) { h += '<th style="text-align:center;">' + y + '</th>'; });
+    h += '</tr>';
+    // Lignes métriques
+    var metrics = [
+        {k:'total_epreuves', l:'Épreuves'},
+        {k:'total_athletes', l:'Athlètes'},
+        {k:'total_records', l:'Records'},
+        {k:'nb_resultats', l:'Résultats'}
+    ];
+    metrics.forEach(function(m) {
+        h += '<tr><td style="color:#8b949e;">' + m.l + '</td>';
+        var vals = years.map(function(y) { return cmpData[y][m.k] || 0; });
+        var maxV = Math.max.apply(null, vals);
+        years.forEach(function(y, i) {
+            var v = vals[i];
+            var clr = v === maxV && maxV > 0 ? '#55efc4' : '#c9d1d9';
+            h += '<td style="text-align:center;color:' + clr + ';font-weight:' + (v===maxV&&maxV>0?'700':'400') + ';">' + v.toLocaleString('fr-FR') + '</td>';
+        });
+        h += '</tr>';
+    });
+    // Médailles
+    ['or','argent','bronze'].forEach(function(type) {
+        var icons = {or:'&#129351;', argent:'&#129352;', bronze:'&#129353;'};
+        h += '<tr><td style="color:#8b949e;">' + icons[type] + ' ' + type.charAt(0).toUpperCase()+type.slice(1) + '</td>';
+        var vals = years.map(function(y) { var med = cmpData[y].medailles || {}; return med[type] || 0; });
+        var maxV = Math.max.apply(null, vals);
+        years.forEach(function(y, i) {
+            var v = vals[i];
+            var clr = v === maxV && maxV > 0 ? '#ffd700' : '#c9d1d9';
+            h += '<td style="text-align:center;color:' + clr + ';font-weight:' + (v===maxV&&maxV>0?'700':'400') + ';">' + v + '</td>';
+        });
+        h += '</tr>';
+    });
+    // Niveaux D/R/N/I
+    ['D','R','N','I'].forEach(function(fam) {
+        var clrs = {D:'#fb923c',R:'#22d3ee',N:'#fb7185',I:'#e879f9'};
+        h += '<tr><td style="color:' + clrs[fam] + ';">Niveau ' + fam + '</td>';
+        var vals = years.map(function(y) {
+            var npa = cmpData[y].niveaux_par_annee || [];
+            var found = npa.find(function(n) { return n.annee == y; });
+            return found ? (found[fam] || 0) : 0;
+        });
+        var maxV = Math.max.apply(null, vals);
+        years.forEach(function(y, i) {
+            var v = vals[i];
+            h += '<td style="text-align:center;color:' + (v===maxV&&maxV>0?clrs[fam]:'#5a6580') + ';font-weight:' + (v===maxV&&maxV>0?'700':'400') + ';">' + v + '</td>';
+        });
+        h += '</tr>';
+    });
+    h += '</table></div></div>';
+    // Graphique comparatif
+    h += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
+    h += '<canvas id="clubEpYearCmpChart' + s + '" height="250"></canvas>';
+    h += '</div>';
+    // Top épreuves par année
+    h += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
+    h += '<h4 style="margin:0 0 12px;color:#c9d1d9;font-size:14px;">Top épreuves par année</h4>';
+    h += '<div style="display:flex;gap:12px;flex-wrap:wrap;">';
+    years.forEach(function(y) {
+        var epList = (cmpData[y].epreuves || []).slice(0, 5);
+        h += '<div style="flex:1;min-width:200px;">';
+        h += '<h5 style="color:#a29bfe;margin:0 0 8px;font-size:13px;">' + y + '</h5>';
+        if (epList.length === 0) { h += '<span style="color:#5a6580;font-size:12px;">Aucune</span>'; }
+        epList.forEach(function(e, i) {
+            h += '<div style="font-size:12px;color:#c9d1d9;padding:2px 0;">' + (i+1) + '. ' + (e.epreuve||'') + '</div>';
+        });
+        h += '</div>';
+    });
+    h += '</div></div>';
+    return h;
 }
 function _clubSetEpYear(year, suffix) {
     var s = suffix || '';
