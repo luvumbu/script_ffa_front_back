@@ -6812,9 +6812,12 @@ function _buildEpYearCmpHTML(cmpData, suffix) {
     // Tableau comparatif
     h += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
     h += '<h4 style="margin:0 0 12px;color:#c9d1d9;font-size:14px;">Comparaison ' + years.join(' / ') + '</h4>';
-    h += '<div class="table-wrap"><table class="bk-table"><tr><th>Métrique</th>';
-    years.forEach(function(y) { h += '<th style="text-align:center;">' + y + '</th>'; });
-    h += '</tr>';
+    var thRow = '<tr><th>Métrique</th>';
+    years.forEach(function(y) { thRow += '<th style="text-align:center;">' + y + '</th>'; });
+    thRow += '</tr>';
+    h += '<div class="table-wrap">';
+    h += '<table class="bk-table">' + thRow + '</table>';
+    h += '<table class="bk-table">';
     // Lignes métriques
     var metrics = [
         {k:'total_epreuves', l:'Épreuves'},
@@ -6862,7 +6865,9 @@ function _buildEpYearCmpHTML(cmpData, suffix) {
         });
         h += '</tr>';
     });
-    h += '</table></div></div>';
+    h += '</table>';
+    h += '<table class="bk-table">' + thRow + '</table>';
+    h += '</div></div>';
     // Graphique comparatif
     h += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
     h += '<canvas id="clubEpYearCmpChart' + s + '" height="250"></canvas>';
