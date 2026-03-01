@@ -60,13 +60,18 @@ $cid = (int) $club['id_club'];
 
 // Filtre athletes (nationalite, sexe, categorie) — sous-requete universelle
 $athFilter = '';
+$athFilterProg = '';
 if ($filterNat !== '' || $filterSexe !== '' || $filterCat !== '') {
     $afConds = [];
     if ($filterNat !== '') $afConds[] = "_af.nationalite_athlete = '" . $conn->real_escape_string(strtoupper($filterNat)) . "'";
     if ($filterSexe !== '') $afConds[] = "_af.sexe_athlete = '" . $conn->real_escape_string(strtoupper($filterSexe)) . "'";
     if ($filterCat !== '') $afConds[] = "_af.categorie_athlete = '" . $conn->real_escape_string($filterCat) . "'";
     $athFilter = " AND ac.id_athlete IN (SELECT _af.id_athlete FROM athletes _af WHERE " . implode(' AND ', $afConds) . ")";
+    $athFilterProg = " AND ap.id_athlete IN (SELECT _af.id_athlete FROM athletes _af WHERE " . implode(' AND ', $afConds) . ")";
 }
+
+// Filtre annee pour progressions
+$progFilterYear = $annee > 0 ? " AND ap.annee_progression = $annee" : '';
 
 // Filtres d'appartenance : ne compter que les perfs réalisées pendant la période de membership
 $mcRec  = "AND (ar.date_record IS NULL OR YEAR(ar.date_record) BETWEEN IFNULL(NULLIF(ac.annee_debut,0),0) AND IFNULL(NULLIF(ac.annee_fin,0),9999))";
@@ -91,6 +96,31 @@ function highestNiveau($niveaux) {
         if ($s > $bestS) { $bestS = $s; $best = trim($n); }
     }
     return $best;
+}
+
+// Helper: mettre a jour le meilleur record par epreuve/sexe
+function _updateBestBySex(&$epBestBySex, $row) {
+    $eid = (int)$row['id_epreuve'];
+    $sex = $row['sexe_athlete'] ?: '?';
+    $perfInt = (int)$row['perf_int'];
+    $isDistance = preg_match('/(poids|disque|javelot|marteau|hauteur|perche|longueur|triple|decathlon|heptathlon|pentathlon)/i', $row['nom_epreuve']);
+    $recDate = $row['perf_date'] ? substr($row['perf_date'], 0, 4) : null;
+    $entry = [
+        'perf'       => $row['perf_brut'],
+        'perf_int'   => $perfInt,
+        'athlete'    => $row['nom_complet_athlete'],
+        'athlete_id' => $row['athlete_id_externe'] ? (int)$row['athlete_id_externe'] : null,
+        'annee'      => $recDate,
+    ];
+    if (!isset($epBestBySex[$eid][$sex])) {
+        $epBestBySex[$eid][$sex] = $entry;
+    } else {
+        $cur = $epBestBySex[$eid][$sex]['perf_int'];
+        $better = $isDistance ? ($perfInt > $cur) : ($perfInt < $cur);
+        if ($better) {
+            $epBestBySex[$eid][$sex] = $entry;
+        }
+    }
 }
 
 // Filtre athletes actifs sur une annee donnee (sous-requete reutilisable)
@@ -181,27 +211,41 @@ function getEpreuveDiscipline($nom) {
 }
 
 // Toutes les epreuves (avec nb athletes + nb records + meilleur record du club) — paginé
+// Source : UNION athlete_records + athlete_progressions pour cohérence complète
 $recordFilter = $annee > 0 ? " AND YEAR(ar.date_record) = $annee" : '';
+
+// Sous-requete UNION : tous les (athlete, epreuve) du club depuis records + progressions
+$epUnionSub = "
+    SELECT DISTINCT sub.id_epreuve, sub.id_athlete FROM (
+        SELECT ar.id_epreuve, ar.id_athlete
+        FROM athlete_records ar
+        JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
+        WHERE 1=1 $recordFilter
+";
+if (!$perso) {
+    $epUnionSub .= "
+        UNION ALL
+        SELECT ap.id_epreuve, ap.id_athlete
+        FROM athlete_progressions ap
+        WHERE ap.id_club = $cid AND ap.id_epreuve IS NOT NULL $athFilterProg $progFilterYear
+    ";
+}
+$epUnionSub .= ") AS sub";
 
 // Total epreuves
 $res = $conn->query("
-    SELECT COUNT(DISTINCT ar.id_epreuve) as c
-    FROM athlete_records ar
-    JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
-    WHERE 1=1 $recordFilter
+    SELECT COUNT(DISTINCT id_epreuve) as c FROM ($epUnionSub) AS combined_ep
 ");
 $totalEpreuves = $res ? (int) $res->fetch_assoc()['c'] : 0;
 
 $epreuves = [];
 $res = $conn->query("
     SELECT e.nom_epreuve, e.id_epreuve,
-           COUNT(DISTINCT ar.id_athlete) as nb_athletes,
+           COUNT(DISTINCT comb.id_athlete) as nb_athletes,
            COUNT(*) as nb_records
-    FROM athlete_records ar
-    JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
-    JOIN epreuves e ON e.id_epreuve = ar.id_epreuve
-    WHERE 1=1 $recordFilter
-    GROUP BY ar.id_epreuve
+    FROM ($epUnionSub) AS comb
+    JOIN epreuves e ON e.id_epreuve = comb.id_epreuve
+    GROUP BY comb.id_epreuve
     ORDER BY
         CASE
             WHEN e.nom_epreuve REGEXP 'Haies' THEN 2
@@ -225,20 +269,18 @@ $epRows = [];
 if ($res) while ($row = $res->fetch_assoc()) {
     $epRows[] = $row;
 }
-// Pour chaque epreuve, trouver le meilleur record du club + niveaux
+// Pour chaque epreuve, trouver niveaux via athlete_resultats
 $epIds = array_map(function($r) { return (int)$r['id_epreuve']; }, $epRows);
 $epNiveaux = [];
 if (!empty($epIds)) {
     $epIdsList = implode(',', $epIds);
     $nRes = $conn->query("
-        SELECT ar.id_epreuve, ares.niveau_resultat, COUNT(*) as cnt
-        FROM athlete_records ar
-        JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
-        JOIN athlete_resultats ares ON ares.id_athlete = ar.id_athlete AND ares.id_epreuve = ar.id_epreuve
-        WHERE ar.id_epreuve IN ($epIdsList) AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != ''
-        $recordFilter
-        GROUP BY ar.id_epreuve, ares.niveau_resultat
-        ORDER BY ar.id_epreuve, cnt DESC
+        SELECT comb.id_epreuve, ares.niveau_resultat, COUNT(*) as cnt
+        FROM ($epUnionSub) AS comb
+        JOIN athlete_resultats ares ON ares.id_athlete = comb.id_athlete AND ares.id_epreuve = comb.id_epreuve
+        WHERE comb.id_epreuve IN ($epIdsList) AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != ''
+        GROUP BY comb.id_epreuve, ares.niveau_resultat
+        ORDER BY comb.id_epreuve, cnt DESC
     ");
     if ($nRes) while ($nr = $nRes->fetch_assoc()) {
         $eid2 = (int)$nr['id_epreuve'];
@@ -252,13 +294,15 @@ if (!empty($epIds)) {
 $epNameMap = [];
 foreach ($epRows as $r) { $epNameMap[(int)$r['id_epreuve']] = $r['nom_epreuve']; }
 
-// Batch: meilleur record par (epreuve, sexe) pour toutes les epreuves de la page
+// Batch: meilleur record par (epreuve, sexe) — depuis records + progressions
 $epBestBySex = []; // [id_epreuve][M|F] => {perf, perf_int, athlete, athlete_id}
 if (!empty($epIds)) {
     $epIdsList2 = implode(',', $epIds);
+    // Source 1 : athlete_records
     $bRes = $conn->query("
         SELECT ar.id_epreuve, a.sexe_athlete,
-               ar.performance_brut_record, ar.performance_record, ar.date_record,
+               ar.performance_brut_record AS perf_brut, ar.performance_record AS perf_int,
+               ar.date_record AS perf_date,
                a.nom_complet_athlete, a.athlete_id_externe,
                e.nom_epreuve
         FROM athlete_records ar
@@ -268,31 +312,23 @@ if (!empty($epIds)) {
         WHERE ar.id_epreuve IN ($epIdsList2) $recordFilter
     ");
     if ($bRes) while ($br = $bRes->fetch_assoc()) {
-        $eid2b = (int)$br['id_epreuve'];
-        $sex = $br['sexe_athlete'] ?: '?';
-        $perfInt = (int)$br['performance_record'];
-        $isDistance = preg_match('/(poids|disque|javelot|marteau|hauteur|perche|longueur|triple|decathlon|heptathlon|pentathlon)/i', $br['nom_epreuve']);
-        $recDate = $br['date_record'] ? substr($br['date_record'], 0, 4) : null;
-        if (!isset($epBestBySex[$eid2b][$sex])) {
-            $epBestBySex[$eid2b][$sex] = [
-                'perf'       => $br['performance_brut_record'],
-                'perf_int'   => $perfInt,
-                'athlete'    => $br['nom_complet_athlete'],
-                'athlete_id' => $br['athlete_id_externe'] ? (int)$br['athlete_id_externe'] : null,
-                'annee'      => $recDate,
-            ];
-        } else {
-            $cur = $epBestBySex[$eid2b][$sex]['perf_int'];
-            $better = $isDistance ? ($perfInt > $cur) : ($perfInt < $cur);
-            if ($better) {
-                $epBestBySex[$eid2b][$sex] = [
-                    'perf'       => $br['performance_brut_record'],
-                    'perf_int'   => $perfInt,
-                    'athlete'    => $br['nom_complet_athlete'],
-                    'athlete_id' => $br['athlete_id_externe'] ? (int)$br['athlete_id_externe'] : null,
-                    'annee'      => $recDate,
-                ];
-            }
+        _updateBestBySex($epBestBySex, $br);
+    }
+    // Source 2 : athlete_progressions (mode non-perso uniquement)
+    if (!$perso) {
+        $bRes2 = $conn->query("
+            SELECT ap.id_epreuve, a.sexe_athlete,
+                   ap.performance_brut_progression AS perf_brut, ap.performance_progression AS perf_int,
+                   COALESCE(ap.date_progression, CONCAT(ap.annee_progression, '-01-01')) AS perf_date,
+                   a.nom_complet_athlete, a.athlete_id_externe,
+                   e.nom_epreuve
+            FROM athlete_progressions ap
+            JOIN athletes a ON a.id_athlete = ap.id_athlete
+            JOIN epreuves e ON e.id_epreuve = ap.id_epreuve
+            WHERE ap.id_club = $cid AND ap.id_epreuve IN ($epIdsList2) $athFilterProg $progFilterYear
+        ");
+        if ($bRes2) while ($br = $bRes2->fetch_assoc()) {
+            _updateBestBySex($epBestBySex, $br);
         }
     }
 }
@@ -320,34 +356,67 @@ foreach ($epRows as $row) {
     ];
 }
 
-// Total records
-$res = $conn->query("
-    SELECT COUNT(*) as c
+// Records des athletes du club — UNION records + progressions, dedup par (athlete, epreuve)
+// Sous-requete UNION pour les records
+$recUnionSub = "
+    SELECT ar.id_athlete, ar.id_epreuve,
+           ar.performance_record AS performance_int,
+           ar.performance_brut_record AS performance_brut,
+           ar.date_record AS perf_date
     FROM athlete_records ar
     JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
     WHERE 1=1 $recordFilter
+";
+if (!$perso) {
+    $recUnionSub .= "
+    UNION ALL
+    SELECT ap.id_athlete, ap.id_epreuve,
+           ap.performance_progression AS performance_int,
+           ap.performance_brut_progression AS performance_brut,
+           ap.date_progression AS perf_date
+    FROM athlete_progressions ap
+    WHERE ap.id_club = $cid AND ap.id_epreuve IS NOT NULL $athFilterProg $progFilterYear
+    ";
+}
+
+// Total records (dedup par athlete+epreuve)
+$res = $conn->query("
+    SELECT COUNT(*) as c FROM (
+        SELECT comb.id_athlete, comb.id_epreuve
+        FROM ($recUnionSub) AS comb
+        GROUP BY comb.id_athlete, comb.id_epreuve
+    ) AS uniq
 ");
 $totalRecords = $res ? (int) $res->fetch_assoc()['c'] : 0;
 
-// Records des athletes du club — paginés avec niveau
+// Records paginés avec ROW_NUMBER() pour garder la meilleure perf par (athlete, epreuve)
 $records = [];
 $res = $conn->query("
-    SELECT a.nom_complet_athlete, a.athlete_id_externe, a.categorie_athlete, a.sexe_athlete,
-           e.nom_epreuve, ar.performance_brut_record, ar.date_record,
+    SELECT ranked.nom_complet_athlete, ranked.athlete_id_externe, ranked.categorie_athlete, ranked.sexe_athlete,
+           ranked.nom_epreuve, ranked.performance_brut, ranked.perf_date,
            (SELECT GROUP_CONCAT(DISTINCT ares.niveau_resultat ORDER BY ares.niveau_resultat SEPARATOR ',')
             FROM athlete_resultats ares
-            WHERE ares.id_athlete = ar.id_athlete AND ares.id_epreuve = ar.id_epreuve
-              AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != ''
-            LIMIT 1) as niveaux
-    FROM athlete_records ar
-    JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
-    JOIN athletes a ON a.id_athlete = ar.id_athlete
-    JOIN epreuves e ON e.id_epreuve = ar.id_epreuve
-    WHERE 1=1 $recordFilter
-    ORDER BY e.nom_epreuve ASC,
-        CASE WHEN e.nom_epreuve REGEXP '(Poids|Disque|Javelot|Marteau|Hauteur|Perche|Longueur|Triple|Decathlon|Heptathlon|Pentathlon)'
-             THEN -CAST(ar.performance_record AS SIGNED)
-             ELSE ar.performance_record END ASC
+            WHERE ares.id_athlete = ranked.id_athlete AND ares.id_epreuve = ranked.id_epreuve
+              AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != '') as niveaux
+    FROM (
+        SELECT comb.id_athlete, comb.id_epreuve, comb.performance_int, comb.performance_brut, comb.perf_date,
+               a.nom_complet_athlete, a.athlete_id_externe, a.categorie_athlete, a.sexe_athlete,
+               e.nom_epreuve,
+               ROW_NUMBER() OVER (
+                   PARTITION BY comb.id_athlete, comb.id_epreuve
+                   ORDER BY CASE WHEN e.nom_epreuve REGEXP '(Poids|Disque|Javelot|Marteau|Hauteur|Perche|Longueur|Triple|Decathlon|Heptathlon|Pentathlon)'
+                                 THEN -CAST(comb.performance_int AS SIGNED)
+                                 ELSE comb.performance_int END ASC
+               ) AS rn
+        FROM ($recUnionSub) AS comb
+        JOIN athletes a ON a.id_athlete = comb.id_athlete
+        JOIN epreuves e ON e.id_epreuve = comb.id_epreuve
+    ) AS ranked
+    WHERE ranked.rn = 1
+    ORDER BY ranked.nom_epreuve ASC,
+        CASE WHEN ranked.nom_epreuve REGEXP '(Poids|Disque|Javelot|Marteau|Hauteur|Perche|Longueur|Triple|Decathlon|Heptathlon|Pentathlon)'
+             THEN -CAST(ranked.performance_int AS SIGNED)
+             ELSE ranked.performance_int END ASC
     LIMIT $recLimit OFFSET $recOffset
 ");
 if ($res) while ($row = $res->fetch_assoc()) {
@@ -361,8 +430,8 @@ if ($res) while ($row = $res->fetch_assoc()) {
         'epreuve'     => $row['nom_epreuve'],
         'discipline'  => $disc['disc'],
         'disc_color'  => $disc['clr'],
-        'performance' => $row['performance_brut_record'],
-        'date'        => $row['date_record'],
+        'performance' => $row['performance_brut'],
+        'date'        => $row['perf_date'],
         'niveaux'     => array_values($nivList),
         'top_niveau'  => highestNiveau(array_values($nivList)),
     ];
@@ -459,15 +528,13 @@ if ($perfMode === 'perso') {
     }
 }
 
-// Top 10 epreuves legacy (par nombre de records)
+// Top 10 epreuves legacy (par nombre d'athletes — UNION records + progressions)
 $topEpreuves = [];
 $res = $conn->query("
-    SELECT e.nom_epreuve, COUNT(*) as c
-    FROM athlete_records ar
-    JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
-    JOIN epreuves e ON e.id_epreuve = ar.id_epreuve
-    WHERE 1=1 $recordFilter
-    GROUP BY ar.id_epreuve ORDER BY c DESC LIMIT 10
+    SELECT e.nom_epreuve, COUNT(DISTINCT comb.id_athlete) as c
+    FROM ($epUnionSub) AS comb
+    JOIN epreuves e ON e.id_epreuve = comb.id_epreuve
+    GROUP BY comb.id_epreuve ORDER BY c DESC LIMIT 10
 ");
 if ($res) while ($row = $res->fetch_assoc()) {
     $topEpreuves[] = ['epreuve' => $row['nom_epreuve'], 'nb_records' => (int) $row['c']];
