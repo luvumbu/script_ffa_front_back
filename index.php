@@ -4732,10 +4732,16 @@ elseif ($page === 'tuto'):
             <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabTuto('performances')">Performances</button>
             <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabTuto('resume')">Résumé</button>
         </div>
+        <!-- Bouton suite APRÈS les onglets (visible en haut) -->
+        <div id="tutoClubTabsDoneTop" style="display:none;text-align:center;padding:10px;background:#10b98110;border:1px solid #10b98130;border-radius:8px;margin:8px 12px;">
+            <div class="tuto-complete-badge" style="margin-bottom:6px;">&#10003; Onglets explorés !</div>
+            <button class="tuto-next-btn" onclick="tutoGoStep(4)">Chercher un athlète &rarr;</button>
+        </div>
         <div id="clubDetailContentTuto" class="club-detail-content">
             <div class="loading-msg">Sélectionnez un club à l'étape précédente</div>
         </div>
     </div>
+    <!-- Bouton suite EN BAS (toujours visible par scroll) -->
     <div id="tutoClubTabsDone" style="display:none;text-align:center;margin-top:14px;">
         <div class="tuto-complete-badge">&#10003; Onglets explorés !</div>
         <button class="tuto-next-btn" onclick="tutoGoStep(4)" style="margin-top:10px;">Chercher un athlète &rarr;</button>
@@ -5127,7 +5133,10 @@ function _tutoUpdateTabCount() {
     if (el) el.textContent = cnt;
     if (cnt >= 2) {
         _tutoMarkComplete(3);
-        document.getElementById('tutoClubTabsDone').style.display = 'block';
+        var top = document.getElementById('tutoClubTabsDoneTop');
+        var bot = document.getElementById('tutoClubTabsDone');
+        if (top) top.style.display = 'block';
+        if (bot) bot.style.display = 'block';
     }
 }
 
@@ -5152,17 +5161,20 @@ function _tutoSearchAthletes(query) {
                     results.innerHTML = '<div style="padding:12px;color:#5a6580;text-align:center;">Aucun athlète trouvé</div>';
                     return;
                 }
-                var html = '';
+                var html = '<div style="padding:8px 12px;color:#8b949e;font-size:11px;font-weight:600;">ATHLÈTES DU CLUB — cliquez pour sélectionner</div>';
                 data.athletes.forEach(function(a) {
-                    var extId = a.athlete_id_externe || a.id;
-                    var nom = (a.prenom_athlete || '') + ' ' + (a.nom_athlete || '');
-                    html += '<div class="tuto-ath-result" onclick="_tutoSelectAthlete(' + extId + ', \'' + escapeHtml(nom.trim()).replace(/'/g, "\\'") + '\')">'
+                    var extId = a.athlete_id || a.athlete_id_externe || a.id;
+                    var nom = a.nom_complet || ((a.prenom_athlete || '') + ' ' + (a.nom_athlete || '')).trim();
+                    var cat = a.categorie || a.categorie_athlete || '';
+                    var sexe = a.sexe || a.sexe_athlete || '';
+                    var nat = a.nationalite || a.nationalite_athlete || '';
+                    html += '<div class="tuto-ath-result" onclick="_tutoSelectAthlete(' + extId + ', \'' + escapeHtml(nom).replace(/'/g, "\\'") + '\')">'
                         + '<div style="flex:1;">'
-                        + '<span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(nom.trim()) + '</span>'
-                        + (a.categorie_athlete ? ' <span class="badge badge-cat" style="font-size:10px;">' + escapeHtml(a.categorie_athlete) + '</span>' : '')
-                        + (a.sexe_athlete ? ' <span class="badge badge-' + (a.sexe_athlete||'').toLowerCase() + '" style="font-size:10px;">' + escapeHtml(a.sexe_athlete) + '</span>' : '')
+                        + '<span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(nom) + '</span>'
+                        + (cat ? ' <span class="badge badge-cat" style="font-size:10px;">' + escapeHtml(cat) + '</span>' : '')
+                        + (sexe ? ' <span class="badge badge-' + sexe.toLowerCase() + '" style="font-size:10px;">' + escapeHtml(sexe) + '</span>' : '')
                         + '</div>'
-                        + (a.nationalite_athlete ? '<span style="color:#8b949e;font-size:11px;">' + escapeHtml(a.nationalite_athlete) + '</span>' : '')
+                        + (nat ? '<span style="color:#8b949e;font-size:11px;">' + escapeHtml(nat) + '</span>' : '')
                         + '</div>';
                 });
                 results.innerHTML = html;
@@ -5275,15 +5287,16 @@ function _tutoRunAdvSearch() {
             var html = '<div style="padding:8px;background:#10b98110;border:1px solid #10b98130;border-radius:8px;text-align:center;font-size:13px;color:#34d399;margin-bottom:10px;">'
                 + data.total + ' résultats trouvés</div>';
             data.athletes.forEach(function(a) {
-                var nom = (a.prenom_athlete || '') + ' ' + (a.nom_athlete || '');
-                var extId = a.athlete_id_externe || a.id;
+                var aNom = a.nom_complet || ((a.prenom_athlete || '') + ' ' + (a.nom_athlete || '')).trim();
+                var extId = a.athlete_id || a.athlete_id_externe || a.id;
+                var cat = a.categorie || a.categorie_athlete || '';
+                var sexe = a.sexe || a.sexe_athlete || '';
                 html += '<a href="?page=profil&id=' + extId + '" target="_blank" class="tuto-ath-result" style="text-decoration:none;">'
                     + '<div style="flex:1;">'
-                    + '<span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(nom.trim()) + '</span>'
-                    + (a.categorie_athlete ? ' <span class="badge badge-cat" style="font-size:10px;">' + escapeHtml(a.categorie_athlete) + '</span>' : '')
-                    + (a.sexe_athlete ? ' <span class="badge badge-' + (a.sexe_athlete||'').toLowerCase() + '" style="font-size:10px;">' + escapeHtml(a.sexe_athlete) + '</span>' : '')
+                    + '<span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(aNom) + '</span>'
+                    + (cat ? ' <span class="badge badge-cat" style="font-size:10px;">' + escapeHtml(cat) + '</span>' : '')
+                    + (sexe ? ' <span class="badge badge-' + sexe.toLowerCase() + '" style="font-size:10px;">' + escapeHtml(sexe) + '</span>' : '')
                     + '</div>'
-                    + (a.club ? '<span style="color:#34d399;font-size:11px;">' + escapeHtml(a.club.replace(/\*\s*$/, '')) + '</span>' : '')
                     + '</a>';
             });
             resultsDiv.innerHTML = html;
