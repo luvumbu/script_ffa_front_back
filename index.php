@@ -5357,28 +5357,6 @@ function _renderClubTab(tab, suffix) {
                 }
             }
         }
-        // Courbe niveaux de performance
-        var nivCounts = {};
-        var nivOrd = {IE:100,IR:99};
-        ['N','R','D'].forEach(function(p){var b={N:90,R:80,D:70}[p];for(var i=1;i<=8;i++) nivOrd[p+i]=b-i;});
-        ep.forEach(function(e) {
-            (e.niveaux || []).forEach(function(n) { if (n && nivOrd[n]) nivCounts[n] = (nivCounts[n]||0) + 1; });
-        });
-        var nivChartKeys = Object.keys(nivCounts).sort(function(a,b){ return (nivOrd[a]||0) - (nivOrd[b]||0); });
-        var nivParAnnee = d.niveaux_par_annee || [];
-        if (nivChartKeys.length > 2) {
-            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
-            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">Distribution des niveaux</h4>';
-            html += '<canvas id="clubNivChart' + s + '" height="200"></canvas>';
-            html += '</div>';
-        }
-        if (nivParAnnee.length > 1) {
-            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
-            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">\u00c9volution par ann\u00e9e</h4>';
-            html += '<canvas id="clubNivYearChart' + s + '" height="200"></canvas>';
-            html += '</div>';
-        }
-
         var filteredEp = ep;
         if (discFilter) filteredEp = filteredEp.filter(function(e) { return discFilter.indexOf(e.discipline) !== -1; });
         if (nivFilter) filteredEp = filteredEp.filter(function(e) { return (e.niveaux||[]).some(function(n) { return nivFilter.indexOf(n) !== -1; }); });
@@ -5730,6 +5708,29 @@ function _renderClubTab(tab, suffix) {
             html += '</table></div>';
         }
 
+        // Courbes niveaux de compétition (déplacées depuis épreuves)
+        var nivCounts = {};
+        var nivOrd = {IE:100,IR:99};
+        ['N','R','D'].forEach(function(p){var b={N:90,R:80,D:70}[p];for(var i=1;i<=8;i++) nivOrd[p+i]=b-i;});
+        var epForNiv = d.epreuves || [];
+        epForNiv.forEach(function(e) {
+            (e.niveaux || []).forEach(function(n) { if (n && nivOrd[n]) nivCounts[n] = (nivCounts[n]||0) + 1; });
+        });
+        var nivChartKeys = Object.keys(nivCounts).sort(function(a,b){ return (nivOrd[a]||0) - (nivOrd[b]||0); });
+        var nivParAnnee = d.niveaux_par_annee || [];
+        if (nivChartKeys.length > 2) {
+            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">Distribution des niveaux de compétition</h4>';
+            html += '<canvas id="clubNivChart' + s + '" height="200"></canvas>';
+            html += '</div>';
+        }
+        if (nivParAnnee.length > 1) {
+            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">\u00c9volution des niveaux par ann\u00e9e</h4>';
+            html += '<canvas id="clubNivYearChart' + s + '" height="200"></canvas>';
+            html += '</div>';
+        }
+
     } else if (tab === 'resume') {
         // --- RESUME TEXTUEL DU CLUB (3 modes) ---
         var mode = window['_clubResumeMode' + s] || 'global';
@@ -5783,116 +5784,8 @@ function _renderClubTab(tab, suffix) {
         }
     }
     content.innerHTML = html;
-    // Post-render: courbe niveaux pour onglet épreuves
+    // Post-render: graphique comparaison années pour onglet épreuves
     if (tab === 'epreuves') {
-        var _ep = d.epreuves || [];
-        var _nivC = {}, _nivO = {IE:100,IR:99};
-        ['N','R','D'].forEach(function(p){var b={N:90,R:80,D:70}[p];for(var i=1;i<=8;i++) _nivO[p+i]=b-i;});
-        _ep.forEach(function(e) { (e.niveaux||[]).forEach(function(n){ if(n&&_nivO[n]) _nivC[n]=(_nivC[n]||0)+1; }); });
-        var _nck = Object.keys(_nivC).sort(function(a,b){ return (_nivO[a]||0)-(_nivO[b]||0); });
-        var _cvs = document.getElementById('clubNivChart' + s);
-        if (_cvs && _nck.length > 2) {
-            var _clrs = _nck.map(function(k){
-                var c=k.charAt(0);
-                return c==='I'?'#e879f9': c==='N'?'#fb7185': c==='R'?'#22d3ee': '#fb923c';
-            });
-            var _bgClrs = _nck.map(function(k){
-                var c=k.charAt(0);
-                return c==='I'?'#e879f920': c==='N'?'#fb718520': c==='R'?'#22d3ee20': '#fb923c20';
-            });
-            new Chart(_cvs, {
-                type: 'line',
-                data: {
-                    labels: _nck,
-                    datasets: [{
-                        label: '\u00c9preuves',
-                        data: _nck.map(function(k){ return _nivC[k]; }),
-                        borderColor: '#a29bfe',
-                        backgroundColor: '#a29bfe15',
-                        tension: 0.4,
-                        fill: true,
-                        pointBackgroundColor: _clrs,
-                        pointBorderColor: _clrs,
-                        pointRadius: 5,
-                        pointHoverRadius: 8,
-                        borderWidth: 2.5
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(ctx) { return ctx.parsed.y + ' \u00e9preuve' + (ctx.parsed.y > 1 ? 's' : ''); }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: '#1e2a3a' },
-                            ticks: {
-                                color: function(ctx) {
-                                    var lbl = ctx.tick.label || '';
-                                    var c = lbl.charAt(0);
-                                    return c==='I'?'#e879f9': c==='N'?'#fb7185': c==='R'?'#22d3ee': '#fb923c';
-                                },
-                                font: { weight: 'bold', size: 11 }
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#1e2a3a' },
-                            ticks: { color: '#5a6580', stepSize: 1 }
-                        }
-                    }
-                }
-            });
-        }
-        // Courbe évolution niveaux par année
-        var _npa = d.niveaux_par_annee || [];
-        var _ycvs = document.getElementById('clubNivYearChart' + s);
-        if (_ycvs && _npa.length > 1) {
-            var _yLabels = _npa.map(function(r){ return r.annee; });
-            var _families = [
-                { key:'D', label:'D\u00e9partemental', color:'#fb923c', bg:'#fb923c20' },
-                { key:'R', label:'R\u00e9gional', color:'#22d3ee', bg:'#22d3ee20' },
-                { key:'N', label:'National', color:'#fb7185', bg:'#fb718520' },
-                { key:'I', label:'International', color:'#e879f9', bg:'#e879f920' }
-            ];
-            var _yds = [];
-            _families.forEach(function(f) {
-                var hasData = _npa.some(function(r){ return (r[f.key]||0) > 0; });
-                if (hasData) {
-                    _yds.push({
-                        label: f.label,
-                        data: _npa.map(function(r){ return r[f.key]||0; }),
-                        borderColor: f.color,
-                        backgroundColor: f.bg,
-                        tension: 0.4,
-                        fill: false,
-                        pointRadius: 4,
-                        pointHoverRadius: 7,
-                        borderWidth: 2.5
-                    });
-                }
-            });
-            new Chart(_ycvs, {
-                type: 'line',
-                data: { labels: _yLabels, datasets: _yds },
-                options: {
-                    responsive: true,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyleWidth: 10, font: { size: 11 }, color: '#8b949e' } }
-                    },
-                    scales: {
-                        x: { grid: { color: '#1e2a3a' }, ticks: { color: '#8b949e', font: { size: 11 } } },
-                        y: { beginAtZero: true, grid: { color: '#1e2a3a' }, ticks: { color: '#5a6580' } }
-                    }
-                }
-            });
-        }
         // Graphique comparaison années
         var _cmpChartEl = document.getElementById('clubEpYearCmpChart' + s);
         var _cmpData = window['_clubEpYearCmpData' + s];
@@ -6023,6 +5916,81 @@ function _renderClubTab(tab, suffix) {
                     ]
                 },
                 options: { responsive: true, plugins: { legend: { position: 'top', labels: { usePointStyle: true, font: { size: 10 }, color: '#8b949e' } } }, scales: { x: { grid: { color: '#1e2a3a' }, ticks: { color: '#8b949e' } }, y: { grid: { color: '#1e2a3a' }, ticks: { color: '#8b949e' } } }, interaction: { intersect: false, mode: 'index' } }
+            });
+        }
+        // Distribution niveaux de compétition
+        var _ep = d.epreuves || [];
+        var _nivC = {}, _nivO = {IE:100,IR:99};
+        ['N','R','D'].forEach(function(p){var b={N:90,R:80,D:70}[p];for(var i=1;i<=8;i++) _nivO[p+i]=b-i;});
+        _ep.forEach(function(e) { (e.niveaux||[]).forEach(function(n){ if(n&&_nivO[n]) _nivC[n]=(_nivC[n]||0)+1; }); });
+        var _nck = Object.keys(_nivC).sort(function(a,b){ return (_nivO[a]||0)-(_nivO[b]||0); });
+        var _cvs = document.getElementById('clubNivChart' + s);
+        if (_cvs && _nck.length > 2) {
+            var _clrs = _nck.map(function(k){
+                var c=k.charAt(0);
+                return c==='I'?'#e879f9': c==='N'?'#fb7185': c==='R'?'#22d3ee': '#fb923c';
+            });
+            new Chart(_cvs, {
+                type: 'line',
+                data: {
+                    labels: _nck,
+                    datasets: [{
+                        label: '\u00c9preuves',
+                        data: _nck.map(function(k){ return _nivC[k]; }),
+                        borderColor: '#a29bfe',
+                        backgroundColor: '#a29bfe15',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: _clrs,
+                        pointBorderColor: _clrs,
+                        pointRadius: 5,
+                        pointHoverRadius: 8,
+                        borderWidth: 2.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(ctx) { return ctx.parsed.y + ' \u00e9preuve' + (ctx.parsed.y > 1 ? 's' : ''); } } }
+                    },
+                    scales: {
+                        x: { grid: { color: '#1e2a3a' }, ticks: { color: function(ctx) { var lbl=ctx.tick.label||'';var c=lbl.charAt(0);return c==='I'?'#e879f9':c==='N'?'#fb7185':c==='R'?'#22d3ee':'#fb923c'; }, font: { weight:'bold', size:11 } } },
+                        y: { beginAtZero: true, grid: { color: '#1e2a3a' }, ticks: { color: '#5a6580', stepSize: 1 } }
+                    }
+                }
+            });
+        }
+        // Évolution niveaux par année
+        var _npa = d.niveaux_par_annee || [];
+        var _ycvs = document.getElementById('clubNivYearChart' + s);
+        if (_ycvs && _npa.length > 1) {
+            var _yLabels = _npa.map(function(r){ return r.annee; });
+            var _families = [
+                { key:'D', label:'D\u00e9partemental', color:'#fb923c', bg:'#fb923c20' },
+                { key:'R', label:'R\u00e9gional', color:'#22d3ee', bg:'#22d3ee20' },
+                { key:'N', label:'National', color:'#fb7185', bg:'#fb718520' },
+                { key:'I', label:'International', color:'#e879f9', bg:'#e879f920' }
+            ];
+            var _yds = [];
+            _families.forEach(function(f) {
+                var hasData = _npa.some(function(r){ return (r[f.key]||0) > 0; });
+                if (hasData) {
+                    _yds.push({ label:f.label, data:_npa.map(function(r){return r[f.key]||0;}), borderColor:f.color, backgroundColor:f.bg, tension:0.4, fill:false, pointRadius:4, pointHoverRadius:7, borderWidth:2.5 });
+                }
+            });
+            new Chart(_ycvs, {
+                type: 'line',
+                data: { labels: _yLabels, datasets: _yds },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position:'bottom', labels: { padding:12, usePointStyle:true, pointStyleWidth:10, font:{size:11}, color:'#8b949e' } } },
+                    scales: {
+                        x: { grid:{color:'#1e2a3a'}, ticks:{color:'#8b949e', font:{size:11}} },
+                        y: { beginAtZero:true, grid:{color:'#1e2a3a'}, ticks:{color:'#5a6580'} }
+                    }
+                }
             });
         }
     }
