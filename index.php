@@ -4946,6 +4946,10 @@ function tutoGoStep(n) {
     // Scroll to top of tuto container
     var container = document.querySelector('.tuto-container');
     if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Auto-load step 2 club suggestions
+    if (n === 2 && !_tutoState.selectedClub) {
+        _tutoLoadClubSuggestions();
+    }
     // Auto-load step 3 club panel if club selected
     if (n === 3 && _tutoState.selectedClub && !document.getElementById('clubDetailNameTuto').textContent) {
         _tutoLoadClubPanel(_tutoState.selectedClub.id, _tutoState.selectedClub.name);
@@ -5061,6 +5065,31 @@ function _tutoSelectClub(id, name) {
     document.getElementById('tutoClubDone').style.display = 'block';
     document.getElementById('tutoClubSearchWrap').classList.remove('tuto-highlight');
     _tutoMarkComplete(2);
+}
+
+// Suggestions populaires (auto-loaded)
+function _tutoLoadClubSuggestions() {
+    var results = document.getElementById('tutoClubResults');
+    if (!results || _tutoState.selectedClub) return;
+    results.style.display = 'block';
+    results.innerHTML = '<div style="padding:8px 12px;color:#8b949e;font-size:11px;font-weight:600;">CLUBS POPULAIRES</div><div style="padding:12px;color:#5a6580;text-align:center;">Chargement...</div>';
+    fetch(BASE_API + '/clubs.php?limit=8')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success || !data.clubs || data.clubs.length === 0) return;
+            var html = '<div style="padding:8px 12px;color:#8b949e;font-size:11px;font-weight:600;">CLUBS POPULAIRES — cliquez pour sélectionner</div>';
+            data.clubs.forEach(function(c) {
+                html += '<div class="tuto-club-result" onclick="_tutoSelectClub(' + c.id_club + ', \'' + escapeHtml(c.nom_club).replace(/'/g, "\\'") + '\')">'
+                    + '<div style="flex:1;"><span style="color:#a29bfe;font-weight:600;">' + escapeHtml(c.nom_club) + '</span></div>'
+                    + '<span style="color:#34d399;font-size:12px;">' + (c.nb_athletes || 0) + ' athlètes</span>'
+                    + '</div>';
+            });
+            html += '<div style="padding:8px 12px;color:#5a6580;font-size:11px;text-align:center;font-style:italic;">...ou tapez un nom ci-dessus pour chercher</div>';
+            results.innerHTML = html;
+        })
+        .catch(function() {
+            results.innerHTML = '<div style="padding:8px 12px;color:#8b949e;font-size:11px;font-weight:600;">CLUBS POPULAIRES</div><div style="padding:12px;color:#ef4444;text-align:center;">Erreur de chargement</div>';
+        });
 }
 
 // ——— Step 3: Club panel (embedded) ———
