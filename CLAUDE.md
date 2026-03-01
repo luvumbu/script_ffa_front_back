@@ -57,6 +57,7 @@ BK/
 │   ├── reset.php       Remise a zero (?bdd=1 pour truncate)
 │   ├── clear_cache.php Vider cache (?prefix= pour cibler)
 │   ├── cache_urls.php  Pre-generation cache
+│   ├── fix_perf_int.php Correction INT perfs (padding dixiemes, ?go pour executer)
 │   └── logs.php        Visualisation logs (acces restreint par email)
 ├── Class/              53 classes utilitaires
 │   ├── DatabaseHandler.php  Wrapper BDD / ORM leger (63 KB)
@@ -408,6 +409,63 @@ $totalPages = ceil($total / $limit);
 - **AdSense** : Google AdSense (ca-pub-7899923856846249) dans `<head>`
 - **Footer SEO** : liens internes vers toutes les pages principales
 
+## Epreuves/Records club — UNION records + progressions
+L'onglet Epreuves et Records du panneau club utilise un **UNION de `athlete_records` + `athlete_progressions`** pour afficher des donnees completes.
+
+### Pourquoi
+`athlete_records` ne contient qu'1 record perso par athlete/epreuve. Si le record a ete etabli dans un autre club, l'epreuve n'apparaissait pas. `athlete_progressions` a `id_club` directement (FK) et contient les progressions annuelles = plus complet.
+
+### Variables cles (club_stats.php)
+- `$athFilterProg` : variante de `$athFilter` avec `ap.id_athlete` au lieu de `ac.id_athlete`
+- `$progFilterYear` : filtre annee pour progressions (`AND ap.annee_progression = $annee`)
+- `$epUnionSub` : sous-requete UNION reutilisable `SELECT DISTINCT (id_epreuve, id_athlete)` depuis records + progressions
+- `$recUnionSub` : sous-requete UNION pour records avec `ROW_NUMBER()` dedup par (athlete, epreuve)
+
+### 7 requetes modifiees
+1. Total epreuves : `COUNT(DISTINCT id_epreuve)` depuis UNION
+2. Liste epreuves paginee : `GROUP BY` sur UNION + ORDER BY discipline
+3. Niveaux par epreuve : `JOIN athlete_resultats` sur UNION
+4. Best perf par sexe : 2 queries (records + progressions) + merge via `_updateBestBySex()`
+5. Total records : `COUNT` avec `GROUP BY athlete+epreuve` pour dedup
+6. Records pagines : `ROW_NUMBER() OVER (PARTITION BY athlete, epreuve)` pour garder la meilleure perf
+7. Top 10 epreuves : `COUNT(DISTINCT athlete)` sur UNION
+
+### Regles
+- **Mode perso** (`?perso=1`) : seulement `athlete_records` sans filtre membership (inchange)
+- **Mode non-perso** (records du club) : UNION records + progressions
+- **Performances invalides** : filtrees avec `WHERE performance > 0` partout
+- **Helper `_updateBestBySex()`** : compare temps vs distance, ignore `perfInt <= 0`
+
+## performanceToInt() — Conversion perf brut → entier
+Fonction statique dans `Class/AthleteScraper.php` (ligne ~951). Convertit les performances texte en centièmes/centimètres (INT).
+
+### 7 patterns (dans l'ordre de matching)
+| Pattern | Exemple | Resultat | Notes |
+|---------|---------|----------|-------|
+| `Xh Y'ZZ''CC` | `1h23'45''12` | `(1*3600+23*60+45)*100+12` | Heures |
+| `X'YY''CC` | `3'43''65` | `(3*60+43)*100+65` | Minutes+centièmes |
+| `X'YY` | `12'09` | `(12*60+9)*100` | Minutes sans centièmes |
+| `XX''CC` | `10''48` | `10*100+48 = 1048` | Secondes+centièmes |
+| `XmYY` | `6m30` | `6*100+30 = 630` | Distance metres |
+| `X.YY` | `7.34` | `7*100+34 = 734` | Distance decimale |
+| `XXXX` | `734` | `734*100 = 73400` | Entier seul |
+
+### ATTENTION — Padding des dixiemes (str_pad)
+Quand il n'y a qu'1 chiffre apres `''`, `m` ou `.`, c'est un **dixieme** (pas un centieme).
+`str_pad($digit, 2, '0', STR_PAD_RIGHT)` transforme `'9'` → `'90'`.
+
+| Brut | Sans padding (BUG) | Avec padding (CORRECT) |
+|------|--------------------|------------------------|
+| `10''9` | 1009 (10.09s) | 1090 (10.9s) |
+| `1'53''3` | 11303 (1:53.03) | 11330 (1:53.30) |
+| `6m3` | 603 (6.03m) | 630 (6.30m) |
+
+### Script de correction BDD
+`admin/fix_perf_int.php` — corrige les INT existants pour les perfs avec 1 seul chiffre apres `''`.
+- Sans param : dry run (montre le nombre de lignes affectees)
+- `?go` : execute la correction SQL : `FLOOR(perf/100)*100 + MOD(perf,100)*10`
+- Tables corrigees : `athlete_records`, `athlete_progressions`, `athlete_resultats`
+
 ## Points d'attention CRITIQUES
 - `index.php` est ENORME (~8400 lignes) : PHP + HTML + JS tout-en-un. Lire par sections.
 - `index.php` inclut `core/db.php` → `$conn` disponible pour requetes directes (ex: select nationalites)
@@ -418,5 +476,6 @@ $totalPages = ceil($total / $limit);
 - Club names from API may contain `*` suffix → utiliser `rtrim($club, '* ')` dans les liens
 - Clubs >5000 athletes exclus des resultats search sauf si filtre club explicite
 - Detection temps vs distance pour tri : REGEXP sur nom epreuve (Poids|Disque|Javelot|etc = DESC)
+- Performances avec `performance_int = 0` ou `NULL` = conversions echouees → toujours filtrer `> 0`
 - FK vers epreuves/villes/clubs = ON DELETE SET NULL (pas CASCADE)
 - FK vers athletes = ON DELETE CASCADE (supprime toutes les donnees liees)
