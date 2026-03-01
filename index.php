@@ -724,6 +724,7 @@ if ($page === 'accueil'):
     <div class="table-wrap">
     <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Recherches</th></tr></table>
     <table class="bk-table"><tbody id="topSearchClubsBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Recherches</th></tr></table>
     </div>
     <div id="topSearchClubsPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
 </div>
@@ -735,6 +736,7 @@ if ($page === 'accueil'):
     <div class="table-wrap">
     <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Recherches</th></tr></table>
     <table class="bk-table"><tbody id="topSearchAthBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Recherches</th></tr></table>
     </div>
     <div id="topSearchAthPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
 </div>
@@ -5701,11 +5703,12 @@ function _renderClubTab(tab, suffix) {
         var tv = d.top_villes || [];
         if (tv.length > 0) {
             html += '<h4 style="color:#8b949e;font-size:13px;margin:16px 0 8px;">Principaux lieux de compétition</h4>';
-            html += '<div class="table-wrap"><table class="bk-table"><tr><th>#</th><th>Ville</th><th>Résultats</th><th>Athlètes</th></tr>';
+            var _tvTh = '<tr><th>#</th><th>Ville</th><th>Résultats</th><th>Athlètes</th></tr>';
+            html += '<div class="table-wrap"><table class="bk-table">' + _tvTh + '</table><table class="bk-table">';
             tv.forEach(function(v, i) {
                 html += '<tr><td>' + (i+1) + '</td><td><a href="?page=villes&open=' + encodeURIComponent(v.ville) + '" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(v.ville) + '</a></td><td>' + v.nb_resultats + '</td><td>' + v.nb_athletes + '</td></tr>';
             });
-            html += '</table></div>';
+            html += '</table><table class="bk-table">' + _tvTh + '</table></div>';
         }
 
         // Courbes niveaux de compétition (déplacées depuis épreuves)
@@ -6887,6 +6890,96 @@ function _buildEpYearCmpHTML(cmpData, suffix) {
         h += '</div>';
     });
     h += '</div></div>';
+    // Résumé textuel comparatif
+    h += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
+    h += '<h4 style="margin:0 0 12px;color:#c9d1d9;font-size:14px;">Résumé comparatif</h4>';
+    h += '<div style="color:#c9d1d9;font-size:13px;line-height:1.8;">';
+    var _rLines = [];
+    // Meilleure année par métrique
+    var _mKeys = [
+        {k:'total_epreuves', l:'épreuves'},
+        {k:'total_athletes', l:'athlètes'},
+        {k:'total_records', l:'records'},
+        {k:'nb_resultats', l:'résultats'}
+    ];
+    _mKeys.forEach(function(m) {
+        var best = null, bestV = -1;
+        years.forEach(function(y) {
+            var v = cmpData[y][m.k] || 0;
+            if (v > bestV) { bestV = v; best = y; }
+        });
+        if (best && bestV > 0) {
+            var worst = null, worstV = Infinity;
+            years.forEach(function(y) {
+                var v = cmpData[y][m.k] || 0;
+                if (v < worstV) { worstV = v; worst = y; }
+            });
+            var diff = bestV - worstV;
+            _rLines.push('<b>' + best + '</b> est la meilleure année en <span style="color:#a29bfe;">' + m.l + '</span> avec <b>' + bestV.toLocaleString('fr-FR') + '</b>' + (diff > 0 && worst !== best ? ' (<span style="color:#55efc4;">+' + diff.toLocaleString('fr-FR') + '</span> vs ' + worst + ')' : '') + '.');
+        }
+    });
+    // Évolution médailles
+    var _medTotals = {};
+    years.forEach(function(y) {
+        var med = cmpData[y].medailles || {};
+        _medTotals[y] = (med.or || 0) + (med.argent || 0) + (med.bronze || 0);
+    });
+    var _bestMedY = null, _bestMedV = -1;
+    years.forEach(function(y) { if (_medTotals[y] > _bestMedV) { _bestMedV = _medTotals[y]; _bestMedY = y; } });
+    if (_bestMedY && _bestMedV > 0) {
+        _rLines.push('<b>' + _bestMedY + '</b> cumule le plus de <span style="color:#ffd700;">médailles</span> avec <b>' + _bestMedV + '</b> au total.');
+    }
+    // Or spécifiquement
+    var _bestOrY = null, _bestOrV = -1;
+    years.forEach(function(y) { var v = (cmpData[y].medailles||{}).or||0; if(v>_bestOrV){_bestOrV=v;_bestOrY=y;} });
+    if (_bestOrY && _bestOrV > 0) {
+        _rLines.push('<b>' + _bestOrY + '</b> détient le record de <span style="color:#ffd700;">médailles d\'or</span> avec <b>' + _bestOrV + '</b>.');
+    }
+    // Tendance (première vs dernière année)
+    if (years.length >= 2) {
+        var first = years[0], last = years[years.length - 1];
+        var _trends = [];
+        _mKeys.forEach(function(m) {
+            var vF = cmpData[first][m.k] || 0;
+            var vL = cmpData[last][m.k] || 0;
+            if (vF > 0 && vL > 0) {
+                var pct = Math.round((vL - vF) / vF * 100);
+                if (pct !== 0) {
+                    _trends.push({l: m.l, pct: pct, up: pct > 0});
+                }
+            }
+        });
+        if (_trends.length > 0) {
+            var ups = _trends.filter(function(t){return t.up;});
+            var downs = _trends.filter(function(t){return !t.up;});
+            if (ups.length > 0) {
+                _rLines.push('Entre <b>' + first + '</b> et <b>' + last + '</b>, progression en ' + ups.map(function(t){return '<span style="color:#55efc4;">' + t.l + ' (+' + t.pct + '%)</span>';}).join(', ') + '.');
+            }
+            if (downs.length > 0) {
+                _rLines.push('En revanche, baisse en ' + downs.map(function(t){return '<span style="color:#ff6b6b;">' + t.l + ' (' + t.pct + '%)</span>';}).join(', ') + '.');
+            }
+        }
+    }
+    // Niveaux compétition
+    var _nivFams = ['D','R','N','I'];
+    var _nivLabels = {D:'départemental',R:'régional',N:'national',I:'international'};
+    var _nivClrs = {D:'#fb923c',R:'#22d3ee',N:'#fb7185',I:'#e879f9'};
+    _nivFams.forEach(function(fam) {
+        var bestY = null, bestV = -1;
+        years.forEach(function(y) {
+            var npa = cmpData[y].niveaux_par_annee || [];
+            var found = npa.find(function(n){return n.annee==y;});
+            var v = found ? (found[fam]||0) : 0;
+            if (v > bestV) { bestV = v; bestY = y; }
+        });
+        if (bestY && bestV > 0) {
+            _rLines.push('Niveau <span style="color:' + _nivClrs[fam] + ';">' + _nivLabels[fam] + '</span> : <b>' + bestY + '</b> en tête avec <b>' + bestV + '</b> résultats.');
+        }
+    });
+    _rLines.forEach(function(line) {
+        h += '<p style="margin:0 0 6px;padding-left:12px;border-left:2px solid #1e2a3a;">' + line + '</p>';
+    });
+    h += '</div></div>';
     return h;
 }
 function _clubSetEpYear(year, suffix) {
@@ -7105,12 +7198,13 @@ function _renderEpreuveTab(tab) {
         });
         html += '</div>';
         // Table nationalités
-        html += '<div class="table-wrap"><table class="bk-table"><tr><th>#</th><th>Nationalité</th><th>Athlètes</th><th>%</th></tr>';
+        var _natTh = '<tr><th>#</th><th>Nationalité</th><th>Athlètes</th><th>%</th></tr>';
+        html += '<div class="table-wrap"><table class="bk-table">' + _natTh + '</table><table class="bk-table">';
         keys.forEach(function(k, i) {
             var pct = totalNat > 0 ? Math.round(nat[k] / totalNat * 100) : 0;
             html += '<tr><td>' + (i+1) + '</td><td><b>' + escapeHtml(k) + '</b></td><td>' + nat[k].toLocaleString('fr-FR') + '</td><td><div style="display:flex;align-items:center;gap:6px;"><div style="width:60px;height:6px;background:#1a2540;border-radius:3px;"><div style="width:' + Math.min(pct,100) + '%;height:100%;background:#a78bfa;border-radius:3px;"></div></div><span style="font-size:12px;">' + pct + '%</span></div></td></tr>';
         });
-        html += '</table></div>';
+        html += '</table><table class="bk-table">' + _natTh + '</table></div>';
         // Categories section
         if (catKeys.length > 0) {
             var totalCat = 0;
@@ -7166,7 +7260,8 @@ function _renderEpreuveTab(tab) {
         // Medailles detail table
         if (medDet.length > 0) {
             html += '<h4 style="color:#8b949e;font-size:13px;margin:0 0 8px;">Dernières médailles</h4>';
-            html += '<div class="table-wrap"><table class="bk-table"><tr><th>Médaille</th><th>Athlète</th><th>Compétition</th><th>Lieu</th><th>Année</th></tr>';
+            var _medTh = '<tr><th>Médaille</th><th>Athlète</th><th>Compétition</th><th>Lieu</th><th>Année</th></tr>';
+            html += '<div class="table-wrap"><table class="bk-table">' + _medTh + '</table><table class="bk-table">';
             medDet.forEach(function(m) {
                 var ico = m.type === 'or' ? '\uD83E\uDD47' : (m.type === 'argent' ? '\uD83E\uDD48' : '\uD83E\uDD49');
                 html += '<tr><td>' + ico + ' ' + escapeHtml(m.type) + '</td>';
@@ -7175,7 +7270,7 @@ function _renderEpreuveTab(tab) {
                 html += '<td>' + (m.lieu ? '<a href="?page=villes&open=' + encodeURIComponent(m.lieu) + '" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(m.lieu) + '</a>' : '-') + '</td>';
                 html += '<td>' + (m.annee || '-') + '</td></tr>';
             });
-            html += '</table></div>';
+            html += '</table><table class="bk-table">' + _medTh + '</table></div>';
         }
 
         // Podiums detail
@@ -7216,21 +7311,23 @@ function _renderEpreuveTab(tab) {
         // Top clubs
         if (topClubs.length > 0) {
             html += '<h4 style="color:#8b949e;font-size:13px;margin:16px 0 8px;">Principaux clubs</h4>';
-            html += '<div class="table-wrap"><table class="bk-table"><tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th></tr>';
+            var _tcTh = '<tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th></tr>';
+            html += '<div class="table-wrap"><table class="bk-table">' + _tcTh + '</table><table class="bk-table">';
             topClubs.forEach(function(c, i) {
                 html += '<tr><td>' + (i+1) + '</td><td><a href="#" onclick="openClubDetail(null,\'' + escapeHtml(c.club).replace(/'/g,"\\'") + '\');return false;" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(c.club) + '</a></td><td>' + c.nb_athletes + '</td><td>' + c.nb_records + '</td></tr>';
             });
-            html += '</table></div>';
+            html += '</table><table class="bk-table">' + _tcTh + '</table></div>';
         }
 
         // Top villes
         if (topVilles.length > 0) {
             html += '<h4 style="color:#8b949e;font-size:13px;margin:16px 0 8px;">Principaux lieux de compétition</h4>';
-            html += '<div class="table-wrap"><table class="bk-table"><tr><th>#</th><th>Ville</th><th>Records</th><th>Athlètes</th></tr>';
+            var _tveTh = '<tr><th>#</th><th>Ville</th><th>Records</th><th>Athlètes</th></tr>';
+            html += '<div class="table-wrap"><table class="bk-table">' + _tveTh + '</table><table class="bk-table">';
             topVilles.forEach(function(v, i) {
                 html += '<tr><td>' + (i+1) + '</td><td><a href="?page=villes&open=' + encodeURIComponent(v.ville) + '" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(v.ville) + '</a></td><td>' + v.nb_records + '</td><td>' + v.nb_athletes + '</td></tr>';
             });
-            html += '</table></div>';
+            html += '</table><table class="bk-table">' + _tveTh + '</table></div>';
         }
 
         // Evolution par annee
