@@ -11,13 +11,24 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['success' => false, 'error' => 'Methode POST requise'], 405);
 }
 
-// === RATE LIMITING : 3 tentatives par IP ===
+// === RATE LIMITING : 5 tentatives par jour par IP ===
 $attemptsFile = __DIR__ . '/../../logs/.admin_attempts.php';
 $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 $ip = explode(',', $ip)[0];
 $ip = trim($ip);
-$maxAttempts = 3;
-$blockDuration = 3600; // 1h de blocage
+$maxAttempts = 5;
+$blockDuration = 86400; // 24h de blocage
+
+// Whitelist Google + Hostinger (illimite)
+$whitelistPrefixes = ['66.249.', '66.102.', '64.233.', '72.14.', '74.125.', '209.85.', '216.239.', '35.', '34.', '153.92.', '31.170.', '185.201.', '127.0.0.1', '::1'];
+$isWhitelisted = false;
+foreach ($whitelistPrefixes as $prefix) {
+    if (strpos($ip, $prefix) === 0) { $isWhitelisted = true; break; }
+}
+if ($isWhitelisted) {
+    // Skip rate limiting pour Google/Hostinger
+    goto skipRateLimit;
+}
 
 // Lire les tentatives
 $attempts = [];
@@ -46,6 +57,7 @@ if ($ipData['blocked_until'] > $now) {
     ], 429);
 }
 
+skipRateLimit:
 $input = json_decode(file_get_contents('php://input'), true);
 $email    = trim($input['email'] ?? '');
 $password = $input['password'] ?? '';
@@ -136,7 +148,7 @@ if (!$user) {
     $r = recordFailure($attemptsFile, $attempts, $ip, $maxAttempts, $blockDuration);
     $resp = ['success' => false, 'error' => 'Identifiant ou mot de passe incorrect'];
     if ($r['blocked']) {
-        $resp['error'] = 'Trop de tentatives. IP bloquee pour 1 heure.';
+        $resp['error'] = 'Trop de tentatives. IP bloquee pour 24 heures.';
         $resp['blocked'] = true;
     } else {
         $resp['remaining'] = $r['remaining'];
@@ -157,7 +169,7 @@ if (!verifyPassword($password, $user['password_hash'])) {
     $r = recordFailure($attemptsFile, $attempts, $ip, $maxAttempts, $blockDuration);
     $resp = ['success' => false, 'error' => 'Identifiant ou mot de passe incorrect'];
     if ($r['blocked']) {
-        $resp['error'] = 'Trop de tentatives. IP bloquee pour 1 heure.';
+        $resp['error'] = 'Trop de tentatives. IP bloquee pour 24 heures.';
         $resp['blocked'] = true;
     } else {
         $resp['remaining'] = $r['remaining'];
