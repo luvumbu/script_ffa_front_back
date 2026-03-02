@@ -33,6 +33,35 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
+// === ACTIONS POST (ignore/unignore IP search tracking) ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['st_action'])) {
+    $stIgnFile = __DIR__ . '/../logs/.st_ignored_ips.php';
+    $stIgnored = [];
+    if (file_exists($stIgnFile)) {
+        $raw = file_get_contents($stIgnFile);
+        $pos = strpos($raw, "\n");
+        if ($pos !== false) $stIgnored = json_decode(substr($raw, $pos + 1), true) ?: [];
+    }
+    if ($_POST['st_action'] === 'ignore_ip' && !empty($_POST['ip'])) {
+        $ip = trim($_POST['ip']);
+        $label = trim($_POST['label'] ?? '');
+        $stIgnored[$ip] = ['added' => date('Y-m-d H:i:s'), 'label' => $label];
+        file_put_contents($stIgnFile, "<?php die('Acces interdit'); ?>\n" . json_encode($stIgnored, JSON_PRETTY_PRINT));
+    } elseif ($_POST['st_action'] === 'unignore_ip' && !empty($_POST['ip'])) {
+        unset($stIgnored[trim($_POST['ip'])]);
+        file_put_contents($stIgnFile, "<?php die('Acces interdit'); ?>\n" . json_encode($stIgnored, JSON_PRETTY_PRINT));
+    } elseif ($_POST['st_action'] === 'reset_tracking') {
+        $resetType = $_POST['reset_type'] ?? '';
+        if ($resetType === 'athlete') $conn->query("DELETE FROM search_tracking WHERE search_type = 'athlete'");
+        elseif ($resetType === 'club') $conn->query("DELETE FROM search_tracking WHERE search_type = 'club'");
+        elseif ($resetType === 'all') $conn->query("TRUNCATE TABLE search_tracking");
+        $files = glob(__DIR__ . '/../cache/topsearched_*.json');
+        if ($files) array_map('unlink', $files);
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI'] . '#stSection');
+    exit;
+}
+
 // ============================================================
 // DATA COLLECTION
 // ============================================================
@@ -366,21 +395,100 @@ if ($resContact) {
 $unreadCount = 0;
 foreach ($contactMessages as $cm) { if (!$cm['lu']) $unreadCount++; }
 
-// === SEARCH TRACKING STATS ===
-$stTotal = 0; $stByType = []; $stBySource = []; $stTopQueries = [];
-$stToday = 0; $stWeek = 0;
-$rSt = $conn->query("SELECT COUNT(*) as c FROM search_tracking");
-if ($rSt) $stTotal = (int)$rSt->fetch_assoc()['c'];
-$rSt2 = $conn->query("SELECT COUNT(*) as c FROM search_tracking WHERE created_at >= CURDATE()");
-if ($rSt2) $stToday = (int)$rSt2->fetch_assoc()['c'];
-$rSt3 = $conn->query("SELECT COUNT(*) as c FROM search_tracking WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
-if ($rSt3) $stWeek = (int)$rSt3->fetch_assoc()['c'];
-$rSt4 = $conn->query("SELECT search_type, COUNT(*) as c FROM search_tracking GROUP BY search_type ORDER BY c DESC");
-if ($rSt4) while ($row = $rSt4->fetch_assoc()) $stByType[$row['search_type']] = (int)$row['c'];
-$rSt5 = $conn->query("SELECT source, COUNT(*) as c FROM search_tracking GROUP BY source ORDER BY c DESC");
-if ($rSt5) while ($row = $rSt5->fetch_assoc()) $stBySource[$row['source']] = (int)$row['c'];
-$rSt6 = $conn->query("SELECT query_text, search_type, COUNT(*) as c, COUNT(DISTINCT ip) as ips FROM search_tracking WHERE query_text != '' GROUP BY query_text, search_type ORDER BY c DESC LIMIT 20");
-if ($rSt6) while ($row = $rSt6->fetch_assoc()) $stTopQueries[] = $row;
+// === SEARCH TRACKING — FULL DATA ===
+// IPs ignorees
+$stIgnFile = __DIR__ . '/../logs/.st_ignored_ips.php';
+$stIgnoredIps = [];
+if (file_exists($stIgnFile)) {
+    $raw = file_get_contents($stIgnFile);
+    $pos = strpos($raw, "\n");
+    if ($pos !== false) $stIgnoredIps = json_decode(substr($raw, $pos + 1), true) ?: [];
+}
+$stIpFilter = '';
+if (!empty($stIgnoredIps)) {
+    $ips = array_map(function($ip) use ($conn) { return "'" . $conn->real_escape_string($ip) . "'"; }, array_keys($stIgnoredIps));
+    $stIpFilter = " AND ip NOT IN (" . implode(',', $ips) . ")";
+}
+
+// Compteurs globaux
+$stTotal = $stToday = $stWeek = $stMonth = $stUniqueIps = 0;
+$r = $conn->query("SELECT COUNT(*) as c FROM search_tracking WHERE 1=1 $stIpFilter"); if ($r) $stTotal = (int)$r->fetch_assoc()['c'];
+$r = $conn->query("SELECT COUNT(*) as c FROM search_tracking WHERE created_at >= CURDATE() $stIpFilter"); if ($r) $stToday = (int)$r->fetch_assoc()['c'];
+$r = $conn->query("SELECT COUNT(*) as c FROM search_tracking WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) $stIpFilter"); if ($r) $stWeek = (int)$r->fetch_assoc()['c'];
+$r = $conn->query("SELECT COUNT(*) as c FROM search_tracking WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) $stIpFilter"); if ($r) $stMonth = (int)$r->fetch_assoc()['c'];
+$r = $conn->query("SELECT COUNT(DISTINCT ip) as c FROM search_tracking WHERE 1=1 $stIpFilter"); if ($r) $stUniqueIps = (int)$r->fetch_assoc()['c'];
+
+// Taux succes
+$stSuccessRate = 0;
+$r = $conn->query("SELECT SUM(result_count > 0) as ok, COUNT(*) as tot FROM search_tracking WHERE source='live_search' $stIpFilter");
+if ($r) { $row = $r->fetch_assoc(); $stSuccessRate = $row['tot'] > 0 ? round(100 * $row['ok'] / $row['tot']) : 0; }
+
+// Derniere recherche
+$stLastSearch = null;
+$r = $conn->query("SELECT created_at FROM search_tracking WHERE 1=1 $stIpFilter ORDER BY id_search DESC LIMIT 1");
+if ($r && ($row = $r->fetch_assoc())) $stLastSearch = $row['created_at'];
+
+// Par type
+$stByType = [];
+$r = $conn->query("SELECT search_type, COUNT(*) as c, COUNT(DISTINCT ip) as ips FROM search_tracking WHERE 1=1 $stIpFilter GROUP BY search_type ORDER BY c DESC");
+if ($r) while ($row = $r->fetch_assoc()) $stByType[] = $row;
+
+// Par source
+$stBySource = [];
+$r = $conn->query("SELECT source, COUNT(*) as c, COUNT(DISTINCT ip) as ips FROM search_tracking WHERE 1=1 $stIpFilter GROUP BY source ORDER BY c DESC");
+if ($r) while ($row = $r->fetch_assoc()) $stBySource[] = $row;
+
+// 14 derniers jours
+$stParJour = [];
+$r = $conn->query("SELECT DATE(created_at) as d,
+    COUNT(*) as total,
+    SUM(search_type='athlete') as athlete, SUM(search_type='club') as club,
+    SUM(search_type='epreuve') as epreuve, SUM(search_type='ville') as ville,
+    SUM(search_type='general') as general
+    FROM search_tracking WHERE created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) $stIpFilter
+    GROUP BY DATE(created_at) ORDER BY d ASC");
+if ($r) while ($row = $r->fetch_assoc()) $stParJour[] = $row;
+
+// Distribution horaire
+$stParHeure = array_fill(0, 24, 0);
+$r = $conn->query("SELECT HOUR(created_at) as h, COUNT(*) as c FROM search_tracking WHERE 1=1 $stIpFilter GROUP BY HOUR(created_at)");
+if ($r) while ($row = $r->fetch_assoc()) $stParHeure[(int)$row['h']] = (int)$row['c'];
+
+// Top queries
+$stTopQueries = [];
+$r = $conn->query("SELECT query_text, search_type, COUNT(*) as c, COUNT(DISTINCT ip) as ips,
+    ROUND(AVG(result_count)) as avg_results, MAX(created_at) as last_at
+    FROM search_tracking WHERE query_text != '' $stIpFilter GROUP BY query_text, search_type ORDER BY c DESC LIMIT 50");
+if ($r) while ($row = $r->fetch_assoc()) $stTopQueries[] = $row;
+
+// TOUS les athletes
+$stAllAthletes = [];
+$r = $conn->query("SELECT query_text, entity_name, entity_id, ip, source, page, result_count, created_at
+    FROM search_tracking WHERE search_type='athlete' $stIpFilter ORDER BY created_at DESC");
+if ($r) while ($row = $r->fetch_assoc()) $stAllAthletes[] = $row;
+
+// TOUS les clubs
+$stAllClubs = [];
+$r = $conn->query("SELECT query_text, entity_name, entity_id, ip, source, page, result_count, created_at
+    FROM search_tracking WHERE search_type='club' $stIpFilter ORDER BY created_at DESC");
+if ($r) while ($row = $r->fetch_assoc()) $stAllClubs[] = $row;
+
+// Top entites (epreuves + villes)
+$stTopEntities = [];
+$r = $conn->query("SELECT entity_name, search_type, COUNT(*) as c, COUNT(DISTINCT ip) as ips
+    FROM search_tracking WHERE search_type IN ('epreuve','ville') AND entity_name IS NOT NULL AND entity_name != '' $stIpFilter
+    GROUP BY entity_name, search_type ORDER BY c DESC LIMIT 50");
+if ($r) while ($row = $r->fetch_assoc()) $stTopEntities[] = $row;
+
+// Toutes les IPs
+$stTopIps = [];
+$r = $conn->query("SELECT ip, COUNT(*) as c, COUNT(DISTINCT query_text) as queries, MAX(created_at) as last_at
+    FROM search_tracking WHERE 1=1 $stIpFilter GROUP BY ip ORDER BY c DESC");
+if ($r) while ($row = $r->fetch_assoc()) $stTopIps[] = $row;
+
+// IP du visiteur actuel
+$stMyIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+$stMyIp = trim(explode(',', $stMyIp)[0]);
 
 $conn->close();
 
@@ -620,8 +728,8 @@ $actionColors = [
             <td class="time"><?= htmlspecialchars($log['ts']) ?></td>
             <td class="mono"><?= htmlspecialchars($log['ip']) ?></td>
             <td><span class="badge" style="background:<?= $acColor ?>25;color:<?= $acColor ?>;"><?= htmlspecialchars($ac) ?></span></td>
-            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($log['page']) ?>"><?= htmlspecialchars($log['page']) ?></td>
-            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($log['detail']) ?>"><?= htmlspecialchars(mb_substr($log['detail'], 0, 60)) ?></td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($log['page']) ?>"><a href="https://bokonzi.com<?= htmlspecialchars($log['page']) ?>" target="_blank" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($log['page']) ?></a></td>
+            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($log['detail']) ?>"><?php $__det = $log['detail']; if (strpos($__det, '/?') === 0 || strpos($__det, '/api/') === 0): ?><a href="https://bokonzi.com<?= htmlspecialchars($__det) ?>" target="_blank" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars(mb_substr($__det, 0, 60)) ?></a><?php else: ?><?= htmlspecialchars(mb_substr($__det, 0, 60)) ?><?php endif; ?></td>
             <td><?= $log['uname'] ? '<span style="color:#55efc4;">' . htmlspecialchars($log['uname']) . '</span>' : '<span class="dim">-</span>' ?></td>
             <td class="dim"><?= htmlspecialchars($log['screen']) ?></td>
             <td class="dim"><?= htmlspecialchars($log['lang']) ?></td>
@@ -1790,40 +1898,356 @@ function _markAllRead() {
 </script>
 
 <!-- ============================================================ -->
-<!-- SECTION 15 : SEARCH TRACKING -->
+<!-- SECTION 15 : SEARCH TRACKING — INTERACTIF -->
 <!-- ============================================================ -->
+<div id="stSection"></div>
+<script>
+var ST_DATA = <?= json_encode([
+    'totals' => ['total'=>$stTotal,'today'=>$stToday,'week'=>$stWeek,'month'=>$stMonth,'uniqueIps'=>$stUniqueIps,'successRate'=>$stSuccessRate,'lastSearch'=>$stLastSearch],
+    'byType' => $stByType,
+    'bySource' => $stBySource,
+    'parJour' => $stParJour,
+    'parHeure' => $stParHeure,
+    'topQueries' => $stTopQueries,
+    'allAthletes' => $stAllAthletes,
+    'allClubs' => $stAllClubs,
+    'topEntities' => $stTopEntities,
+    'topIps' => $stTopIps,
+    'ignoredIps' => $stIgnoredIps,
+    'myIp' => $stMyIp
+], JSON_UNESCAPED_UNICODE) ?>;
+</script>
+
 <div class="section"><h2 style="color:#34d399;font-size:16px;border-color:#34d39940;">&#128270; Search Tracking</h2></div>
-<div class="stats-cards">
-    <div class="card"><div class="num" style="color:#34d399;"><?= number_format($stTotal) ?></div><div class="label">Total recherches</div></div>
-    <div class="card"><div class="num" style="color:#a29bfe;"><?= number_format($stToday) ?></div><div class="label">Aujourd'hui</div></div>
-    <div class="card"><div class="num" style="color:#f59e0b;"><?= number_format($stWeek) ?></div><div class="label">7 derniers jours</div></div>
+
+<!-- KPI Cards -->
+<div class="grid">
+    <div class="card" style="border-color:#34d39940;"><div class="num" style="color:#34d399;"><?= number_format($stTotal) ?></div><div class="label">Total recherches</div></div>
+    <div class="card" style="border-color:#a29bfe40;"><div class="num" style="color:#a29bfe;"><?= number_format($stToday) ?></div><div class="label">Aujourd'hui</div></div>
+    <div class="card" style="border-color:#f59e0b40;"><div class="num" style="color:#f59e0b;"><?= number_format($stWeek) ?></div><div class="label">7 jours</div></div>
+    <div class="card" style="border-color:#3b82f640;"><div class="num" style="color:#60a5fa;"><?= number_format($stMonth) ?></div><div class="label">30 jours</div></div>
+    <div class="card" style="border-color:#10b98140;"><div class="num" style="color:#10b981;"><?= number_format($stUniqueIps) ?></div><div class="label">IPs uniques</div></div>
+    <div class="card" style="border-color:#55efc440;"><div class="num" style="color:#55efc4;"><?= $stSuccessRate ?>%</div><div class="label">Taux succes</div></div>
+    <div class="card" style="border-color:#ef444440;"><div class="num" style="color:#ef4444;"><?= count($stIgnoredIps) ?></div><div class="label">IPs ignorees</div></div>
+    <div class="card" style="border-color:#ec489940;"><div class="num" style="color:#ec4899;font-size:16px;"><?= $stLastSearch ? date('H:i:s', strtotime($stLastSearch)) : '-' ?></div><div class="label">Derniere recherche</div></div>
 </div>
-<div class="stats-cards" style="margin-top:8px;">
-    <?php foreach ($stByType as $t => $c): ?>
-    <div class="card" style="border-color:#34d39930;"><div class="num" style="color:#34d399;font-size:20px;"><?= number_format($c) ?></div><div class="label"><?= $t ?></div></div>
+
+<!-- Par type + source (mini cards) -->
+<div style="padding:0 24px;display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+    <?php
+    $typeColors = ['athlete'=>'#f59e0b','club'=>'#8b5cf6','epreuve'=>'#3b82f6','ville'=>'#10b981','general'=>'#6366f1'];
+    $sourceColors = ['live_search'=>'#34d399','page_view'=>'#a29bfe','panel_open'=>'#f59e0b'];
+    foreach ($stByType as $bt): $tc = $typeColors[$bt['search_type']] ?? '#5a6580'; ?>
+    <span style="background:<?=$tc?>15;border:1px solid <?=$tc?>40;color:<?=$tc?>;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700;"><?=$bt['search_type']?> <b><?=number_format((int)$bt['c'])?></b> <span style="opacity:.6;font-weight:400;">(<?=$bt['ips']?> IPs)</span></span>
+    <?php endforeach; ?>
+    <span style="color:#2d3a4a;">|</span>
+    <?php foreach ($stBySource as $bs): $sc = $sourceColors[$bs['source']] ?? '#5a6580'; ?>
+    <span style="background:<?=$sc?>15;border:1px solid <?=$sc?>40;color:<?=$sc?>;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700;"><?=$bs['source']?> <b><?=number_format((int)$bs['c'])?></b></span>
     <?php endforeach; ?>
 </div>
-<div class="stats-cards" style="margin-top:8px;">
-    <?php foreach ($stBySource as $src => $c): ?>
-    <div class="card" style="border-color:#a29bfe30;"><div class="num" style="color:#a29bfe;font-size:20px;"><?= number_format($c) ?></div><div class="label"><?= $src ?></div></div>
-    <?php endforeach; ?>
+
+<!-- Chart 14 jours -->
+<div class="section">
+    <h2>Historique 14 jours</h2>
+    <div style="height:200px;position:relative;"><canvas id="stChart14"></canvas></div>
 </div>
-<?php if (!empty($stTopQueries)): ?>
-<div style="margin:16px 24px;overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tr style="border-bottom:1px solid #1e2a3a;"><th style="text-align:left;padding:6px;color:#8b949e;">#</th><th style="text-align:left;padding:6px;color:#8b949e;">Recherche</th><th style="text-align:left;padding:6px;color:#8b949e;">Type</th><th style="text-align:right;padding:6px;color:#8b949e;">Total</th><th style="text-align:right;padding:6px;color:#8b949e;">IPs uniques</th></tr>
-        <?php foreach ($stTopQueries as $idx => $sq): ?>
-        <tr style="border-bottom:1px solid #0d1117;">
-            <td style="padding:5px 6px;color:#484f58;"><?= $idx + 1 ?></td>
-            <td style="padding:5px 6px;color:#e2e8f0;font-weight:600;"><?= htmlspecialchars($sq['query_text']) ?></td>
-            <td style="padding:5px 6px;"><span style="background:#1e2a3a;color:#8b949e;padding:2px 8px;border-radius:4px;font-size:11px;"><?= $sq['search_type'] ?></span></td>
-            <td style="padding:5px 6px;text-align:right;color:#f59e0b;"><?= number_format((int)$sq['c']) ?></td>
-            <td style="padding:5px 6px;text-align:right;color:#34d399;"><?= number_format((int)$sq['ips']) ?></td>
-        </tr>
+
+<!-- Onglets interactifs -->
+<div class="vue-tabs" id="stTabs">
+    <div class="vue-tab active" onclick="_stTab('queries')">Recherches</div>
+    <div class="vue-tab" onclick="_stTab('athletes')" style="color:#f59e0b;">Athletes (<?=count($stAllAthletes)?>)</div>
+    <div class="vue-tab" onclick="_stTab('clubs')" style="color:#8b5cf6;">Clubs (<?=count($stAllClubs)?>)</div>
+    <div class="vue-tab" onclick="_stTab('entities')">Entites</div>
+    <div class="vue-tab" onclick="_stTab('ips')">IPs (<?=count($stTopIps)?>)</div>
+    <div class="vue-tab" onclick="_stTab('hourly')">Horaire</div>
+    <div class="vue-tab" onclick="_stTab('sources')">Sources</div>
+</div>
+<div class="vue-tab-body" id="stTabBody" style="min-height:300px;"></div>
+
+<!-- Reset + IPs ignorees -->
+<div style="padding:16px 24px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <span style="color:#8b949e;font-size:12px;font-weight:700;margin-right:8px;">RESET :</span>
+    <form method="POST" style="display:inline;" onsubmit="return confirm('Supprimer TOUT le tracking athletes ?')"><input type="hidden" name="st_action" value="reset_tracking"><input type="hidden" name="reset_type" value="athlete"><button class="btn" style="border-color:#f59e0b40;color:#f59e0b;cursor:pointer;">Reset athletes</button></form>
+    <form method="POST" style="display:inline;" onsubmit="return confirm('Supprimer TOUT le tracking clubs ?')"><input type="hidden" name="st_action" value="reset_tracking"><input type="hidden" name="reset_type" value="club"><button class="btn" style="border-color:#8b5cf640;color:#8b5cf6;cursor:pointer;">Reset clubs</button></form>
+    <form method="POST" style="display:inline;" onsubmit="return confirm('Supprimer TOUT le tracking ? Cette action est irreversible !')"><input type="hidden" name="st_action" value="reset_tracking"><input type="hidden" name="reset_type" value="all"><button class="btn" style="border-color:#ef444440;color:#ef4444;cursor:pointer;">Reset TOUT</button></form>
+</div>
+
+<!-- IPs ignorees -->
+<div style="padding:0 24px 16px;">
+    <h3 style="color:#ef4444;font-size:13px;margin-bottom:10px;">IPs ignorees (exclues des stats)</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <form method="POST" style="display:inline-flex;gap:6px;align-items:center;">
+            <input type="hidden" name="st_action" value="ignore_ip">
+            <input type="text" name="ip" placeholder="IP a ignorer" style="background:#161b22;border:1px solid #1e2a3a;color:#c9d1d9;padding:6px 12px;border-radius:8px;font-size:12px;width:160px;">
+            <input type="text" name="label" placeholder="Label (ex: Mon IP)" style="background:#161b22;border:1px solid #1e2a3a;color:#c9d1d9;padding:6px 12px;border-radius:8px;font-size:12px;width:140px;">
+            <button class="btn" style="cursor:pointer;border-color:#ef444440;color:#ef4444;">Ignorer</button>
+        </form>
+        <?php if (!isset($stIgnoredIps[$stMyIp])): ?>
+        <form method="POST" style="display:inline;"><input type="hidden" name="st_action" value="ignore_ip"><input type="hidden" name="ip" value="<?=htmlspecialchars($stMyIp)?>"><input type="hidden" name="label" value="Mon IP"><button class="btn" style="cursor:pointer;border-color:#f59e0b40;color:#f59e0b;">Ignorer mon IP (<?=htmlspecialchars($stMyIp)?>)</button></form>
+        <?php endif; ?>
+    </div>
+    <?php if (!empty($stIgnoredIps)): ?>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <?php foreach ($stIgnoredIps as $igIp => $igData): ?>
+        <span style="background:#ef444415;border:1px solid #ef444430;color:#ef4444;padding:4px 10px;border-radius:8px;font-size:12px;display:inline-flex;align-items:center;gap:6px;">
+            <code style="color:#f87171;"><?=htmlspecialchars($igIp)?></code>
+            <?php if (!empty($igData['label'])): ?><span style="color:#8b949e;">(<?=htmlspecialchars($igData['label'])?>)</span><?php endif; ?>
+            <form method="POST" style="display:inline;margin:0;"><input type="hidden" name="st_action" value="unignore_ip"><input type="hidden" name="ip" value="<?=htmlspecialchars($igIp)?>"><button style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:0 2px;" title="Reactiver">&times;</button></form>
+        </span>
         <?php endforeach; ?>
-    </table>
+    </div>
+    <?php endif; ?>
 </div>
-<?php endif; ?>
+
+<script>
+(function(){
+var D = ST_DATA;
+var _stCurTab = 'queries', _stSort = 'c', _stDir = 'desc', _stFilter = '';
+var _stTypeColors = {athlete:'#f59e0b',club:'#8b5cf6',epreuve:'#3b82f6',ville:'#10b981',general:'#6366f1'};
+var _stSourceColors = {live_search:'#34d399',page_view:'#a29bfe',panel_open:'#f59e0b'};
+
+function _esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+function _fmtDt(s){if(!s)return'-';var d=new Date(s.replace(' ','T'));return (d.getDate()<10?'0':'')+d.getDate()+'/'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+' '+(d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes()+':'+(d.getSeconds()<10?'0':'')+d.getSeconds();}
+function _badge(text,color){return '<span style="background:'+color+'20;color:'+color+';padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;">'+_esc(text)+'</span>';}
+
+// Chart 14 jours
+function _stRenderChart(){
+    var pj=D.parJour;if(!pj.length)return;
+    var labels=pj.map(function(d){return d.d.substring(5);});
+    new Chart(document.getElementById('stChart14'),{
+        type:'bar',data:{labels:labels,datasets:[
+            {label:'Athletes',data:pj.map(function(d){return parseInt(d.athlete)||0;}),backgroundColor:'#f59e0b',borderRadius:3},
+            {label:'Clubs',data:pj.map(function(d){return parseInt(d.club)||0;}),backgroundColor:'#8b5cf6',borderRadius:3},
+            {label:'Epreuves',data:pj.map(function(d){return parseInt(d.epreuve)||0;}),backgroundColor:'#3b82f6',borderRadius:3},
+            {label:'Villes',data:pj.map(function(d){return parseInt(d.ville)||0;}),backgroundColor:'#10b981',borderRadius:3},
+            {label:'General',data:pj.map(function(d){return parseInt(d.general)||0;}),backgroundColor:'#6366f1',borderRadius:3}
+        ]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true,grid:{color:'#1e2a3a'},ticks:{color:'#5a6580',font:{size:10}}},y:{stacked:true,grid:{color:'#1e2a3a'},ticks:{color:'#5a6580'},beginAtZero:true}},plugins:{legend:{labels:{color:'#8b949e',boxWidth:12}}}}
+    });
+}
+
+// Tabs
+window._stTab=function(tab){
+    _stCurTab=tab;_stFilter='';_stSort=tab==='athletes'||tab==='clubs'?'created_at':'c';_stDir='desc';
+    document.querySelectorAll('#stTabs .vue-tab').forEach(function(t){t.classList.remove('active');});
+    var tabs=['queries','athletes','clubs','entities','ips','hourly','sources'];
+    var idx=tabs.indexOf(tab);if(idx>=0)document.querySelectorAll('#stTabs .vue-tab')[idx].classList.add('active');
+    _stRender();
+};
+function _stSortH(key,label){
+    var cls='vue-sort'+(_stSort===key?' '+_stDir:'');
+    return '<th class="'+cls+'" onclick="_stSortBy(\''+key+'\')">'+label+'</th>';
+}
+window._stSortBy=function(key){
+    if(_stSort===key)_stDir=_stDir==='desc'?'asc':'desc';
+    else{_stSort=key;_stDir='desc';}
+    _stRender();
+};
+window._stFilterFn=function(q){_stFilter=q.toLowerCase();_stRender();};
+
+function _stSortArr(arr,key){
+    return arr.slice().sort(function(a,b){
+        var va=key==='query_text'||key==='entity_name'||key==='ip'||key==='nom'||key==='source'?(a[key]||'').toLowerCase():(parseFloat(a[key])||0);
+        var vb=key==='query_text'||key==='entity_name'||key==='ip'||key==='nom'||key==='source'?(b[key]||'').toLowerCase():(parseFloat(b[key])||0);
+        if(typeof va==='string')return _stDir==='asc'?va.localeCompare(vb):vb.localeCompare(va);
+        return _stDir==='asc'?va-vb:vb-va;
+    });
+}
+
+function _stRender(){
+    var el=document.getElementById('stTabBody');
+    if(_stCurTab==='queries')_stRenderQueries(el);
+    else if(_stCurTab==='athletes')_stRenderAthletes(el);
+    else if(_stCurTab==='clubs')_stRenderClubs(el);
+    else if(_stCurTab==='entities')_stRenderEntities(el);
+    else if(_stCurTab==='ips')_stRenderIps(el);
+    else if(_stCurTab==='hourly')_stRenderHourly(el);
+    else if(_stCurTab==='sources')_stRenderSources(el);
+}
+
+// TAB: Recherches
+function _stRenderQueries(el){
+    var items=D.topQueries;
+    if(_stFilter)items=items.filter(function(q){return(q.query_text||'').toLowerCase().indexOf(_stFilter)>=0||(q.search_type||'').toLowerCase().indexOf(_stFilter)>=0;});
+    items=_stSortArr(items,_stSort);
+    var h='<div style="padding:14px;"><input class="vue-search" placeholder="Filtrer les recherches..." oninput="_stFilterFn(this.value)"></div>';
+    h+='<div style="overflow-x:auto;max-height:600px;overflow-y:auto;"><table style="width:100%;"><thead><tr>';
+    h+=_stSortH('query_text','Recherche')+_stSortH('search_type','Type')+'<th>Source</th>'+_stSortH('c','Total')+_stSortH('ips','IPs')+_stSortH('avg_results','Moy. res.')+_stSortH('last_at','Derniere');
+    h+='</tr></thead><tbody>';
+    items.forEach(function(q,i){
+        var tc=_stTypeColors[q.search_type]||'#5a6580';
+        h+='<tr class="vue-row"><td style="color:#e2e8f0;font-weight:600;">'+_esc(q.query_text)+'</td>';
+        h+='<td>'+_badge(q.search_type,tc)+'</td>';
+        h+='<td style="color:#8b949e;font-size:11px;">'+(q.source||'-')+'</td>';
+        h+='<td style="text-align:right;"><span style="background:#f59e0b20;color:#f59e0b;padding:2px 10px;border-radius:6px;font-weight:800;">'+q.c+'</span></td>';
+        h+='<td style="text-align:right;color:#34d399;font-weight:600;">'+q.ips+'</td>';
+        h+='<td style="text-align:right;color:#8b949e;">'+((q.avg_results||0))+'</td>';
+        h+='<td class="time">'+_fmtDt(q.last_at)+'</td></tr>';
+    });
+    if(!items.length)h+='<tr><td colspan="7" style="text-align:center;color:#5a6580;padding:30px;">Aucune recherche</td></tr>';
+    h+='</tbody></table></div>';
+    el.innerHTML=h;
+}
+
+// TAB: Athletes
+function _stRenderAthletes(el){
+    var items=D.allAthletes;
+    if(_stFilter)items=items.filter(function(a){return(a.entity_name||a.query_text||'').toLowerCase().indexOf(_stFilter)>=0||(a.ip||'').toLowerCase().indexOf(_stFilter)>=0;});
+    items=_stSortArr(items,_stSort);
+    var h='<div style="padding:14px;display:flex;gap:10px;align-items:center;"><input class="vue-search" style="flex:1;" placeholder="Filtrer athletes... ('+D.allAthletes.length+' total)" oninput="_stFilterFn(this.value)"><span style="color:#f59e0b;font-size:13px;font-weight:700;">'+items.length+' resultats</span></div>';
+    h+='<div style="overflow-x:auto;max-height:700px;overflow-y:auto;"><table style="width:100%;"><thead><tr>';
+    h+='<th>#</th>'+_stSortH('entity_name','Nom')+_stSortH('entity_id','ID')+'<th>Recherche</th>'+_stSortH('source','Source')+'<th>Page</th>'+_stSortH('ip','IP')+_stSortH('result_count','Res.')+_stSortH('created_at','Heure');
+    h+='</tr></thead><tbody>';
+    items.forEach(function(a,i){
+        var nom=a.entity_name||a.query_text||'-';
+        var sc=_stSourceColors[a.source]||'#5a6580';
+        h+='<tr class="vue-row">';
+        h+='<td style="color:#484f58;">'+(i+1)+'</td>';
+        h+='<td style="color:#e2e8f0;font-weight:600;">'+_esc(nom)+'</td>';
+        h+='<td class="mono">'+(a.entity_id||'-')+'</td>';
+        h+='<td style="color:#8b949e;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;">'+_esc(a.query_text||'-')+'</td>';
+        h+='<td>'+_badge(a.source||'-',sc)+'</td>';
+        h+='<td style="color:#8b949e;font-size:11px;">'+(a.page||'-')+'</td>';
+        h+='<td class="mono" style="font-size:11px;">'+_esc(a.ip)+'</td>';
+        h+='<td style="text-align:right;color:#34d399;">'+(a.result_count||0)+'</td>';
+        h+='<td class="time">'+_fmtDt(a.created_at)+'</td>';
+        h+='</tr>';
+    });
+    if(!items.length)h+='<tr><td colspan="9" style="text-align:center;color:#5a6580;padding:30px;">Aucun athlete</td></tr>';
+    h+='</tbody></table></div>';
+    el.innerHTML=h;
+}
+
+// TAB: Clubs
+function _stRenderClubs(el){
+    var items=D.allClubs;
+    if(_stFilter)items=items.filter(function(a){return(a.entity_name||a.query_text||'').toLowerCase().indexOf(_stFilter)>=0||(a.ip||'').toLowerCase().indexOf(_stFilter)>=0;});
+    items=_stSortArr(items,_stSort);
+    var h='<div style="padding:14px;display:flex;gap:10px;align-items:center;"><input class="vue-search" style="flex:1;" placeholder="Filtrer clubs... ('+D.allClubs.length+' total)" oninput="_stFilterFn(this.value)"><span style="color:#8b5cf6;font-size:13px;font-weight:700;">'+items.length+' resultats</span></div>';
+    h+='<div style="overflow-x:auto;max-height:700px;overflow-y:auto;"><table style="width:100%;"><thead><tr>';
+    h+='<th>#</th>'+_stSortH('entity_name','Nom')+_stSortH('entity_id','ID')+'<th>Recherche</th>'+_stSortH('source','Source')+'<th>Page</th>'+_stSortH('ip','IP')+_stSortH('result_count','Res.')+_stSortH('created_at','Heure');
+    h+='</tr></thead><tbody>';
+    items.forEach(function(a,i){
+        var nom=a.entity_name||a.query_text||'-';
+        var sc=_stSourceColors[a.source]||'#5a6580';
+        h+='<tr class="vue-row">';
+        h+='<td style="color:#484f58;">'+(i+1)+'</td>';
+        h+='<td style="color:#e2e8f0;font-weight:600;">'+_esc(nom)+'</td>';
+        h+='<td class="mono">'+(a.entity_id||'-')+'</td>';
+        h+='<td style="color:#8b949e;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;">'+_esc(a.query_text||'-')+'</td>';
+        h+='<td>'+_badge(a.source||'-',sc)+'</td>';
+        h+='<td style="color:#8b949e;font-size:11px;">'+(a.page||'-')+'</td>';
+        h+='<td class="mono" style="font-size:11px;">'+_esc(a.ip)+'</td>';
+        h+='<td style="text-align:right;color:#34d399;">'+(a.result_count||0)+'</td>';
+        h+='<td class="time">'+_fmtDt(a.created_at)+'</td>';
+        h+='</tr>';
+    });
+    if(!items.length)h+='<tr><td colspan="9" style="text-align:center;color:#5a6580;padding:30px;">Aucun club</td></tr>';
+    h+='</tbody></table></div>';
+    el.innerHTML=h;
+}
+
+// TAB: Entites (epreuves + villes)
+function _stRenderEntities(el){
+    var items=D.topEntities;
+    if(_stFilter)items=items.filter(function(e){return(e.entity_name||'').toLowerCase().indexOf(_stFilter)>=0;});
+    items=_stSortArr(items,_stSort);
+    var h='<div style="padding:14px;"><input class="vue-search" placeholder="Filtrer entites..." oninput="_stFilterFn(this.value)"></div>';
+    h+='<div style="overflow-x:auto;max-height:600px;overflow-y:auto;"><table style="width:100%;"><thead><tr>';
+    h+='<th>#</th>'+_stSortH('entity_name','Nom')+_stSortH('search_type','Type')+_stSortH('c','Total')+_stSortH('ips','IPs');
+    h+='</tr></thead><tbody>';
+    items.forEach(function(e,i){
+        var tc=_stTypeColors[e.search_type]||'#5a6580';
+        h+='<tr class="vue-row"><td style="color:#484f58;">'+(i+1)+'</td>';
+        h+='<td style="color:#e2e8f0;font-weight:600;">'+_esc(e.entity_name)+'</td>';
+        h+='<td>'+_badge(e.search_type,tc)+'</td>';
+        h+='<td style="text-align:right;"><span style="background:#f59e0b20;color:#f59e0b;padding:2px 10px;border-radius:6px;font-weight:800;">'+e.c+'</span></td>';
+        h+='<td style="text-align:right;color:#34d399;font-weight:600;">'+e.ips+'</td></tr>';
+    });
+    if(!items.length)h+='<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:30px;">Aucune entite</td></tr>';
+    h+='</tbody></table></div>';
+    el.innerHTML=h;
+}
+
+// TAB: IPs
+function _stRenderIps(el){
+    var items=D.topIps;
+    if(_stFilter)items=items.filter(function(ip){return(ip.ip||'').indexOf(_stFilter)>=0;});
+    items=_stSortArr(items,_stSort);
+    var h='<div style="padding:14px;"><input class="vue-search" placeholder="Filtrer IPs..." oninput="_stFilterFn(this.value)"></div>';
+    h+='<div style="overflow-x:auto;max-height:600px;overflow-y:auto;"><table style="width:100%;"><thead><tr>';
+    h+='<th>#</th>'+_stSortH('ip','IP')+_stSortH('c','Recherches')+_stSortH('queries','Queries uniques')+_stSortH('last_at','Derniere')+'<th>Action</th>';
+    h+='</tr></thead><tbody>';
+    items.forEach(function(ip,i){
+        var isMe=ip.ip===D.myIp;
+        h+='<tr class="vue-row"'+(isMe?' style="background:#f59e0b08;"':'')+'>';
+        h+='<td style="color:#484f58;">'+(i+1)+'</td>';
+        h+='<td class="mono">'+_esc(ip.ip)+(isMe?' <span style="background:#f59e0b30;color:#f59e0b;padding:1px 6px;border-radius:4px;font-size:10px;">MOI</span>':'')+'</td>';
+        h+='<td style="text-align:right;"><span style="background:#f59e0b20;color:#f59e0b;padding:2px 10px;border-radius:6px;font-weight:800;">'+ip.c+'</span></td>';
+        h+='<td style="text-align:right;color:#a29bfe;font-weight:600;">'+ip.queries+'</td>';
+        h+='<td class="time">'+_fmtDt(ip.last_at)+'</td>';
+        h+='<td><button onclick="_stIgnoreIp(\''+_esc(ip.ip)+'\')" class="btn" style="font-size:11px;padding:3px 10px;cursor:pointer;border-color:#ef444440;color:#ef4444;">Ignorer</button></td>';
+        h+='</tr>';
+    });
+    if(!items.length)h+='<tr><td colspan="6" style="text-align:center;color:#5a6580;padding:30px;">Aucune IP</td></tr>';
+    h+='</tbody></table></div>';
+    el.innerHTML=h;
+}
+
+// TAB: Horaire
+function _stRenderHourly(el){
+    var h='<div style="padding:14px;"><div style="height:250px;position:relative;"><canvas id="stChartHourly"></canvas></div></div>';
+    el.innerHTML=h;
+    var hours=D.parHeure;
+    var labels=[];for(var i=0;i<24;i++)labels.push(i+'h');
+    new Chart(document.getElementById('stChartHourly'),{
+        type:'bar',data:{labels:labels,datasets:[{label:'Recherches',data:hours,backgroundColor:hours.map(function(v,i){return i===new Date().getHours()?'#f59e0b':'#34d399';}),borderRadius:4}]},
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{grid:{color:'#1e2a3a'},ticks:{color:'#5a6580'}},y:{grid:{color:'#1e2a3a08'},ticks:{color:'#8b949e',font:{size:11}}}},plugins:{legend:{display:false}}}
+    });
+}
+
+// TAB: Sources
+function _stRenderSources(el){
+    var h='<div style="padding:14px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">';
+    h+='<div style="width:280px;height:280px;position:relative;"><canvas id="stChartSources"></canvas></div>';
+    h+='<div style="flex:1;min-width:250px;">';
+    h+='<h4 style="color:#8b949e;font-size:12px;text-transform:uppercase;margin-bottom:10px;">Detail par source</h4>';
+    h+='<table style="width:100%;"><thead><tr><th>Source</th><th>Total</th><th>IPs</th></tr></thead><tbody>';
+    D.bySource.forEach(function(s){
+        var sc=_stSourceColors[s.source]||'#5a6580';
+        h+='<tr><td>'+_badge(s.source,sc)+'</td><td style="text-align:right;color:#f59e0b;font-weight:700;">'+s.c+'</td><td style="text-align:right;color:#34d399;">'+s.ips+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    h+='<h4 style="color:#8b949e;font-size:12px;text-transform:uppercase;margin:16px 0 10px;">Par type</h4>';
+    h+='<table style="width:100%;"><thead><tr><th>Type</th><th>Total</th><th>IPs</th></tr></thead><tbody>';
+    D.byType.forEach(function(t){
+        var tc=_stTypeColors[t.search_type]||'#5a6580';
+        h+='<tr><td>'+_badge(t.search_type,tc)+'</td><td style="text-align:right;color:#f59e0b;font-weight:700;">'+t.c+'</td><td style="text-align:right;color:#34d399;">'+t.ips+'</td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+    el.innerHTML=h;
+    // Doughnut
+    var srcLabels=D.bySource.map(function(s){return s.source;});
+    var srcData=D.bySource.map(function(s){return parseInt(s.c);});
+    var srcColors=D.bySource.map(function(s){return _stSourceColors[s.source]||'#5a6580';});
+    new Chart(document.getElementById('stChartSources'),{
+        type:'doughnut',data:{labels:srcLabels,datasets:[{data:srcData,backgroundColor:srcColors,borderWidth:0}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#8b949e',boxWidth:12}}}}
+    });
+}
+
+// Ignore IP via form submission
+window._stIgnoreIp=function(ip){
+    if(!confirm('Ignorer l\'IP '+ip+' dans les stats ?'))return;
+    var f=document.createElement('form');f.method='POST';f.style.display='none';
+    f.innerHTML='<input name="st_action" value="ignore_ip"><input name="ip" value="'+ip+'"><input name="label" value="">';
+    document.body.appendChild(f);f.submit();
+};
+
+// Init
+_stRenderChart();
+_stRender();
+})();
+</script>
 
 <!-- SECTION 16 : ACTIONS RAPIDES -->
 <!-- ============================================================ -->
