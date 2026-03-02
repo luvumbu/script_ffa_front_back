@@ -11,7 +11,7 @@
 
 define('IP_LOG_DIR', __DIR__ . '/../logs');
 define('IP_LOG_PREFIX', '<?php die(\'Acces interdit\'); ?>' . "\n");
-define('IP_DAILY_LIMIT', 20);
+define('IP_DAILY_LIMIT', 8);
 
 // IPs serveur Hostinger + Google a ne jamais bloquer
 define('IP_WHITELIST', [
@@ -184,6 +184,63 @@ function isWhitelistedIp($ip) {
 }
 
 /**
+ * Fichier des IPs bannies definitivement
+ */
+function ipBannedFile() {
+    return IP_LOG_DIR . '/ip_banned.php';
+}
+
+/**
+ * Lit la liste des IPs bannies
+ */
+function readBannedIps() {
+    $file = ipBannedFile();
+    if (!file_exists($file)) return [];
+    $raw = file_get_contents($file);
+    $pos = strpos($raw, "\n");
+    if ($pos === false) return [];
+    return json_decode(substr($raw, $pos + 1), true) ?: [];
+}
+
+/**
+ * Ajoute une IP a la liste des bannies definitivement
+ */
+function banIp($ip) {
+    $file = ipBannedFile();
+    if (!is_dir(IP_LOG_DIR)) mkdir(IP_LOG_DIR, 0755, true);
+
+    $fp = fopen($file, 'c+');
+    if (!$fp) return;
+    if (!flock($fp, LOCK_EX)) { fclose($fp); return; }
+
+    $raw = stream_get_contents($fp);
+    $banned = [];
+    if ($raw) {
+        $pos = strpos($raw, "\n");
+        if ($pos !== false) $banned = json_decode(substr($raw, $pos + 1), true) ?: [];
+    }
+
+    if (!isset($banned[$ip])) {
+        $banned[$ip] = date('Y-m-d H:i:s');
+    }
+
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, IP_LOG_PREFIX . json_encode($banned, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    fflush($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
+/**
+ * Verifie si une IP est bannie definitivement
+ */
+function isIpBanned($ip) {
+    $banned = readBannedIps();
+    return isset($banned[$ip]);
+}
+
+/**
  * Verifie si une IP est connectee (cookie bk_token valide)
  */
 function isUserLoggedIn() {
@@ -193,7 +250,7 @@ function isUserLoggedIn() {
 /**
  * Affiche la page de blocage et arrete l'execution
  */
-function showRateLimitPage($ip, $count) {
+function showRateLimitPage($ip, $count, $permanent = false) {
     http_response_code(429);
     ?>
     <!DOCTYPE html>
@@ -202,39 +259,91 @@ function showRateLimitPage($ip, $count) {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="robots" content="noindex">
-        <title>Limite atteinte — Bokonzi</title>
+        <title>Inscription requise — Bokonzi</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-            .box { background: #161b22; border: 1px solid #1e2a3a; border-radius: 16px; padding: 40px; max-width: 500px; text-align: center; }
+            .box { background: #161b22; border: 1px solid #1e2a3a; border-radius: 16px; padding: 40px; max-width: 520px; text-align: center; }
             .icon { font-size: 60px; margin-bottom: 20px; }
             h1 { color: #f59e0b; font-size: 22px; margin-bottom: 12px; }
             p { color: #8b949e; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
-            .count { color: #ef4444; font-weight: 700; font-size: 32px; font-family: monospace; }
-            .limit { color: #5a6580; font-size: 13px; }
             .btn {
                 display: inline-block; padding: 12px 32px; border-radius: 10px; font-size: 15px; font-weight: 700;
-                text-decoration: none; margin: 8px; transition: all 0.2s;
+                text-decoration: none; margin: 8px; transition: all 0.2s; cursor: pointer; border: none;
             }
             .btn-primary { background: #6c5ce7; color: #fff; }
             .btn-primary:hover { background: #5a4bd1; }
             .btn-secondary { background: transparent; border: 1px solid #1e2a3a; color: #c9d1d9; }
             .btn-secondary:hover { border-color: #6c5ce7; color: #a29bfe; }
-            .reset { color: #5a6580; font-size: 12px; margin-top: 16px; }
+            .note { color: #5a6580; font-size: 12px; margin-top: 16px; }
+            .separator { border: none; border-top: 1px solid #1e2a3a; margin: 24px 0; }
+            .contact-form { text-align: left; }
+            .contact-form label { display: block; color: #8b949e; font-size: 12px; margin-bottom: 4px; margin-top: 12px; }
+            .contact-form input, .contact-form textarea {
+                width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #1e2a3a;
+                background: #0d1117; color: #c9d1d9; font-size: 14px; font-family: inherit;
+            }
+            .contact-form input:focus, .contact-form textarea:focus { outline: none; border-color: #6c5ce7; }
+            .contact-form textarea { resize: vertical; min-height: 80px; }
+            .btn-contact { background: #1e2a3a; color: #c9d1d9; width: 100%; margin: 16px 0 0; padding: 11px; font-size: 14px; }
+            .btn-contact:hover { background: #2d3a4a; }
+            #contactMsg { font-size: 13px; margin-top: 10px; }
         </style>
     </head>
     <body>
         <div class="box">
-            <div class="icon">&#9888;&#65039;</div>
-            <h1>Limite de consultation atteinte</h1>
-            <p>Vous avez effectue</p>
-            <div class="count"><?= (int)$count ?></div>
-            <div class="limit">requetes aujourd'hui (limite : <?= IP_DAILY_LIMIT ?>)</div>
-            <p style="margin-top:20px;">Creez un compte gratuit pour un acces illimite a toutes les donnees de Bokonzi.</p>
+            <div class="icon">&#128274;</div>
+            <h1>Inscription requise</h1>
+            <p>L'acces aux donnees de Bokonzi necessite un compte gratuit.</p>
+            <p>Creez votre compte en quelques secondes pour acceder a toutes les statistiques, profils d'athletes, clubs et bien plus.</p>
             <a href="/register.php" class="btn btn-primary">Creer un compte gratuit</a>
             <a href="/login.php" class="btn btn-secondary">Se connecter</a>
-            <div class="reset">La limite se reinitialise chaque jour a minuit.</div>
+            <div class="note">C'est gratuit, rapide et sans engagement.</div>
+
+            <hr class="separator">
+
+            <div id="contactSection">
+                <p style="font-size:13px;color:#8b949e;margin-bottom:4px;">Un probleme ou une question ?</p>
+                <button class="btn btn-secondary" style="font-size:13px;padding:8px 20px;" onclick="document.getElementById('contactForm').style.display='block';this.style.display='none';">Nous contacter</button>
+                <div id="contactForm" class="contact-form" style="display:none;">
+                    <label for="cNom">Nom (optionnel)</label>
+                    <input type="text" id="cNom" maxlength="100" placeholder="Votre nom">
+                    <label for="cEmail">Email (optionnel)</label>
+                    <input type="email" id="cEmail" maxlength="200" placeholder="votre@email.com">
+                    <label for="cMsg">Message *</label>
+                    <textarea id="cMsg" maxlength="2000" placeholder="Decrivez votre demande..."></textarea>
+                    <button class="btn btn-contact" onclick="_sendContact()">Envoyer le message</button>
+                    <div id="contactMsg"></div>
+                </div>
+            </div>
         </div>
+        <script>
+        function _sendContact() {
+            var msg = document.getElementById('cMsg').value.trim();
+            if (!msg) { document.getElementById('contactMsg').innerHTML = '<span style="color:#ef4444;">Veuillez ecrire un message.</span>'; return; }
+            var btn = document.querySelector('.btn-contact');
+            btn.disabled = true; btn.textContent = 'Envoi...';
+            fetch('/api/contact.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    nom: document.getElementById('cNom').value.trim(),
+                    email: document.getElementById('cEmail').value.trim(),
+                    message: msg
+                })
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.success) {
+                    document.getElementById('contactSection').innerHTML = '<p style="color:#10b981;font-size:14px;font-weight:600;">&#10003; Message envoye ! Nous reviendrons vers vous rapidement.</p>';
+                } else {
+                    document.getElementById('contactMsg').innerHTML = '<span style="color:#ef4444;">'+(d.error||'Erreur')+'</span>';
+                    btn.disabled = false; btn.textContent = 'Envoyer le message';
+                }
+            }).catch(function() {
+                document.getElementById('contactMsg').innerHTML = '<span style="color:#ef4444;">Erreur de connexion.</span>';
+                btn.disabled = false; btn.textContent = 'Envoyer le message';
+            });
+        }
+        </script>
     </body>
     </html>
     <?php
@@ -252,25 +361,19 @@ function logIp() {
     }
 
     $ip = getVisitorIp();
+
+    // Ne pas logger du tout les IPs Hostinger / whitelistees
+    if (isWhitelistedIp($ip)) {
+        return;
+    }
+
     $now = date('Y-m-d H:i:s');
     $today = date('Y-m-d');
     $page = $_GET['page'] ?? ($_SERVER['SCRIPT_NAME'] ?? 'unknown');
     $fullUrl = ($_SERVER['REQUEST_URI'] ?? $page);
     $referrer = $_SERVER['HTTP_REFERER'] ?? '';
 
-    // === RATE LIMITING : 60 req/jour par IP (sauf si connecte, whitelist ou Google) ===
-    if (!isUserLoggedIn() && !isWhitelistedIp($ip)) {
-        // Ne pas bloquer les pages login/register/api auth
-        $script = $_SERVER['SCRIPT_NAME'] ?? '';
-        $isAuthPage = (strpos($script, 'login') !== false || strpos($script, 'register') !== false || strpos($script, 'api/auth') !== false);
-
-        if (!$isAuthPage) {
-            $dailyCount = incrementDailyCounter($ip);
-            if ($dailyCount > IP_DAILY_LIMIT) {
-                showRateLimitPage($ip, $dailyCount);
-            }
-        }
-    }
+    // Rate limiting desactive
 
     $file = ipLogFile();
     $fp = fopen($file, 'c+');
