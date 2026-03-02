@@ -38,6 +38,7 @@ BK/
 |   |-- credentials.php  Identifiants BDD (centralises, un seul fichier)
 |   |-- db.php           Connexion mysqli ($conn)
 |   |-- auth.php         Systeme d'authentification (9 fonctions)
+|   |-- oauth_config.php Config OAuth Google (extensible Facebook/Instagram)
 |   |-- paths.php        Constante BK_BASE (local /BK vs prod vide)
 |   |-- seo.php          Generation SEO : meta, Open Graph, Twitter Cards, Schema.org JSON-LD
 |   |-- insert_athle.php Insertion BDD depuis scraping (cache memoire)
@@ -60,10 +61,12 @@ BK/
 |   |-- competitions.php Liste des competitions
 |   |-- performances.php CRUD performances manuelles
 |   |-- auth/            Endpoints d'authentification
-|       |-- login.php    Connexion (POST)
-|       |-- register.php Inscription (POST)
+|       |-- login.php    Connexion classique (POST, super admin uniquement)
+|       |-- register.php Inscription classique (POST, legacy)
 |       |-- logout.php   Deconnexion (POST)
 |       |-- me.php       Utilisateur courant (GET)
+|       |-- google_login.php    Initie le flux OAuth Google (state CSRF + redirect)
+|       |-- google_callback.php Callback Google (echange code, cree/lie user, session)
 |
 |-- scraping/            Pipeline de collecte de donnees
 |   |-- scrape_functions.php  Fonction scrapeParallel() partagee
@@ -104,8 +107,8 @@ BK/
 |-- common.css           Styles communs (panel, auth, scraping)
 |-- nav.php              Barre de navigation globale
 |-- panel.php            Tour de controle admin
-|-- login.php            Page de connexion
-|-- register.php         Page d'inscription
+|-- login.php            Page de connexion (bouton Google OAuth uniquement)
+|-- register.php         Page d'inscription (bouton Google OAuth uniquement)
 |-- sitemap.php          Sitemap XML dynamique (index + sous-sitemaps pagines)
 |-- robots.txt           Directives pour les robots de Google
 |-- google3c52de7c1227f892.html  Verification Google Search Console
@@ -141,6 +144,12 @@ Le noyau de l'application. Contient 7 fichiers qui fournissent les services esse
 - `requireRole($conn, $roles)` : verifie que l'utilisateur a un role specifique (athlete, coach, club, admin)
 - `logout($conn)` : supprime la session en BDD + efface le cookie
 - `requireAuthApi($conn)` : protege un endpoint API — retourne JSON 401 si non connecte
+
+### core/oauth_config.php
+**Role** : Configuration des providers OAuth pour la connexion sociale.
+- Detection automatique local (`http://localhost/BK`) vs production (`https://bokonzi.com`)
+- Constantes Google : `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+- Extensible : emplacements pre-configures pour Facebook et Instagram (commentes)
 
 ### core/paths.php
 **Role** : Gestion des chemins entre environnements.
@@ -318,18 +327,28 @@ Tous les endpoints incluent `api/config.php` qui fournit la connexion BDD + head
 - DELETE : supprimer une performance (auteur uniquement)
 - Champs : epreuve, performance, date, lieu, notes
 
-### api/auth/ (4 endpoints)
+### api/auth/ (6 endpoints)
 
-**api/auth/login.php** — Connexion utilisateur
+**api/auth/google_login.php** — Initie le flux OAuth Google
+- Genere un state CSRF aleatoire, le stocke en `$_SESSION`
+- Redirige (302) vers Google avec scope `openid email profile`
+
+**api/auth/google_callback.php** — Callback Google OAuth
+- Verifie le state CSRF contre `$_SESSION`
+- Echange le code contre un access token via `https://oauth2.googleapis.com/token`
+- Recupere le profil via `https://www.googleapis.com/oauth2/v2/userinfo`
+- Cherche user par `google_id` → login direct, par `email` → lie le google_id, sinon → cree un user (role=athlete)
+- Cree session BDD via `createSession()` + redirige vers `index.php`
+
+**api/auth/login.php** — Connexion classique (super admin uniquement)
 - Methode POST (JSON body) avec `email` et `password`
+- Detecte les identifiants BDD pour le super admin
+- Si user OAuth tente un login classique → message explicite
 - Retourne un token de session + objet utilisateur
-- Cree un cookie `bk_token`
 
-**api/auth/register.php** — Inscription utilisateur
+**api/auth/register.php** — Inscription classique (legacy)
 - Methode POST avec `email`, `password` (min 8 caracteres), `nom`, `prenom`, `role` (athlete/coach/club)
-- Verifie le format email + doublon email
-- Cree l'utilisateur + la session automatiquement
-- Retourne 201 Created
+- Conserve pour compatibilite, mais le frontend utilise Google OAuth
 
 **api/auth/logout.php** — Deconnexion
 - Methode POST, supprime la session en BDD + efface le cookie
@@ -519,6 +538,12 @@ Le coeur de l'application. Fichier unique de ~7300 lignes contenant 8 sections a
 
 **Contenu :**
 - 8 cartes statistiques : Athletes, Clubs, Epreuves, Resultats, Records, Medailles, Selections, Villes
+- **Top Clubs Consultes** : tableau des clubs les plus visites, avec onglets periode (Jour, Semaine, Mois, Annee)
+- **Top Athletes Consultes** : tableau des athletes les plus visites, avec onglets periode (Jour, Semaine, Mois, Annee)
+- Donnees depuis tables de tracking IP (`club_vues_ip`, `athlete_vues_ip`) filtrees par `created_at`
+- API : `top_searched.php?type=clubs|athletes&days=1|7|30|365`
+- Pagination 10/page, bouton "Voir tout", auto-refresh 60s
+- Fallback si aucune vue : utilise les stats globales (`stats_detail_30.json`)
 - 4 graphiques Chart.js :
   - Repartition Hommes/Femmes (Doughnut)
   - Repartition des Medailles or/argent/bronze (Doughnut)
@@ -1067,10 +1092,13 @@ Pour la page d'accueil, les donnees detaillees sont injectees directement en Jav
 - Scannez pour ouvrir directement la page
 
 ### 11. Authentification et gestion utilisateur
-- Inscription avec role (athlete/coach/club)
-- Connexion par email/mot de passe (bcrypt)
+- **Connexion uniquement via Google OAuth** (bouton Google sur login.php et register.php)
+- Flux : Google login → callback → creation/liaison automatique du compte → session
+- Auto-register : si email Google inconnu, cree un compte (role=athlete)
+- Merge : si email existe deja (compte classique), lie le google_id sans creer de doublon
 - Sessions par token + cookies HTTPOnly (30 jours)
-- Controle d'acces par role
+- Controle d'acces par role (athlete, coach, club, admin)
+- Extensible : pret pour Facebook, Instagram (constantes commentees dans oauth_config.php)
 - Saisie manuelle de performances (CRUD, auteur uniquement)
 
 ### 12. Partage et export

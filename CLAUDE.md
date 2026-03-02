@@ -12,7 +12,8 @@
 ```
 BK/
 ├── api/                API REST JSON (20+ endpoints, cache fichier 24h)
-│   ├── config.php      Headers JSON + CORS + $conn + jsonResponse()
+│   ├── config.php      Headers JSON + CORS + $conn + jsonResponse() + cle API
+│   ├── contact.php     Messages contact (POST=envoyer, GET=mark_read/delete/unban_ip)
 │   ├── athlete.php     Fiche complete athlete (?id= ou ?id_athlete=)
 │   ├── search.php      Recherche multi-criteres (12 filtres combinables)
 │   ├── club_stats.php  Stats club (?id=, ?nom=, ?annee=, ?rp=, ?ep=, ?nationalite=, ?sexe=, ?categorie=)
@@ -32,7 +33,7 @@ BK/
 │   ├── epreuve_records.php Records paginés par épreuve
 │   ├── ville_epreuves.php Épreuves par ville
 │   ├── competitions.php Liste des compétitions
-│   └── auth/           login.php, register.php, logout.php, me.php
+│   └── auth/           login.php, register.php, logout.php, me.php, forgot_password.php, reset_password.php, google_login.php, google_callback.php
 ├── cache/              Cache JSON fichier (24h, protege .htaccess)
 │   ├── stats_base.json           Cache stats sans detail
 │   ├── stats_detail_30.json      Cache stats avec detail (top 30)
@@ -47,16 +48,15 @@ BK/
 │   ├── credentials.php Identifiants BDD ($dbname, $username, $password)
 │   ├── db.php          Connexion mysqli ($conn)
 │   ├── auth.php        Auth (hash, sessions 30j, roles, requireAuth/requireRole)
-│   ├── ip_logger.php   Logger IP universel + rate limiting (20 req/jour)
+│   ├── oauth_config.php Config OAuth Google (extensible Facebook/Instagram)
+│   ├── ip_logger.php   Logger IP universel (rate limiting desactive)
 │   ├── dbCheck_athle.php Schema BDD (22 tables, 30+ FK)
 │   ├── insert_athle.php Import donnees → BDD
 │   ├── seo.php         Generation meta/OG/Twitter/JSON-LD Schema.org
 │   └── paths.php       Constante BK_BASE
 ├── admin/              Administration
-│   ├── panel.php       Super Admin dashboard (12 sections, auth BDD credentials)
+│   ├── panel.php       Super Admin dashboard (14 sections, auth BDD credentials)
 │   ├── setup_bdd.php   Creation BDD + toutes les tables
-│   ├── drop_all.php    Suppression tables athletes
-│   ├── reset.php       Remise a zero (?bdd=1 pour truncate)
 │   ├── clear_cache.php Vider cache (?prefix= pour cibler)
 │   ├── cache_urls.php  Pre-generation cache
 │   ├── fix_perf_int.php Correction INT perfs (padding dixiemes, ?go pour executer)
@@ -68,13 +68,14 @@ BK/
 ├── logs/               Logs IP + daily counters (protege .htaccess)
 │   ├── ip_view.php     Viewer distant logs IP (auth email whitelist)
 │   ├── ip_track_YYYY-MM.php  Log mensuel JSON (protege par die())
-│   └── ip_daily_YYYY-MM-DD.php  Compteurs rate limiting journaliers
+│   ├── ip_daily_YYYY-MM-DD.php  Compteurs rate limiting journaliers
+│   └── ip_banned.php        IPs bannies definitivement (JSON protege par die())
 ├── docs/               Documentation technique
 ├── generate_og_image.html Generateur image OG (canvas 1200x630)
 ├── index.php           PAGE PRINCIPALE (~8400 lignes PHP+HTML+JS)
 ├── dashboard.css       Styles du dashboard (~550 lignes)
 ├── common.css          Styles globaux
-├── login.php / register.php / nav.php / panel.php
+├── login.php / register.php / forgot_password.php / reset_password.php / nav.php / panel.php
 ├── sitemap.php         Generation sitemap XML
 ├── robots.txt          SEO robots
 ├── README.md           Documentation utilisateur
@@ -245,21 +246,23 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 ## API top_searched.php
 - `type` (requis) : `clubs` ou `athletes`
 - `limit` : max items (defaut 50, max 50)
-- `days` : periode en jours (defaut 30, max 365)
-- **Clubs** : compte les `page_view` avec `page LIKE '%page=recherche%club=%'` dans table `logs`
-- **Athletes** : compte les `page_view` avec `page LIKE '%page=profil%id=%'` dans table `logs`
-- Dedup clubs : merge URL-encoded variants via PHP `urldecode()` + aggregation
-- Cache 1h : `topsearched_{type}_{limit}_{days}.json`
-- `days=1` = aujourd'hui (calcul : `strtotime("-" . ($days - 1) . " days")`)
+- `days` : periode en jours (1, 7, 30, 365 — defaut 1)
+- Compte les vues depuis les tables de tracking (`athlete_vues_ip` / `club_vues_ip`) filtrees par `created_at`
+- Chaque visite de profil ou page club incremente le compteur via INSERT IGNORE (1 vue/IP)
+- Cache 10min : `topsearched_{type}_{limit}_{days}d.json`
+- `?nocache` : bypass cache
+- `?reset=athletes|clubs|all&bk_key=...` : reset compteurs vues + truncate tables tracking
 
-## Page Accueil — Top Recherchés
+## Page Accueil — Top Consultés
 - 2 sections apres les stat cards, avant les courbes
-- **Top Clubs Recherchés** + **Top Athlètes Recherchés**
-- Filtres période : Jour (1j), Semaine (7j), Mois (30j), Année (365j)
+- **Top Clubs Consultés** + **Top Athlètes Consultés**
+- **Onglets periode** : Jour (1j, defaut), Semaine (7j), Mois (30j), Année (365j)
+- Onglet actif = violet (#6c5ce7), inactif = gris
 - Pagination : 10/page, max 5 pages + bouton "Voir tout"
-- Fallback : si logs vides, utilise `$detailData` de stats.php
+- Fallback : si vues=0, utilise `$detailData` de `stats_detail_30.json` via `_fbMapClubs()`/`_fbMapAth()`
+- Auto-refresh : `setInterval` 60s avec `?nocache`
 - Pattern 3-tables : header / `<tbody id="topSearchClubsBody">` / footer
-- JS : `_loadTopClubs(days)`, `_loadTopAth(days)`, `_renderTopClubs(items)`, `_renderTopAth(items)`
+- JS : `_loadTopClubs(nc)`, `_loadTopAth(nc)`, `_switchClubDays(d)`, `_switchAthDays(d)`, `_renderTabs()`
 
 ## Panneau club — Onglet Épreuves (filtres avancés)
 ### Filtres disponibles
@@ -327,13 +330,15 @@ html += '</div>';
 | `athlete_progressions` | id_athlete + id_epreuve + annee + perf + id_ville | Evolution annuelle |
 | `athlete_niveaux` | id_athlete + code_niveau + points_niveau + annee | Qualifications |
 | `athlete_niv_perfs` | id_niveau + id_epreuve + performance | Perfs par niveau |
-| `users` | id_user, email UNIQUE | Roles: athlete/coach/club/admin |
+| `users` | id_user, email UNIQUE, google_id UNIQUE | Roles: athlete/coach/club/admin, OAuth (google_id, oauth_provider) |
 | `user_sessions` | id_session, token UNIQUE | TTL 30 jours |
 | `athlete_perfs_manuelles` | id_perf | Perfs saisies manuellement |
 | `logs` | id_log, ts, ip, sid, action, page | Tracking activite utilisateur (stocke en BDD) |
 | `athlete_follows` | id_follow, email, athlete_id_ext | Suivi athlete par email (UK: email+athlete) |
 | `club_follows` | id_follow, email, club_id | Suivi club par email (UK: email+club) |
 | `email_subscribers` | id_sub, email, source, detail | Newsletter + PDF (UK: email+source) |
+| `contact_messages` | id_msg PK, ip, nom, email, message, lu | Messages contact (lu=0/1) |
+| `password_resets` | id_reset PK, id_user FK, token UNIQUE, expire_at, used | Tokens reinitialisation mdp (1h TTL) |
 
 ## Cache systeme
 - **Emplacement** : `cache/` (fichiers JSON, protege .htaccess)
@@ -342,6 +347,7 @@ html += '</div>';
 - **Prefixes** : `athlete_`, `search_`, `clubstats_`, `villestats_`, `ep_`, `clubs_`, `epreuves_`, `villes_`, `stats_`, `liste_`
 - **Vider** : `admin/clear_cache.php` (tout) ou `?prefix=clubstats` (specifique)
 - **Bypass** : `?nocache=1` sur stats.php, club_stats.php
+- **IMPORTANT** : apres vidage cache, appeler `stats.php?detail=1&top=30` pour regenerer `stats_detail_30.json`, sinon fallback top clubs/athletes sera vide sur l'accueil
 
 ## Logging systeme
 
@@ -362,14 +368,33 @@ html += '</div>';
 - **Viewer** : `logs/ip_view.php` — auth email whitelist, params `?month=`, `?ip=`, `?raw=1`
 - **Pages avec logIp()** : index.php, api/config.php, pages/*.php, login.php, register.php
 
-### Rate limiting (IP)
-- **Limite** : 20 requetes/jour par IP non connectee (`IP_DAILY_LIMIT`)
-- **Compteurs** : fichiers legers `logs/ip_daily_YYYY-MM-DD.php` (separes du log principal)
-- **Page blocage** : HTTP 429 avec CTA inscription/connexion (`showRateLimitPage()`)
-- **Whitelist** : IPs serveur Hostinger + tous les ranges Google (Googlebot, etc.)
-- **Constantes** : `IP_WHITELIST` (IPs exactes), `IP_GOOGLE_PREFIXES` (prefixes 66.249.*, 142.250.*, etc.)
-- **Fonction** : `isWhitelistedIp($ip)` — check whitelist + prefixes Google
-- **Exemptions** : users connectes (cookie `bk_token`/`bk_sa_token`), pages login/register/auth, bots connus, IPs whitelistees
+### Rate limiting (DESACTIVE)
+- **Rate limiting et ban permanent desactives** — API et pages accessibles sans restriction IP
+- **Fonctions conservees** (code present mais non appele) : `banIp()`, `isIpBanned()`, `readBannedIps()`, `showRateLimitPage()`
+- **Whitelist** : IPs serveur Hostinger + Google toujours presentes (non loguees)
+- **IPs whitelistees ne sont PAS loguees** (early return dans `logIp()`)
+
+### Cle API (config.php)
+- **Cle API conservee** : `BK_API_KEY = 'bk_s3cr3t_2026_xK9mP'`
+- **Utilisation** : param URL `?bk_key=...` ou header `X-BK-KEY`
+- **Sert pour** : reset vues (`top_searched.php?reset=`), bypass cache
+- **PAS de restriction IP** : l'API est ouverte a toutes les IPs
+
+### Systeme de contact
+- **API** : `api/contact.php` (PAS de config.php = accessible meme si IP bloquee)
+- **Table** : `contact_messages` (auto-created via CREATE TABLE IF NOT EXISTS)
+- **POST** : envoyer message `{ nom, email, message }` — rate limit 3/jour par IP
+- **GET admin** (cookie `bk_sa_token` requis) :
+  - `?mark_read=ID` : marquer message comme lu
+  - `?delete=ID` : supprimer message
+  - `?unban_ip=X` : debannir une IP
+- **Formulaire visible** : page de blocage (429) + footer index.php
+- **Admin panel** : section 14, alerte violette pulsante si messages non lus
+
+### Fichiers dangereux SUPPRIMES
+- `admin/drop_all.php` — SUPPRIME (supprimait toutes les tables)
+- `admin/reset.php` — SUPPRIME (truncate toutes les donnees)
+- Boutons correspondants retires du panel admin
 
 ## Systeme de suivi (follow) athletes et clubs
 - **API** : `api/follow.php` — supporte athletes (`athlete_id`) ET clubs (`club_id`)
@@ -390,16 +415,29 @@ html += '</div>';
 - **localStorage** : `bk_pdf_email`, `bk_nl_done`, `bk_nl_closed`
 
 ## Auth systeme
+- **Connexion uniquement via Google OAuth** (plus de formulaire email/mot de passe)
 - **Roles** : athlete (defaut), coach, club, admin
-- **Hash** : `password_hash()` BCRYPT
 - **Sessions** : token 64 chars hex, cookie `bk_token` (httpOnly, sameSite=Lax), TTL 30j
 - **Fonctions** : `hashPassword()`, `verifyPassword()`, `generateToken()`, `createSession()`, `getCurrentUser()`, `requireAuth()`, `requireRole()`, `logout()`
+
+### Google OAuth 2.0
+- **Flux** : `login.php` → bouton Google → `api/auth/google_login.php` (genere state CSRF) → Google → `api/auth/google_callback.php` (echange code, cree/lie user) → `index.php`
+- **Config** : `core/oauth_config.php` — credentials Google, detection auto local/prod pour redirect URI
+- **Colonnes BDD** : `users.google_id` (VARCHAR 255, UNIQUE), `users.oauth_provider` (VARCHAR 50)
+- **Merge comptes** : si email Google existe deja en BDD → lie le google_id au compte existant (pas de doublon)
+- **Auto-register** : si email inconnu → cree un user (role=athlete, password_hash vide, oauth_provider=google)
+- **Securite** : state CSRF en session, Authorization Code Flow (tout cote serveur), pas de token client-side
+- **Extensible** : pret pour Facebook, Instagram (constantes commentees dans oauth_config.php)
+- **Pages** : `login.php` ("Se connecter avec Google") + `register.php` ("S'inscrire avec Google") — meme flux
 
 ### Super Admin
 - **Login** : meme formulaire `login.php` (input type="text"), detecte si email = BDD username + password = BDD password
 - **Cookie** : `bk_sa_token` (7 jours), stocke dans `logs/.sa_sessions.php`
-- **Dashboard** : `admin/panel.php` — 12 sections (overview, requetes temps reel, activite horaire, top IPs, users, BDD info, etc.)
+- **Dashboard** : `admin/panel.php` — 14 sections (overview, requetes temps reel, activite horaire, top IPs, users, BDD info, IPs bannies, messages contact, etc.)
 - **Detection** : `api/auth/login.php` compare avec `$username`/`$password` de `core/credentials.php`
+- **Section 13** : IPs bloquees & bannies (avec bouton debannir)
+- **Section 14** : Messages contact (lu/non-lu/supprimer/tout marquer lu)
+- **Actions rapides** : reset vues athletes/clubs (appelle `top_searched.php?reset=`)
 
 ## localStorage (navigateur)
 - `bk_cmp_athletes` : panier comparaison athletes `[{id, name}]`
@@ -548,3 +586,7 @@ Quand il n'y a qu'1 chiffre apres `''`, `m` ou `.`, c'est un **dixieme** (pas un
 - Performances avec `performance_int = 0` ou `NULL` = conversions echouees → toujours filtrer `> 0`
 - FK vers epreuves/villes/clubs = ON DELETE SET NULL (pas CASCADE)
 - FK vers athletes = ON DELETE CASCADE (supprime toutes les donnees liees)
+
+
+
+

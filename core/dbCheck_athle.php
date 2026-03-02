@@ -41,10 +41,16 @@ $columnsClubs = [
     "nom_club" => "VARCHAR(200) NOT NULL UNIQUE",
     "departement_club" => "VARCHAR(100) DEFAULT ''",
     "region_club" => "VARCHAR(100) DEFAULT ''",
+    "vues" => "INT UNSIGNED DEFAULT 0",
 ];
 $tableName = "clubs";
 if (!in_array($tableName, $tables, true)) {
     $databaseHandler->create_table($tableName, $columnsClubs);
+} else {
+    $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `clubs` LIKE 'vues'");
+    if ($res && $res->num_rows === 0) {
+        $databaseHandler->action_sql("ALTER TABLE `clubs` ADD COLUMN `vues` INT UNSIGNED DEFAULT 0");
+    }
 }
 
 // ======================================================
@@ -162,6 +168,7 @@ $columnsAthletes = [
     "id_nationalite" => "INT UNSIGNED DEFAULT NULL",
     "licence_athlete" => "VARCHAR(20) DEFAULT ''",
     "date_creation_athlete" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    "vues" => "INT UNSIGNED DEFAULT 0",
 ];
 $tableName = "athletes";
 if (!in_array($tableName, $tables, true)) {
@@ -175,6 +182,10 @@ if (!in_array($tableName, $tables, true)) {
     $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `athletes` LIKE 'id_nationalite'");
     if ($res && $res->num_rows === 0) {
         $databaseHandler->action_sql("ALTER TABLE `athletes` ADD COLUMN `id_nationalite` INT UNSIGNED DEFAULT NULL AFTER `nationalite_athlete`");
+    }
+    $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `athletes` LIKE 'vues'");
+    if ($res && $res->num_rows === 0) {
+        $databaseHandler->action_sql("ALTER TABLE `athletes` ADD COLUMN `vues` INT UNSIGNED DEFAULT 0");
     }
 }
 
@@ -602,16 +613,34 @@ $databaseHandler->addForeignKey("athlete_niv_perfs", "id_epreuve", "epreuves", "
 $columnsUsers = [
     "id_user" => "INT UNSIGNED AUTO_INCREMENT PRIMARY KEY",
     "email" => "VARCHAR(255) NOT NULL UNIQUE",
-    "password_hash" => "VARCHAR(255) NOT NULL",
+    "password_hash" => "VARCHAR(255) DEFAULT ''",
     "nom" => "VARCHAR(100) DEFAULT ''",
     "prenom" => "VARCHAR(100) DEFAULT ''",
     "role" => "ENUM('athlete','coach','club','admin') DEFAULT 'athlete'",
     "id_athlete" => "INT UNSIGNED DEFAULT NULL",
+    "google_id" => "VARCHAR(255) DEFAULT NULL",
+    "oauth_provider" => "VARCHAR(50) DEFAULT NULL",
     "date_creation" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
 ];
 $tableName = "users";
 if (!in_array($tableName, $tables, true)) {
     $databaseHandler->create_table($tableName, $columnsUsers);
+    $databaseHandler->action_sql("ALTER TABLE `users` ADD UNIQUE INDEX `uk_google_id` (`google_id`)");
+} else {
+    // Migration OAuth : ajouter google_id si absent
+    $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `users` LIKE 'google_id'");
+    if ($res && $res->num_rows === 0) {
+        $databaseHandler->action_sql("ALTER TABLE `users` ADD COLUMN `google_id` VARCHAR(255) DEFAULT NULL AFTER `id_athlete`");
+        $databaseHandler->action_sql("ALTER TABLE `users` ADD UNIQUE INDEX `uk_google_id` (`google_id`)");
+    }
+    // Migration OAuth : ajouter oauth_provider si absent
+    $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `users` LIKE 'oauth_provider'");
+    if ($res && $res->num_rows === 0) {
+        $databaseHandler->action_sql("ALTER TABLE `users` ADD COLUMN `oauth_provider` VARCHAR(50) DEFAULT NULL AFTER `google_id`");
+    }
+    // Migration OAuth : password_hash DEFAULT '' (users OAuth n'ont pas de mdp)
+    // Idempotent — toujours safe a executer
+    $databaseHandler->action_sql("ALTER TABLE `users` MODIFY COLUMN `password_hash` VARCHAR(255) DEFAULT ''");
 }
 // FK users → athletes (lien optionnel)
 $databaseHandler->addForeignKey("users", "id_athlete", "athletes", "id_athlete", "SET NULL", "CASCADE");
@@ -805,8 +834,69 @@ echo "id_get_result_villes_nom_array_2       → villes.id_ville (FK)\n";
 echo "id_get_result_date_perf_array_2        → athlete_progressions.id_progression (FK)\n\n";
 
 echo "═══════════════════════════════════════════════════════════════\n";
-echo " 20 tables | 38 clés étrangères | 34 anciens noms → mappés\n";
+echo " 22 tables | 38 clés étrangères | 34 anciens noms → mappés\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "</pre>";
+
+// ======================================================
+// 2️⃣3️⃣ TABLE password_resets (reinitialisation mot de passe)
+$columnsPasswordResets = [
+    "id_reset" => "INT UNSIGNED AUTO_INCREMENT PRIMARY KEY",
+    "id_user" => "INT UNSIGNED NOT NULL",
+    "token" => "VARCHAR(64) NOT NULL UNIQUE",
+    "expire_at" => "DATETIME NOT NULL",
+    "used" => "TINYINT(1) UNSIGNED DEFAULT 0",
+    "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+];
+$tableName = "password_resets";
+if (!in_array($tableName, $tables, true)) {
+    $databaseHandler->create_table($tableName, $columnsPasswordResets);
+    $databaseHandler->action_sql("ALTER TABLE `password_resets` ADD INDEX `idx_pr_token` (`token`)");
+    $databaseHandler->action_sql("ALTER TABLE `password_resets` ADD INDEX `idx_pr_user` (`id_user`)");
+}
+// FK password_resets → users
+$databaseHandler->addForeignKey("password_resets", "id_user", "users", "id_user", "CASCADE", "CASCADE");
+
+// ======================================================
+// TABLE athlete_vues_ip — Tracking vues profil par IP unique
+// ======================================================
+$tableName = "athlete_vues_ip";
+if (!in_array($tableName, $tables, true)) {
+    $databaseHandler->create_table($tableName, [
+        "ip" => "VARCHAR(45) NOT NULL",
+        "athlete_id_ext" => "INT UNSIGNED NOT NULL",
+        "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    ]);
+    $databaseHandler->action_sql("ALTER TABLE `athlete_vues_ip` ADD PRIMARY KEY (`ip`, `athlete_id_ext`)");
+}
+
+// ======================================================
+// TABLE club_vues_ip — Tracking vues club par IP unique
+// ======================================================
+$tableName = "club_vues_ip";
+if (!in_array($tableName, $tables, true)) {
+    $databaseHandler->create_table($tableName, [
+        "ip" => "VARCHAR(45) NOT NULL",
+        "club_id" => "INT UNSIGNED NOT NULL",
+        "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    ]);
+    $databaseHandler->action_sql("ALTER TABLE `club_vues_ip` ADD PRIMARY KEY (`ip`, `club_id`)");
+}
+
+// ======================================================
+// TABLE contact_messages — Messages de contact (page blocage)
+// ======================================================
+$tableName = "contact_messages";
+if (!in_array($tableName, $tables, true)) {
+    $databaseHandler->create_table($tableName, [
+        "id_msg" => "INT UNSIGNED AUTO_INCREMENT PRIMARY KEY",
+        "ip" => "VARCHAR(45) NOT NULL DEFAULT ''",
+        "nom" => "VARCHAR(100) NOT NULL DEFAULT ''",
+        "email" => "VARCHAR(200) NOT NULL DEFAULT ''",
+        "message" => "TEXT NOT NULL",
+        "lu" => "TINYINT(1) UNSIGNED NOT NULL DEFAULT 0",
+        "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    ]);
+}
 
 // ======================================================

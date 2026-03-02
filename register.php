@@ -22,6 +22,11 @@ $conn->close();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscription - Bokonzi</title>
     <link rel="stylesheet" href="common.css">
+    <style>
+    .btn-google { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:14px; background:#fff; color:#3c4043; border:1px solid #dadce0; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; text-decoration:none; transition:background .2s, box-shadow .2s; }
+    .btn-google:hover { background:#f7f8f8; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+    .btn-google svg { flex-shrink:0; }
+    </style>
 </head>
 <body class="auth-body">
     <div class="auth-card">
@@ -32,77 +37,25 @@ $conn->close();
 
         <div class="msg-error" id="msgError"></div>
 
-        <form id="registerForm">
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="prenom">Prenom</label>
-                    <input type="text" id="prenom" name="prenom" required placeholder="Jean">
-                </div>
-                <div class="form-group">
-                    <label for="nom">Nom</label>
-                    <input type="text" id="nom" name="nom" required placeholder="Dupont">
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required placeholder="votre@email.com" autocomplete="email">
-            </div>
-            <div class="form-group">
-                <label for="password">Mot de passe</label>
-                <input type="password" id="password" name="password" required placeholder="Minimum 8 caracteres" autocomplete="new-password" minlength="8">
-            </div>
-            <div class="form-group">
-                <label for="role">Vous etes</label>
-                <select id="role" name="role">
-                    <option value="athlete">Athlete</option>
-                    <option value="coach">Coach / Entraineur</option>
-                    <option value="club">Club</option>
-                </select>
-            </div>
-            <button type="submit" class="btn-submit" id="btnSubmit">Creer mon compte</button>
-        </form>
+        <a href="api/auth/google_login.php" class="btn-google">
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.08 24.08 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            S'inscrire avec Google
+        </a>
 
-        <div class="auth-footer">
+        <div class="auth-footer" style="margin-top:20px;">
             Deja un compte ? <a href="login.php">Se connecter</a>
         </div>
     </div>
 
     <script>
-    document.getElementById('registerForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const btn = document.getElementById('btnSubmit');
-        const errDiv = document.getElementById('msgError');
-        errDiv.style.display = 'none';
-        btn.disabled = true;
-        btn.textContent = 'Inscription...';
-
-        try {
-            const res = await fetch('api/auth/register.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({
-                    prenom: document.getElementById('prenom').value,
-                    nom: document.getElementById('nom').value,
-                    email: document.getElementById('email').value,
-                    password: document.getElementById('password').value,
-                    role: document.getElementById('role').value,
-                }),
-            });
-            const data = await res.json();
-            if (data.success) {
-                window.location.href = 'index.php';
-            } else {
-                errDiv.textContent = data.error || 'Erreur lors de l\'inscription';
-                errDiv.style.display = 'block';
-            }
-        } catch (err) {
-            errDiv.textContent = 'Erreur reseau, veuillez reessayer';
-            errDiv.style.display = 'block';
+    (function() {
+        var p = new URLSearchParams(window.location.search);
+        if (p.get('error') === 'google') {
+            var d = document.getElementById('msgError');
+            d.textContent = 'Echec de l\'inscription avec Google. Veuillez reessayer.';
+            d.style.display = 'block';
         }
-        btn.disabled = false;
-        btn.textContent = 'Creer mon compte';
-    });
+    })();
     </script>
 </body>
 </html>

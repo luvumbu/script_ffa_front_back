@@ -731,26 +731,30 @@ if ($page === 'accueil'):
     </div></a>
 </div>
 
-<!-- ======== TOP CLUBS RECHERCHES ======== -->
+<!-- ======== TOP CLUBS CONSULTES ======== -->
 <div style="margin-top:24px;margin-bottom:24px;">
-    <h2><span class="chart-icon" style="background:#8b5cf620;color:#a78bfa;">&#127963;</span> Top Clubs Recherch&#233;s <span id="topSearchClubsCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-    <div id="topSearchClubsFilters" style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        <h2 style="margin:0;"><span class="chart-icon" style="background:#8b5cf620;color:#a78bfa;">&#127963;</span> Top Clubs Consult&#233;s <span id="topSearchClubsCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
+        <div id="topClubsTabs" style="display:flex;gap:4px;"></div>
+    </div>
     <div class="table-wrap">
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Recherches</th></tr></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Vues</th></tr></table>
     <table class="bk-table"><tbody id="topSearchClubsBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Recherches</th></tr></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Vues</th></tr></table>
     </div>
     <div id="topSearchClubsPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
 </div>
 
-<!-- ======== TOP ATHLETES RECHERCHES ======== -->
+<!-- ======== TOP ATHLETES CONSULTES ======== -->
 <div style="margin-bottom:24px;">
-    <h2><span class="chart-icon" style="background:#ec489920;color:#f472b6;">&#127939;</span> Top Athl&#232;tes Recherch&#233;s <span id="topSearchAthCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-    <div id="topSearchAthFilters" style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        <h2 style="margin:0;"><span class="chart-icon" style="background:#ec489920;color:#f472b6;">&#127939;</span> Top Athl&#232;tes Consult&#233;s <span id="topSearchAthCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
+        <div id="topAthTabs" style="display:flex;gap:4px;"></div>
+    </div>
     <div class="table-wrap">
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Recherches</th></tr></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Vues</th></tr></table>
     <table class="bk-table"><tbody id="topSearchAthBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Recherches</th></tr></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Vues</th></tr></table>
     </div>
     <div id="topSearchAthPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
 </div>
@@ -994,32 +998,12 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 
-<!-- ======== TOP RECHERCHES JS ======== -->
+<!-- ======== TOP CONSULTES JS ======== -->
 <script>
 document.addEventListener('DOMContentLoaded', function(){
     function _esc2(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-    // Fallback : donnees stats injectees par PHP (si logs vides)
-    <?php
-    $fbClubs = [];
-    $fbAthletes = [];
-    if ($detailData && !empty($detailData['top_clubs'])) {
-        $fbClubs = array_slice($detailData['top_clubs'], 0, 50);
-    }
-    if ($detailData && !empty($detailData['top_athletes'])) {
-        $fbAthletes = array_slice($detailData['top_athletes'], 0, 50);
-    }
-    ?>
-    var _fbClubs = <?= json_encode($fbClubs, JSON_UNESCAPED_UNICODE) ?>;
-    var _fbAthletes = <?= json_encode($fbAthletes, JSON_UNESCAPED_UNICODE) ?>;
-
-    // Periodes
-    var _periods = [
-        {label:'Jour', days:1},
-        {label:'Semaine', days:7},
-        {label:'Mois', days:30},
-        {label:'Ann\u00e9e', days:365}
-    ];
+    // Pas de fallback : si aucune vue, affiche "Aucune donnee"
 
     function _topSearchPag(items, bodyId, pagId, perPage, maxPages, renderRow) {
         var pg = 0, expanded = false;
@@ -1053,35 +1037,37 @@ document.addEventListener('DOMContentLoaded', function(){
         render();
     }
 
-    // ---- Boutons filtres periode ----
-    function _buildPeriodBtns(filterId, activeDays, onSelect) {
+    // ---- Period tabs ----
+    var _topPeriods = [{d:1,l:'Jour'},{d:7,l:'Semaine'},{d:30,l:'Mois'},{d:365,l:'Ann\u00e9e'}];
+    var _clubDays = 1, _athDays = 1;
+    var _tabStyle = 'padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #253560;transition:all .2s;';
+    var _tabActiveStyle = 'background:#6c5ce7;color:#fff;border-color:#6c5ce7;';
+    var _tabInactiveStyle = 'background:transparent;color:#5a6580;border-color:#253560;';
+
+    function _renderTabs(containerId, current, onClick) {
         var h = '';
-        _periods.forEach(function(p) {
-            var active = p.days === activeDays;
-            var bg = active ? '#6c5ce7' : '#1a2540';
-            var bc = active ? '#6c5ce7' : '#253560';
-            var tc = active ? '#fff' : '#8b949e';
-            h += '<button onclick="window._tsf_'+filterId+'('+p.days+')" style="padding:5px 14px;background:'+bg+';border:1px solid '+bc+';border-radius:6px;color:'+tc+';cursor:pointer;font-size:12px;font-weight:'+(active?'600':'400')+';">'+p.label+'</button>';
+        _topPeriods.forEach(function(p) {
+            var active = p.d === current;
+            h += '<button onclick="'+onClick+'('+p.d+')" style="'+_tabStyle+(active?_tabActiveStyle:_tabInactiveStyle)+'">'+p.l+'</button>';
         });
-        document.getElementById(filterId).innerHTML = h;
-        window['_tsf_'+filterId] = function(days) { onSelect(days); };
+        document.getElementById(containerId).innerHTML = h;
     }
 
     // ---- Load & render clubs ----
-    function _loadTopClubs(days) {
-        _buildPeriodBtns('topSearchClubsFilters', days, _loadTopClubs);
+    window._switchClubDays = function(d) { _clubDays = d; _renderTabs('topClubsTabs', _clubDays, '_switchClubDays'); _loadTopClubs(true); };
+    function _loadTopClubs(nc) {
         document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
         document.getElementById('topSearchClubsPag').innerHTML = '';
-        fetch(BASE_API + '/top_searched.php?type=clubs&days=' + days)
+        fetch(BASE_API + '/top_searched.php?type=clubs&days=' + _clubDays + (nc ? '&nocache' : ''))
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 if (d.success && d.items && d.items.length) {
                     _renderTopClubs(d.items);
                 } else {
-                    _renderTopClubs(_fbMapClubs(_fbClubs));
+                    _renderTopClubs([]);
                 }
             })
-            .catch(function() { _renderTopClubs(_fbMapClubs(_fbClubs)); });
+            .catch(function() { _renderTopClubs([]); });
     }
     function _renderTopClubs(items) {
         if (!items || !items.length) {
@@ -1100,20 +1086,20 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 
     // ---- Load & render athletes ----
-    function _loadTopAth(days) {
-        _buildPeriodBtns('topSearchAthFilters', days, _loadTopAth);
+    window._switchAthDays = function(d) { _athDays = d; _renderTabs('topAthTabs', _athDays, '_switchAthDays'); _loadTopAth(true); };
+    function _loadTopAth(nc) {
         document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
         document.getElementById('topSearchAthPag').innerHTML = '';
-        fetch(BASE_API + '/top_searched.php?type=athletes&days=' + days)
+        fetch(BASE_API + '/top_searched.php?type=athletes&days=' + _athDays + (nc ? '&nocache' : ''))
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 if (d.success && d.items && d.items.length) {
                     _renderTopAth(d.items);
                 } else {
-                    _renderTopAth(_fbMapAth(_fbAthletes));
+                    _renderTopAth([]);
                 }
             })
-            .catch(function() { _renderTopAth(_fbMapAth(_fbAthletes)); });
+            .catch(function() { _renderTopAth([]); });
     }
     function _renderTopAth(items) {
         if (!items || !items.length) {
@@ -1131,20 +1117,12 @@ document.addEventListener('DOMContentLoaded', function(){
         });
     }
 
-    // ---- Fallback mappers ----
-    function _fbMapClubs(arr) {
-        return arr.map(function(c) { return { nom: c.club, vues: c.nb_athletes||0 }; });
-    }
-    function _fbMapAth(arr) {
-        return arr.map(function(a) {
-            var sc = (a.nb_medailles||0)*5 + (a.nb_podiums||0)*3 + (a.nb_selections||0)*4 + (a.nb_records||0);
-            return { id: a.athlete_id, nom: a.nom, vues: sc };
-        });
-    }
-
-    // Init : charger avec periode Mois par defaut
-    _loadTopClubs(30);
-    _loadTopAth(30);
+    // Init tabs + load + auto-refresh toutes les 60s
+    _renderTabs('topClubsTabs', _clubDays, '_switchClubDays');
+    _renderTabs('topAthTabs', _athDays, '_switchAthDays');
+    _loadTopClubs();
+    _loadTopAth();
+    setInterval(function() { _loadTopClubs(true); _loadTopAth(true); }, 60000);
 });
 </script>
 
@@ -1428,6 +1406,19 @@ function _athNivBadge($code) {
 //  RECHERCHE
 // ================================================================
 elseif ($page === 'recherche'):
+    // Incrementer le compteur de vues du club (1 seule fois par IP)
+    if (!empty($_GET['club'])) {
+        $__ip = $conn->real_escape_string(getVisitorIp());
+        $__clubName = $conn->real_escape_string($_GET['club']);
+        $__clubRes = $conn->query("SELECT id_club FROM clubs WHERE nom_club = '$__clubName' LIMIT 1");
+        if ($__clubRes && ($__clubRow = $__clubRes->fetch_assoc())) {
+            $__cid = (int)$__clubRow['id_club'];
+            @$conn->query("INSERT IGNORE INTO club_vues_ip (ip, club_id) VALUES ('$__ip', $__cid)");
+            if ($conn->affected_rows > 0) {
+                @$conn->query("UPDATE clubs SET vues = vues + 1 WHERE id_club = $__cid");
+            }
+        }
+    }
 ?>
 
 <?php if (!empty($_GET['club'])): ?>
@@ -1945,6 +1936,13 @@ document.addEventListener('DOMContentLoaded', function() {
 //  PROFIL ATHLETE COMPLET
 // ================================================================
 elseif ($page === 'profil' && $id):
+    // Incrementer le compteur de vues (1 seule fois par IP)
+    $__ip = $conn->real_escape_string(getVisitorIp());
+    $__eid = (int)$id;
+    @$conn->query("INSERT IGNORE INTO athlete_vues_ip (ip, athlete_id_ext) VALUES ('$__ip', $__eid)");
+    if ($conn->affected_rows > 0) {
+        @$conn->query("UPDATE athletes SET vues = vues + 1 WHERE athlete_id_externe = $__eid");
+    }
     $data = apiCall("$BASE_API/athlete.php?id=$id");
     $section = $_GET['s'] ?? 'all';
 
@@ -9772,10 +9770,34 @@ function buildClubComparisonSummary(clubs) {
             <a href="<?= $_canonBase ?>/pages/classement.php" style="color:#5a6580;text-decoration:none;">Classement</a>
         </nav>
     </div>
+    <div>
+        <strong style="color:#8b949e;">Contact</strong>
+        <div style="margin-top:8px;">
+            <button id="footerContactBtn" onclick="document.getElementById('footerContactForm').style.display='block';this.style.display='none';" style="background:#1e2a3a;border:1px solid #2d3a4a;color:#c9d1d9;font-size:13px;padding:8px 18px;border-radius:8px;cursor:pointer;">Nous contacter</button>
+            <div id="footerContactForm" style="display:none;max-width:260px;">
+                <input type="text" id="fcNom" maxlength="100" placeholder="Nom (optionnel)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:6px;">
+                <input type="email" id="fcEmail" maxlength="200" placeholder="Email (optionnel)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:6px;">
+                <textarea id="fcMsg" maxlength="2000" placeholder="Votre message..." style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;font-family:inherit;resize:vertical;min-height:70px;margin-bottom:6px;"></textarea>
+                <button onclick="_footerContact()" style="width:100%;background:#6c5ce7;border:none;color:#fff;font-size:13px;font-weight:700;padding:9px;border-radius:8px;cursor:pointer;">Envoyer</button>
+                <div id="fcStatus" style="font-size:12px;margin-top:6px;"></div>
+            </div>
+        </div>
+    </div>
 </div>
 <div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #1e2a3a;">
     <p>&copy; <?= date('Y') ?> Bokonzi — Base de données athlétisme français</p>
 </div>
 </footer>
+<script>
+function _footerContact(){
+    var msg=document.getElementById('fcMsg').value.trim();
+    if(!msg){document.getElementById('fcStatus').innerHTML='<span style="color:#ef4444">Ecrivez un message.</span>';return;}
+    var btn=event.target;btn.disabled=true;btn.textContent='Envoi...';
+    fetch('<?= $_canonBase ?>/api/contact.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:document.getElementById('fcNom').value.trim(),email:document.getElementById('fcEmail').value.trim(),message:msg})}).then(function(r){return r.json()}).then(function(d){
+        if(d.success){document.getElementById('footerContactForm').innerHTML='<p style="color:#10b981;font-size:13px;font-weight:600;margin-top:8px;">&#10003; Message envoye !</p>';}
+        else{document.getElementById('fcStatus').innerHTML='<span style="color:#ef4444">'+(d.error||'Erreur')+'</span>';btn.disabled=false;btn.textContent='Envoyer';}
+    }).catch(function(){document.getElementById('fcStatus').innerHTML='<span style="color:#ef4444">Erreur de connexion.</span>';btn.disabled=false;btn.textContent='Envoyer';});
+}
+</script>
 </body>
 </html>
