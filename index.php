@@ -1417,6 +1417,9 @@ elseif ($page === 'recherche'):
             if ($conn->affected_rows > 0) {
                 @$conn->query("UPDATE clubs SET vues = vues + 1 WHERE id_club = $__cid");
             }
+            // Tracking search_tracking
+            $__stQ = $conn->real_escape_string($_GET['club']);
+            @$conn->query("INSERT INTO search_tracking (ip, query_text, search_type, source, entity_id, entity_name, page) VALUES ('$__ip', '$__stQ', 'club', 'page_view', $__cid, '$__stQ', 'recherche')");
         }
     }
 ?>
@@ -1943,6 +1946,11 @@ elseif ($page === 'profil' && $id):
     if ($conn->affected_rows > 0) {
         @$conn->query("UPDATE athletes SET vues = vues + 1 WHERE athlete_id_externe = $__eid");
     }
+    // Tracking search_tracking
+    $__athNameRes = $conn->query("SELECT CONCAT(prenom_athlete, ' ', nom_athlete) as nom FROM athletes WHERE athlete_id_externe = $__eid LIMIT 1");
+    $__athName = ($__athNameRes && ($__athNameRow = $__athNameRes->fetch_assoc())) ? $conn->real_escape_string($__athNameRow['nom']) : '';
+    @$conn->query("INSERT INTO search_tracking (ip, query_text, search_type, source, entity_id, entity_name, page) VALUES ('$__ip', '$__athName', 'athlete', 'page_view', $__eid, '$__athName', 'profil')");
+
     $data = apiCall("$BASE_API/athlete.php?id=$id");
     $section = $_GET['s'] ?? 'all';
 
@@ -5482,6 +5490,9 @@ function _openClubPanel(fetchUrl, suffix) {
             if (!data.success) { content.innerHTML = '<div class="loading-msg">Club non trouve</div>'; return; }
             _fillClubPanel(data, s);
             panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Track club panel open
+            var _cInfo = data.club || {};
+            _trackSearch({ q: _cInfo.nom_club || '', type: 'club', source: 'panel_open', entity_id: _cInfo.id_club || null, entity_name: _cInfo.nom_club || '', pg: 'club_panel' });
         })
         .catch(function() { content.innerHTML = '<div class="loading-msg">Erreur de chargement</div>'; });
 }
@@ -7386,6 +7397,8 @@ function openEpreuveDetail(nom) {
             if (eqr) eqr.innerHTML = bkQR('https://bokonzi.com/?page=epreuves&nom=' + encodeURIComponent(nom));
             _renderEpreuveTab('records');
             panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Track epreuve panel open
+            _trackSearch({ q: nom, type: 'epreuve', source: 'panel_open', entity_name: nom, pg: 'epreuve_panel' });
         })
         .catch(function() { content.innerHTML = '<div class="loading-msg">Erreur de chargement</div>'; });
 }
@@ -7849,6 +7862,14 @@ document.addEventListener('DOMContentLoaded', function() {
     renderIgnoredPanel();
 });
 
+// --- Search tracking helper ---
+function _trackSearch(params) {
+    try {
+        navigator.sendBeacon(BASE_API + '/search_track.php', JSON.stringify(params));
+    } catch(e) {}
+}
+var _trackTimer = null;
+
 function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
     const input = document.getElementById(inputId);
     const status = document.getElementById(statusId);
@@ -7862,6 +7883,7 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
     input.addEventListener('input', function() {
         const q = this.value.trim();
         clearTimeout(timer);
+        clearTimeout(_trackTimer);
 
         var minLen = config.minLength || 2;
         if (q.length < minLen) {
@@ -7912,11 +7934,22 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                 if (!items || items.length === 0) {
                     results.innerHTML = '<p style="color:#484f58;text-align:center;padding:20px;">Aucun résultat pour "' + escapeHtml(q) + '"</p>';
                     results.style.display = 'block';
+                    // Track search with 0 results after 2s settled
+                    clearTimeout(_trackTimer);
+                    _trackTimer = setTimeout(function() {
+                        _trackSearch({ q: q, type: config.trackType || 'general', source: 'live_search', results: 0, pg: config.trackPage || '' });
+                    }, 2000);
                     return;
                 }
 
                 results.innerHTML = config.render(items, q);
                 results.style.display = 'block';
+
+                // Track search after 2s settled (debounce: only the final query)
+                clearTimeout(_trackTimer);
+                _trackTimer = setTimeout(function() {
+                    _trackSearch({ q: q, type: config.trackType || 'general', source: 'live_search', results: total, pg: config.trackPage || '' });
+                }, 2000);
 
             } catch (e) {
                 if (e.name === 'AbortError') return;
@@ -7940,6 +7973,8 @@ function highlight(text, query) {
 liveSearch('lsAthletes', 'lsAthletesStatus', 'lsAthletesResults', 'athletesPaginated', {
     url: q => BASE_API + '/search.php?nom=' + encodeURIComponent(q) + '&limit=50',
     key: 'athletes',
+    trackType: 'athlete',
+    trackPage: 'athletes',
     render: (items, q) => {
         var thAth = '<tr><th>#</th><th>Athlète</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Records (top 5)</th><th></th><th></th></tr>';
         let html = '<div class="table-wrap">';
@@ -7994,6 +8029,8 @@ liveSearch('lsRecherche', 'lsRechercheStatus', 'lsRechercheResults', 'rechercheP
     url: q => BASE_API + '/search.php?nom=' + encodeURIComponent(q) + '&limit=50' + (_rchExtraParams ? '&' + _rchExtraParams : ''),
     minLength: _rchExtraParams ? 1 : 2,
     key: 'athletes',
+    trackType: 'athlete',
+    trackPage: 'recherche',
     render: (items, q) => {
         var thAth2 = '<tr><th>#</th><th>Nom complet</th><th>Naissance</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Records</th><th></th><th></th></tr>';
         let html = '<div class="table-wrap">';
@@ -8028,6 +8065,8 @@ liveSearch('lsRecherche', 'lsRechercheStatus', 'lsRechercheResults', 'rechercheP
 liveSearch('lsClubs', 'lsClubsStatus', 'lsClubsResults', 'clubsPaginated', {
     url: q => BASE_API + '/clubs.php?has_athletes=1&max_athletes=5000&nom=' + encodeURIComponent(q) + '&limit=50',
     key: 'clubs',
+    trackType: 'club',
+    trackPage: 'clubs',
     render: (items, q) => {
         var thClub = '<tr><th>#</th><th>Club</th><th>Athlètes</th><th></th><th></th><th></th></tr>';
         let html = '<div class="table-wrap">';
@@ -8058,6 +8097,8 @@ liveSearch('lsClubs', 'lsClubsStatus', 'lsClubsResults', 'clubsPaginated', {
 liveSearch('lsEpreuves', 'lsEpreuvesStatus', 'lsEpreuvesResults', 'epreuvesPaginated', {
     url: q => BASE_API + '/epreuves.php?has_athletes=1&nom=' + encodeURIComponent(q) + '&limit=50',
     key: 'epreuves',
+    trackType: 'epreuve',
+    trackPage: 'epreuves',
     render: (items, q) => {
         var thEpLs = '<tr><th>#</th><th>Épreuve</th><th>Athlètes avec record</th></tr>';
         let html = '<div class="table-wrap">';
@@ -8081,6 +8122,8 @@ liveSearch('lsEpreuves', 'lsEpreuvesStatus', 'lsEpreuvesResults', 'epreuvesPagin
 liveSearch('lsVilles', 'lsVillesStatus', 'lsVillesResults', 'villesPaginated', {
     url: q => BASE_API + '/villes.php?has_athletes=1&nom=' + encodeURIComponent(q) + '&limit=50',
     key: 'villes',
+    trackType: 'ville',
+    trackPage: 'villes',
     render: (items, q) => {
         var thVille = '<tr><th>#</th><th>Ville</th><th>Athlètes</th><th>Période</th><th>Top 3 niveaux</th></tr>';
         let html = '<div class="table-wrap">';

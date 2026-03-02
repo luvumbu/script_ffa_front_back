@@ -884,6 +884,31 @@ if (!in_array($tableName, $tables, true)) {
 }
 
 // ======================================================
+// TABLE search_tracking — Tracking recherches et consultations
+// ======================================================
+$tableName = "search_tracking";
+if (!in_array($tableName, $tables, true)) {
+    $databaseHandler->create_table($tableName, [
+        "id_search" => "INT UNSIGNED AUTO_INCREMENT PRIMARY KEY",
+        "ip" => "VARCHAR(45) NOT NULL DEFAULT ''",
+        "query_text" => "VARCHAR(255) NOT NULL DEFAULT ''",
+        "search_type" => "ENUM('athlete','club','epreuve','ville','general') DEFAULT 'general'",
+        "source" => "ENUM('live_search','page_view','panel_open') DEFAULT 'live_search'",
+        "entity_id" => "INT UNSIGNED DEFAULT NULL",
+        "entity_name" => "VARCHAR(255) DEFAULT NULL",
+        "result_count" => "INT UNSIGNED DEFAULT 0",
+        "page" => "VARCHAR(50) DEFAULT NULL",
+        "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    ]);
+    $databaseHandler->action_sql("ALTER TABLE `search_tracking` ADD INDEX `idx_st_type` (`search_type`)");
+    $databaseHandler->action_sql("ALTER TABLE `search_tracking` ADD INDEX `idx_st_source` (`source`)");
+    $databaseHandler->action_sql("ALTER TABLE `search_tracking` ADD INDEX `idx_st_created` (`created_at`)");
+    $databaseHandler->action_sql("ALTER TABLE `search_tracking` ADD INDEX `idx_st_ip` (`ip`)");
+    $databaseHandler->action_sql("ALTER TABLE `search_tracking` ADD INDEX `idx_st_entity` (`search_type`, `entity_id`)");
+    $databaseHandler->action_sql("ALTER TABLE `search_tracking` ADD INDEX `idx_st_query` (`query_text`(100))");
+}
+
+// ======================================================
 // TABLE contact_messages — Messages de contact (page blocage)
 // ======================================================
 $tableName = "contact_messages";

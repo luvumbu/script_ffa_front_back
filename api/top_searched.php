@@ -6,21 +6,26 @@
  *     &limit=50             (max items, defaut 50)
  *     &days=1|7|30|365      (periode, defaut=1 jour)
  *
- * Compte les vues depuis les tables de tracking (athlete_vues_ip / club_vues_ip)
- * filtrees par created_at selon la periode demandee.
+ * Compte les recherches/consultations depuis la table search_tracking
+ * avec COUNT(DISTINCT ip) comme vues.
  */
 require_once __DIR__ . '/config.php';
 
-// Reset compteurs vues (?reset=athletes ou ?reset=clubs ou ?reset=all) — NECESSITE bk_key
+// Reset (?reset=athletes|clubs|all) — NECESSITE bk_key
 if (isset($_GET['reset']) && ($_GET['bk_key'] ?? '') === BK_API_KEY) {
     $reset = $_GET['reset'];
     if ($reset === 'athletes' || $reset === 'all') {
         $conn->query("UPDATE athletes SET vues = 0 WHERE vues > 0");
         $conn->query("TRUNCATE TABLE athlete_vues_ip");
+        $conn->query("DELETE FROM search_tracking WHERE search_type = 'athlete'");
     }
     if ($reset === 'clubs' || $reset === 'all') {
         $conn->query("UPDATE clubs SET vues = 0 WHERE vues > 0");
         $conn->query("TRUNCATE TABLE club_vues_ip");
+        $conn->query("DELETE FROM search_tracking WHERE search_type = 'club'");
+    }
+    if ($reset === 'all') {
+        $conn->query("TRUNCATE TABLE search_tracking");
     }
     // Vider le cache top searched
     $files = glob(__DIR__ . '/../cache/topsearched_*.json');
@@ -49,57 +54,124 @@ if (!$nocache && file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 6
 $items = [];
 
 if ($type === 'athletes') {
-    $sql = "SELECT a.athlete_id_externe,
-                   CONCAT(a.prenom_athlete, ' ', a.nom_athlete) as nom,
-                   a.sexe_athlete, a.categorie_athlete, a.nationalite_athlete,
-                   COUNT(v.ip) as vues,
-                   (SELECT c.nom_club FROM clubs c
-                    JOIN athlete_clubs ac ON ac.id_club = c.id_club
-                    WHERE ac.id_athlete = a.id_athlete
-                    ORDER BY ac.annee_debut DESC LIMIT 1) as club
-            FROM athlete_vues_ip v
-            JOIN athletes a ON a.athlete_id_externe = v.athlete_id_ext
-            WHERE v.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)
-            GROUP BY a.id_athlete
+    // Recherches + consultations d'athletes depuis search_tracking
+    $sql = "SELECT st.entity_name as nom, st.entity_id,
+                   COUNT(DISTINCT st.ip) as vues
+            FROM search_tracking st
+            WHERE st.search_type = 'athlete'
+              AND st.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)
+              AND (st.entity_name IS NOT NULL AND st.entity_name != '')
+            GROUP BY st.entity_name
             ORDER BY vues DESC
             LIMIT $limit";
 
     $res = $conn->query($sql);
     if ($res && $res->num_rows > 0) {
         while ($row = $res->fetch_assoc()) {
-            $items[] = [
-                'id'          => (int)$row['athlete_id_externe'],
-                'nom'         => trim($row['nom']),
-                'sexe'        => $row['sexe_athlete'],
-                'categorie'   => $row['categorie_athlete'],
-                'nationalite' => $row['nationalite_athlete'],
-                'club'        => rtrim($row['club'] ?? '', '* '),
-                'vues'        => (int)$row['vues']
+            $item = [
+                'id'   => (int)($row['entity_id'] ?? 0),
+                'nom'  => trim($row['nom']),
+                'vues' => (int)$row['vues']
             ];
+            // Enrichir avec infos athlete si entity_id disponible
+            if ($item['id'] > 0) {
+                $aRes = $conn->query("SELECT a.sexe_athlete, a.categorie_athlete, a.nationalite_athlete,
+                    (SELECT c.nom_club FROM clubs c JOIN athlete_clubs ac ON ac.id_club = c.id_club
+                     WHERE ac.id_athlete = a.id_athlete ORDER BY ac.annee_debut DESC LIMIT 1) as club
+                    FROM athletes a WHERE a.athlete_id_externe = {$item['id']} LIMIT 1");
+                if ($aRes && ($aRow = $aRes->fetch_assoc())) {
+                    $item['sexe'] = $aRow['sexe_athlete'];
+                    $item['categorie'] = $aRow['categorie_athlete'];
+                    $item['nationalite'] = $aRow['nationalite_athlete'];
+                    $item['club'] = rtrim($aRow['club'] ?? '', '* ');
+                }
+            }
+            $items[] = $item;
+        }
+    }
+
+    // Si pas assez de resultats via entity_name, chercher aussi par query_text (live_search)
+    if (count($items) < $limit) {
+        $existingNames = array_map(function($i) { return strtolower($i['nom']); }, $items);
+        $sql2 = "SELECT st.query_text, COUNT(DISTINCT st.ip) as vues
+                 FROM search_tracking st
+                 WHERE st.search_type = 'athlete'
+                   AND st.source = 'live_search'
+                   AND st.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)
+                   AND st.query_text != ''
+                 GROUP BY st.query_text
+                 ORDER BY vues DESC
+                 LIMIT 100";
+        $res2 = $conn->query($sql2);
+        if ($res2) {
+            while ($row2 = $res2->fetch_assoc()) {
+                if (count($items) >= $limit) break;
+                if (in_array(strtolower(trim($row2['query_text'])), $existingNames)) continue;
+                $items[] = [
+                    'id' => 0,
+                    'nom' => trim($row2['query_text']),
+                    'vues' => (int)$row2['vues']
+                ];
+                $existingNames[] = strtolower(trim($row2['query_text']));
+            }
         }
     }
 
 } elseif ($type === 'clubs') {
-    $sql = "SELECT c.id_club, c.nom_club,
-                   COUNT(v.ip) as vues,
-                   (SELECT COUNT(DISTINCT ac.id_athlete)
-                    FROM athlete_clubs ac WHERE ac.id_club = c.id_club) as nb_athletes
-            FROM club_vues_ip v
-            JOIN clubs c ON c.id_club = v.club_id
-            WHERE v.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)
-            GROUP BY c.id_club
+    // Recherches + consultations de clubs depuis search_tracking
+    $sql = "SELECT st.entity_name as nom, st.entity_id,
+                   COUNT(DISTINCT st.ip) as vues
+            FROM search_tracking st
+            WHERE st.search_type = 'club'
+              AND st.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)
+              AND (st.entity_name IS NOT NULL AND st.entity_name != '')
+            GROUP BY st.entity_name
             ORDER BY vues DESC
             LIMIT $limit";
 
     $res = $conn->query($sql);
     if ($res && $res->num_rows > 0) {
         while ($row = $res->fetch_assoc()) {
-            $items[] = [
-                'id'          => (int)$row['id_club'],
-                'nom'         => $row['nom_club'],
-                'nb_athletes' => (int)$row['nb_athletes'],
-                'vues'        => (int)$row['vues']
+            $item = [
+                'id'   => (int)($row['entity_id'] ?? 0),
+                'nom'  => $row['nom'],
+                'vues' => (int)$row['vues']
             ];
+            // Enrichir avec nb_athletes si entity_id disponible
+            if ($item['id'] > 0) {
+                $cRes = $conn->query("SELECT COUNT(DISTINCT ac.id_athlete) as nb FROM athlete_clubs ac WHERE ac.id_club = {$item['id']}");
+                if ($cRes && ($cRow = $cRes->fetch_assoc())) {
+                    $item['nb_athletes'] = (int)$cRow['nb'];
+                }
+            }
+            $items[] = $item;
+        }
+    }
+
+    // Si pas assez, chercher aussi les recherches par query_text
+    if (count($items) < $limit) {
+        $existingNames = array_map(function($i) { return strtolower($i['nom']); }, $items);
+        $sql2 = "SELECT st.query_text, COUNT(DISTINCT st.ip) as vues
+                 FROM search_tracking st
+                 WHERE st.search_type = 'club'
+                   AND st.source = 'live_search'
+                   AND st.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)
+                   AND st.query_text != ''
+                 GROUP BY st.query_text
+                 ORDER BY vues DESC
+                 LIMIT 100";
+        $res2 = $conn->query($sql2);
+        if ($res2) {
+            while ($row2 = $res2->fetch_assoc()) {
+                if (count($items) >= $limit) break;
+                if (in_array(strtolower(trim($row2['query_text'])), $existingNames)) continue;
+                $items[] = [
+                    'id' => 0,
+                    'nom' => trim($row2['query_text']),
+                    'vues' => (int)$row2['vues']
+                ];
+                $existingNames[] = strtolower(trim($row2['query_text']));
+            }
         }
     }
 }
