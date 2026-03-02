@@ -738,9 +738,9 @@ if ($page === 'accueil'):
         <div id="topClubsTabs" style="display:flex;gap:4px;"></div>
     </div>
     <div class="table-wrap">
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Vues</th></tr></table>
-    <table class="bk-table"><tbody id="topSearchClubsBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th style="width:100px;">Vues</th></tr></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th>Athletes</th><th style="width:80px;">Vues</th></tr></table>
+    <table class="bk-table"><tbody id="topSearchClubsBody"><tr><td colspan="4" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th>Athletes</th><th style="width:80px;">Vues</th></tr></table>
     </div>
     <div id="topSearchClubsPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
 </div>
@@ -752,9 +752,9 @@ if ($page === 'accueil'):
         <div id="topAthTabs" style="display:flex;gap:4px;"></div>
     </div>
     <div class="table-wrap">
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Vues</th></tr></table>
-    <table class="bk-table"><tbody id="topSearchAthBody"><tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th style="width:100px;">Vues</th></tr></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Cat</th><th>Sexe</th><th style="width:80px;">Vues</th></tr></table>
+    <table class="bk-table"><tbody id="topSearchAthBody"><tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Cat</th><th>Sexe</th><th style="width:80px;">Vues</th></tr></table>
     </div>
     <div id="topSearchAthPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
 </div>
@@ -1056,7 +1056,7 @@ document.addEventListener('DOMContentLoaded', function(){
     // ---- Load & render clubs ----
     window._switchClubDays = function(d) { _clubDays = d; _renderTabs('topClubsTabs', _clubDays, '_switchClubDays'); _loadTopClubs(true); };
     function _loadTopClubs(nc) {
-        document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
+        document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
         document.getElementById('topSearchClubsPag').innerHTML = '';
         fetch(BASE_API + '/top_searched.php?type=clubs&days=' + _clubDays + (nc ? '&nocache' : ''))
             .then(function(r) { return r.json(); })
@@ -1071,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
     function _renderTopClubs(items) {
         if (!items || !items.length) {
-            document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
+            document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
             document.getElementById('topSearchClubsCount').textContent = '';
             return;
         }
@@ -1079,7 +1079,8 @@ document.addEventListener('DOMContentLoaded', function(){
         _topSearchPag(items, 'topSearchClubsBody', 'topSearchClubsPag', 10, 5, function(c, i) {
             return '<tr>'
                 + '<td style="color:#5a6580;width:40px;">' + (i+1) + '</td>'
-                + '<td><a href="?page=recherche&club=' + encodeURIComponent(c.nom) + '" style="color:#a29bfe;text-decoration:none;font-weight:500;">' + _esc2(c.nom) + '</a></td>'
+                + '<td><a href="?page=recherche&club=' + encodeURIComponent(c.nom) + '" style="color:#a29bfe;text-decoration:none;font-weight:600;">' + _esc2(c.nom) + '</a></td>'
+                + '<td style="color:#8b949e;font-size:12px;">' + (c.nb_athletes || '-') + '</td>'
                 + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:600;">' + c.vues + '</span></td>'
                 + '</tr>';
         });
@@ -1088,7 +1089,7 @@ document.addEventListener('DOMContentLoaded', function(){
     // ---- Load & render athletes ----
     window._switchAthDays = function(d) { _athDays = d; _renderTabs('topAthTabs', _athDays, '_switchAthDays'); _loadTopAth(true); };
     function _loadTopAth(nc) {
-        document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
+        document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
         document.getElementById('topSearchAthPag').innerHTML = '';
         fetch(BASE_API + '/top_searched.php?type=athletes&days=' + _athDays + (nc ? '&nocache' : ''))
             .then(function(r) { return r.json(); })
@@ -1103,7 +1104,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
     function _renderTopAth(items) {
         if (!items || !items.length) {
-            document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
+            document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
             document.getElementById('topSearchAthCount').textContent = '';
             return;
         }
@@ -1112,6 +1113,9 @@ document.addEventListener('DOMContentLoaded', function(){
             return '<tr>'
                 + '<td style="color:#5a6580;width:40px;">' + (i+1) + '</td>'
                 + '<td><a href="?page=profil&id=' + a.id + '" style="color:#a29bfe;text-decoration:none;font-weight:600;">' + _esc2(a.nom) + '</a></td>'
+                + '<td style="color:#8b949e;font-size:12px;">' + _esc2(a.club || '-') + '</td>'
+                + '<td><span class="badge badge-cat" style="font-size:11px;">' + _esc2(a.categorie || '-') + '</span></td>'
+                + '<td><span class="badge badge-' + ((a.sexe||'').toLowerCase()) + '" style="font-size:11px;">' + _esc2(a.sexe || '-') + '</span></td>'
                 + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:600;">' + a.vues + '</span></td>'
                 + '</tr>';
         });
