@@ -52,6 +52,14 @@ $tab = ($_GET['tab'] ?? '') === 'admin' ? 'admin' : 'user';
             <a class="auth-tab <?= $tab === 'admin' ? 'active' : '' ?>" href="?tab=admin">Admin</a>
         </div>
 
+        <?php if (isset($_GET['limit'])): ?>
+        <div style="background:#f59e0b15;border:1px solid #f59e0b40;color:#f59e0b;padding:14px;border-radius:8px;font-size:13px;text-align:center;margin-bottom:16px;line-height:1.5;">
+            <strong>Limite atteinte</strong><br>
+            Vous avez atteint la limite de 20 pages par jour.<br>
+            Connectez-vous avec Google pour continuer a naviguer sans limite.
+        </div>
+        <?php endif; ?>
+
         <div class="msg-error" id="msgError"></div>
 
         <!-- ONGLET USER : Google OAuth -->

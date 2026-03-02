@@ -10,6 +10,42 @@ require_once __DIR__ . '/core/db.php';
 require_once __DIR__ . '/core/ip_logger.php';
 logIp();
 
+// === ANTI-SCRAPING : 20 pages/jour max par IP (sauf connectes + whitelist) ===
+(function() {
+    // Skip si utilisateur connecte (Google ou super admin)
+    if (!empty($_COOKIE['bk_token']) || !empty($_COOKIE['bk_sa_token'])) return;
+
+    $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    $ip = trim(explode(',', $ip)[0]);
+    if ($ip === '') return;
+
+    // Whitelist Google + Hostinger + localhost
+    $wl = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
+    foreach ($wl as $p) { if (strpos($ip, $p) === 0) return; }
+
+    // Compteur journalier par IP
+    $file = __DIR__ . '/logs/.page_limits.php';
+    $data = [];
+    $today = date('Y-m-d');
+    if (file_exists($file)) {
+        $raw = file_get_contents($file);
+        $pos = strpos($raw, "\n");
+        if ($pos !== false) $data = json_decode(substr($raw, $pos + 1), true) ?: [];
+    }
+    // Nettoyer les jours passes
+    if (($data['_date'] ?? '') !== $today) $data = ['_date' => $today];
+
+    $count = ($data[$ip] ?? 0) + 1;
+    $data[$ip] = $count;
+    @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data));
+
+    if ($count > 20) {
+        // Rediriger vers login Google
+        header('Location: ' . (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false ? '/BK' : '') . '/login.php?limit=1');
+        exit;
+    }
+})();
+
 function dateFR($d) {
     if (!$d || $d === '-') return '-';
     if (str_starts_with($d, '0000')) return '-';
