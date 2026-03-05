@@ -195,6 +195,22 @@ switch ($action) {
         $out['mail_error'] = error_get_last();
         break;
 
+    case 'test_mail_plain':
+        $to = trim($_GET['to'] ?? '');
+        if (empty($to) || !filter_var($to, FILTER_VALIDATE_EMAIL)) { $out['error'] = 'Parametre to requis'; break; }
+        $subject = 'Test simple Bokonzi ' . date('H:i:s');
+        $body = 'Ceci est un test simple en texte brut. ' . date('Y-m-d H:i:s');
+        $headers = "From: noreply@bokonzi.com\r\n";
+        $sent = mail($to, $subject, $body, $headers);
+        $out['to'] = $to;
+        $out['sent'] = $sent;
+        $out['method'] = 'plain text';
+        // Aussi tester phpinfo mail
+        $out['sendmail_path'] = ini_get('sendmail_path');
+        $out['smtp'] = ini_get('SMTP');
+        $out['smtp_port'] = ini_get('smtp_port');
+        break;
+
     case 'send_welcome':
         $to = trim($_GET['to'] ?? '');
         if (empty($to) || !filter_var($to, FILTER_VALIDATE_EMAIL)) { $out['error'] = 'Parametre to requis'; break; }
