@@ -148,8 +148,38 @@ $navItems = [
         <?php endif; ?>
         <span class="auth-name"><?= htmlspecialchars($navUser['prenom'] ?: $navUser['email']) ?></span>
         <span class="auth-role"><?= htmlspecialchars($navUser['role']) ?></span>
+        <a href="<?= BK_BASE ?>/index.php?page=espace" class="btn-auth btn-login" style="border-color:#a29bfe;color:#a29bfe;">Mon Espace</a>
         <?php if ($navUser['role'] === 'athlete' || $navUser['role'] === 'coach'): ?>
             <a href="<?= BK_BASE ?>/pages/performances.php" class="btn-auth btn-login" style="border-color:#34d399;color:#34d399;">Perfs</a>
+        <?php endif; ?>
+        <?php
+        // Verifier si l'email a acces au panel admin
+        $_navHasPanel = false;
+        // 1. Verifier liste d'acces par email (fichier .panel_access.php)
+        $_navPanelFile = __DIR__ . '/logs/.panel_access.php';
+        if (file_exists($_navPanelFile)) {
+            $_navPaRaw = file_get_contents($_navPanelFile);
+            $_navPaPos = strpos($_navPaRaw, "\n");
+            if ($_navPaPos !== false) {
+                $_navPaList = json_decode(substr($_navPaRaw, $_navPaPos + 1), true) ?: [];
+                $_navHasPanel = isset($_navPaList[strtolower($navUser['email'])]);
+            }
+        }
+        // 2. Verifier session super admin (validation complete du token)
+        if (!$_navHasPanel && !empty($_COOKIE['bk_sa_token'])) {
+            $_saFile = __DIR__ . '/logs/.sa_sessions.php';
+            if (file_exists($_saFile)) {
+                $_saRaw = file_get_contents($_saFile);
+                $_saPos = strpos($_saRaw, "\n");
+                if ($_saPos !== false) {
+                    $_saSessions = json_decode(substr($_saRaw, $_saPos + 1), true) ?: [];
+                    $_navHasPanel = isset($_saSessions[$_COOKIE['bk_sa_token']]) && ($_saSessions[$_COOKIE['bk_sa_token']]['expires'] ?? 0) > time();
+                }
+            }
+        }
+        ?>
+        <?php if ($_navHasPanel): ?>
+            <a href="<?= BK_BASE ?>/admin/panel.php" class="btn-auth btn-login" style="border-color:#f59e0b;color:#f59e0b;">Admin</a>
         <?php endif; ?>
         <button class="btn-auth btn-logout" onclick="bkLogout()">Déconnexion</button>
     <?php else: ?>

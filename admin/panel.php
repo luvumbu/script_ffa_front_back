@@ -21,7 +21,38 @@ function isSuperAdmin() {
     return isset($sessions[$token]) && ($sessions[$token]['expires'] ?? 0) > time();
 }
 
-if (!isSuperAdmin()) {
+// === EMAILS AUTORISES AU PANEL ===
+function getPanelAccessList() {
+    $f = __DIR__ . '/../logs/.panel_access.php';
+    if (!file_exists($f)) return [];
+    $raw = file_get_contents($f);
+    $pos = strpos($raw, "\n");
+    if ($pos === false) return [];
+    return json_decode(substr($raw, $pos + 1), true) ?: [];
+}
+function savePanelAccessList($list) {
+    $f = __DIR__ . '/../logs/.panel_access.php';
+    file_put_contents($f, "<?php die('Acces interdit'); ?>\n" . json_encode($list, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+}
+
+$_isSA = isSuperAdmin();
+$_isPanelUser = false;
+$_panelUserEmail = '';
+
+if (!$_isSA) {
+    // Verifier si user Google connecte avec email autorise
+    require_once __DIR__ . '/../core/auth.php';
+    $pUser = getCurrentUser($conn);
+    if ($pUser) {
+        $panelList = getPanelAccessList();
+        if (isset($panelList[$pUser['email']])) {
+            $_isPanelUser = true;
+            $_panelUserEmail = $pUser['email'];
+        }
+    }
+}
+
+if (!$_isSA && !$_isPanelUser) {
     header('Location: ../login.php');
     exit;
 }
@@ -62,6 +93,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['st_action'])) {
     exit;
 }
 
+// === ACTIONS POST : gestion acces panel (super admin uniquement) ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['panel_action']) && $_isSA) {
+    $paList = getPanelAccessList();
+    if ($_POST['panel_action'] === 'grant' && !empty($_POST['email'])) {
+        $em = strtolower(trim($_POST['email']));
+        if (filter_var($em, FILTER_VALIDATE_EMAIL)) {
+            $paList[$em] = ['added' => date('Y-m-d H:i:s'), 'by' => 'super_admin'];
+            savePanelAccessList($paList);
+        }
+    } elseif ($_POST['panel_action'] === 'revoke' && !empty($_POST['email'])) {
+        unset($paList[strtolower(trim($_POST['email']))]);
+        savePanelAccessList($paList);
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI'] . '#panelAccess');
+    exit;
+}
+
 // ============================================================
 // DATA COLLECTION
 // ============================================================
@@ -97,6 +145,45 @@ if ($rRoles) while ($row = $rRoles->fetch_assoc()) $usersByRole[$row['role']] = 
 $activeSessions = 0;
 $rSess = $conn->query("SELECT COUNT(*) as c FROM user_sessions WHERE expire_at > NOW()");
 if ($rSess) $activeSessions = (int)$rSess->fetch_assoc()['c'];
+
+// === ACTIVITE PAR UTILISATEUR ===
+$allUsers = [];
+$rAll = $conn->query("SELECT u.id_user, u.email, u.nom, u.prenom, u.role, u.picture, u.last_login, u.date_creation,
+    u.google_id, u.oauth_provider, u.locale,
+    (SELECT COUNT(*) FROM athlete_follows af WHERE af.email = u.email) as nb_follows_ath,
+    (SELECT COUNT(*) FROM club_follows cf WHERE cf.email = u.email) as nb_follows_club,
+    (SELECT COUNT(*) FROM user_sessions us WHERE us.id_user = u.id_user AND us.expire_at > NOW()) as sessions_active
+    FROM users u ORDER BY u.last_login DESC, u.id_user DESC");
+if ($rAll) while ($row = $rAll->fetch_assoc()) $allUsers[] = $row;
+
+// Suivis details par user (athletes + clubs)
+$userFollowsDetail = [];
+foreach ($allUsers as $u) {
+    $uid = (int)$u['id_user'];
+    $eml = $conn->real_escape_string($u['email']);
+    $fa = []; $fc = [];
+    $r = $conn->query("SELECT af.athlete_id_ext, a.nom_complet_athlete, af.created_at FROM athlete_follows af LEFT JOIN athletes a ON a.athlete_id_externe = af.athlete_id_ext WHERE af.email = '$eml' ORDER BY af.created_at DESC");
+    if ($r) while ($row = $r->fetch_assoc()) $fa[] = $row;
+    $r = $conn->query("SELECT cf.club_id, c.nom_club, cf.created_at FROM club_follows cf LEFT JOIN clubs c ON c.id_club = cf.club_id WHERE cf.email = '$eml' ORDER BY cf.created_at DESC");
+    if ($r) while ($row = $r->fetch_assoc()) $fc[] = $row;
+    $userFollowsDetail[$uid] = ['athletes' => $fa, 'clubs' => $fc];
+}
+
+// Historique recherche par user (via logs table — par IP de la derniere session)
+$userSearchHistory = [];
+foreach ($allUsers as $u) {
+    $uid = (int)$u['id_user'];
+    // Trouver les IPs utilisees par ce user via logs
+    $ips = [];
+    $r = $conn->query("SELECT DISTINCT ip FROM logs WHERE sid IN (SELECT token FROM user_sessions WHERE id_user = $uid) AND ip != '' LIMIT 10");
+    if ($r) while ($row = $r->fetch_assoc()) $ips[] = "'" . $conn->real_escape_string($row['ip']) . "'";
+    if (empty($ips)) { $userSearchHistory[$uid] = []; continue; }
+    $ipList = implode(',', $ips);
+    $hist = [];
+    $r = $conn->query("SELECT query_text, search_type, source, entity_name, entity_id, created_at FROM search_tracking WHERE ip IN ($ipList) ORDER BY created_at DESC LIMIT 30");
+    if ($r) while ($row = $r->fetch_assoc()) $hist[] = $row;
+    $userSearchHistory[$uid] = $hist;
+}
 
 // === FOLLOWS & SUBSCRIBERS ===
 $lastFollowsAth = [];
@@ -1021,6 +1108,166 @@ $actionColors = [
         </div>
     </div>
 </div>
+
+<!-- ============================================================ -->
+<!-- SECTION 9B : ACTIVITE PAR UTILISATEUR — INTERACTIF -->
+<!-- ============================================================ -->
+<div class="section">
+    <h2 style="color:#a29bfe;font-size:16px;border-color:#a29bfe40;">&#128100; Activite par utilisateur (<?= count($allUsers) ?> users)</h2>
+
+    <!-- Liste utilisateurs cliquable -->
+    <div style="margin-bottom:12px;">
+        <input type="text" id="userFilterInput" placeholder="Filtrer par email ou nom..."
+            oninput="_filterUsers()" style="width:300px;padding:8px 12px;background:#0d1117;border:1px solid #1e2a3a;border-radius:6px;color:#c9d1d9;font-size:13px;">
+    </div>
+
+    <?php $panelAccessList = getPanelAccessList(); ?>
+    <table>
+        <thead><tr><th>#</th><th>User</th><th>Role</th><th>Derniere connexion</th><th>Athletes suivis</th><th>Clubs suivis</th><th>Session</th><th>Panel</th><th>Details</th></tr></thead>
+        <tbody id="userListBody">
+        <?php foreach ($allUsers as $idx => $u): ?>
+        <tr class="user-row" data-filter="<?= htmlspecialchars(strtolower(($u['email'] ?? '') . ' ' . ($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? ''))) ?>">
+            <td><?= $u['id_user'] ?></td>
+            <td>
+                <?php if (!empty($u['picture'])): ?><img src="<?= htmlspecialchars($u['picture']) ?>" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:4px;" referrerpolicy="no-referrer"><?php endif; ?>
+                <span class="mono" style="font-size:12px;"><?= htmlspecialchars($u['email']) ?></span>
+                <?php if ($u['prenom'] || $u['nom']): ?><br><span style="color:#8b949e;font-size:11px;"><?= htmlspecialchars(trim(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? ''))) ?></span><?php endif; ?>
+            </td>
+            <td><span class="badge badge-<?= $u['role'] ?>"><?= $u['role'] ?></span></td>
+            <td style="font-size:12px;color:#8b949e;"><?= $u['last_login'] ? date('d/m/Y H:i', strtotime($u['last_login'])) : '-' ?></td>
+            <td style="text-align:center;"><?= $u['nb_follows_ath'] > 0 ? '<span style="color:#a29bfe;font-weight:700;">' . $u['nb_follows_ath'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
+            <td style="text-align:center;"><?= $u['nb_follows_club'] > 0 ? '<span style="color:#34d399;font-weight:700;">' . $u['nb_follows_club'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
+            <td style="text-align:center;"><?= $u['sessions_active'] > 0 ? '<span style="color:#55efc4;">Active</span>' : '<span style="color:#484f58;">-</span>' ?></td>
+            <td style="text-align:center;">
+            <?php $hasAccess = isset($panelAccessList[strtolower($u['email'])]); ?>
+            <?php if ($_isSA): ?>
+                <?php if ($hasAccess): ?>
+                    <form method="POST" style="display:inline;"><input type="hidden" name="panel_action" value="revoke"><input type="hidden" name="email" value="<?= htmlspecialchars($u['email']) ?>"><button type="submit" style="padding:3px 8px;background:#ef444420;border:1px solid #ef4444;border-radius:6px;color:#ef4444;font-size:10px;cursor:pointer;" title="Retirer l'acces">&#10003; Acces</button></form>
+                <?php else: ?>
+                    <form method="POST" style="display:inline;"><input type="hidden" name="panel_action" value="grant"><input type="hidden" name="email" value="<?= htmlspecialchars($u['email']) ?>"><button type="submit" style="padding:3px 8px;background:#1e2a3a;border:1px solid #30363d;border-radius:6px;color:#484f58;font-size:10px;cursor:pointer;" title="Donner acces au panel">Donner</button></form>
+                <?php endif; ?>
+            <?php else: ?>
+                <?= $hasAccess ? '<span style="color:#55efc4;font-size:10px;">&#10003;</span>' : '' ?>
+            <?php endif; ?>
+            </td>
+            <td><button onclick="_toggleUserDetail(<?= $u['id_user'] ?>)" style="padding:3px 10px;background:#6c5ce720;border:1px solid #6c5ce7;border-radius:6px;color:#a29bfe;font-size:11px;cursor:pointer;">Voir</button></td>
+        </tr>
+        <!-- Drawer detail cache -->
+        <tr id="userDetail_<?= $u['id_user'] ?>" style="display:none;">
+            <td colspan="9" style="padding:16px;background:#0d1117;">
+                <div style="display:flex;gap:24px;flex-wrap:wrap;">
+                    <!-- Infos -->
+                    <div style="flex:1;min-width:200px;">
+                        <h4 style="color:#f0f6fc;font-size:13px;margin-bottom:8px;">Infos</h4>
+                        <div style="font-size:12px;color:#8b949e;line-height:1.8;">
+                            Provider : <span style="color:#c9d1d9;"><?= $u['oauth_provider'] ?: 'email' ?></span><br>
+                            Google ID : <span style="color:#c9d1d9;"><?= $u['google_id'] ? substr($u['google_id'], 0, 10) . '...' : '-' ?></span><br>
+                            Locale : <span style="color:#c9d1d9;"><?= $u['locale'] ?: '-' ?></span><br>
+                            Inscrit : <span style="color:#c9d1d9;"><?= $u['date_creation'] ? date('d/m/Y H:i', strtotime($u['date_creation'])) : '-' ?></span>
+                        </div>
+                    </div>
+
+                    <!-- Athletes suivis -->
+                    <div style="flex:1;min-width:250px;">
+                        <h4 style="color:#a29bfe;font-size:13px;margin-bottom:8px;">&#9889; Athletes suivis (<?= count($userFollowsDetail[$u['id_user']]['athletes']) ?>)</h4>
+                        <?php if (empty($userFollowsDetail[$u['id_user']]['athletes'])): ?>
+                            <span style="color:#484f58;font-size:12px;">Aucun</span>
+                        <?php else: ?>
+                            <?php foreach ($userFollowsDetail[$u['id_user']]['athletes'] as $fa): ?>
+                            <div style="font-size:12px;padding:3px 0;border-bottom:1px solid #1e2a3a;">
+                                <a href="../index.php?page=profil&id=<?= (int)$fa['athlete_id_ext'] ?>" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars($fa['nom_complet_athlete'] ?: '#' . $fa['athlete_id_ext']) ?></a>
+                                <span style="color:#484f58;font-size:10px;margin-left:6px;"><?= $fa['created_at'] ? date('d/m', strtotime($fa['created_at'])) : '' ?></span>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Clubs suivis -->
+                    <div style="flex:1;min-width:200px;">
+                        <h4 style="color:#34d399;font-size:13px;margin-bottom:8px;">&#127965; Clubs suivis (<?= count($userFollowsDetail[$u['id_user']]['clubs']) ?>)</h4>
+                        <?php if (empty($userFollowsDetail[$u['id_user']]['clubs'])): ?>
+                            <span style="color:#484f58;font-size:12px;">Aucun</span>
+                        <?php else: ?>
+                            <?php foreach ($userFollowsDetail[$u['id_user']]['clubs'] as $fc): ?>
+                            <div style="font-size:12px;padding:3px 0;border-bottom:1px solid #1e2a3a;">
+                                <a href="../index.php?page=recherche&club=<?= urlencode(rtrim($fc['nom_club'] ?? '', '* ')) ?>" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars($fc['nom_club'] ?: '#' . $fc['club_id']) ?></a>
+                                <span style="color:#484f58;font-size:10px;margin-left:6px;"><?= $fc['created_at'] ? date('d/m', strtotime($fc['created_at'])) : '' ?></span>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Historique recherches -->
+                    <div style="flex:2;min-width:350px;">
+                        <h4 style="color:#f59e0b;font-size:13px;margin-bottom:8px;">&#128337; Historique recherches (<?= count($userSearchHistory[$u['id_user']]) ?>)</h4>
+                        <?php if (empty($userSearchHistory[$u['id_user']])): ?>
+                            <span style="color:#484f58;font-size:12px;">Aucun historique</span>
+                        <?php else: ?>
+                            <div style="max-height:250px;overflow-y:auto;">
+                            <?php
+                            $tbg = ['athlete'=>'#6c5ce720','club'=>'#34d39920','epreuve'=>'#f59e0b20','ville'=>'#3b82f620','general'=>'#8b949e20'];
+                            $tcl = ['athlete'=>'#a29bfe','club'=>'#34d399','epreuve'=>'#f59e0b','ville'=>'#60a5fa','general'=>'#8b949e'];
+                            foreach ($userSearchHistory[$u['id_user']] as $sh): ?>
+                            <div style="font-size:11px;padding:4px 0;border-bottom:1px solid #1e2a3a10;display:flex;gap:8px;align-items:center;">
+                                <span style="background:<?= $tbg[$sh['search_type']] ?? $tbg['general'] ?>;color:<?= $tcl[$sh['search_type']] ?? $tcl['general'] ?>;padding:1px 6px;border-radius:8px;font-size:10px;white-space:nowrap;"><?= $sh['search_type'] ?></span>
+                                <span style="color:#c9d1d9;flex:1;"><?= htmlspecialchars($sh['entity_name'] ?: $sh['query_text'] ?: '-') ?></span>
+                                <span style="color:#484f58;font-size:10px;white-space:nowrap;"><?= date('d/m H:i', strtotime($sh['created_at'])) ?></span>
+                            </div>
+                            <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+
+    <?php if ($_isSA): ?>
+    <!-- Recap acces panel -->
+    <div id="panelAccess" style="margin-top:20px;padding:16px;background:#0d1117;border:1px solid #30363d;border-radius:8px;">
+        <h3 style="color:#f59e0b;font-size:14px;margin-bottom:12px;">&#128273; Acces au panel (<?= count($panelAccessList) ?> emails autorises)</h3>
+        <?php if (empty($panelAccessList)): ?>
+            <p style="color:#484f58;font-size:12px;">Aucun email autorise. Utilisez les boutons "Donner" ci-dessus.</p>
+        <?php else: ?>
+            <?php foreach ($panelAccessList as $em => $info): ?>
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #1e2a3a;">
+                <span style="color:#c9d1d9;font-size:13px;flex:1;" class="mono"><?= htmlspecialchars($em) ?></span>
+                <span style="color:#484f58;font-size:10px;">depuis <?= $info['added'] ?? '?' ?></span>
+                <form method="POST" style="display:inline;"><input type="hidden" name="panel_action" value="revoke"><input type="hidden" name="email" value="<?= htmlspecialchars($em) ?>"><button type="submit" style="padding:2px 8px;background:#ef444420;border:1px solid #ef4444;border-radius:4px;color:#ef4444;font-size:10px;cursor:pointer;">Retirer</button></form>
+            </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+
+        <!-- Ajout manuel -->
+        <form method="POST" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+            <input type="hidden" name="panel_action" value="grant">
+            <input type="email" name="email" placeholder="email@exemple.com" required style="flex:1;max-width:300px;padding:6px 10px;background:#161b22;border:1px solid #1e2a3a;border-radius:6px;color:#c9d1d9;font-size:12px;">
+            <button type="submit" style="padding:6px 14px;background:#f59e0b20;border:1px solid #f59e0b;border-radius:6px;color:#f59e0b;font-size:12px;cursor:pointer;">Ajouter</button>
+        </form>
+    </div>
+    <?php endif; ?>
+</div>
+
+<script>
+function _toggleUserDetail(uid) {
+    var row = document.getElementById('userDetail_' + uid);
+    if (!row) return;
+    row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+function _filterUsers() {
+    var q = document.getElementById('userFilterInput').value.toLowerCase();
+    var rows = document.querySelectorAll('.user-row');
+    rows.forEach(function(r) {
+        var match = r.getAttribute('data-filter').indexOf(q) !== -1;
+        r.style.display = match ? '' : 'none';
+        // Cacher aussi le drawer detail si filtre
+        var next = r.nextElementSibling;
+        if (next && next.id && next.id.startsWith('userDetail_') && !match) next.style.display = 'none';
+    });
+}
+</script>
 
 <!-- ============================================================ -->
 <!-- SECTION 10 : BASE DE DONNEES + SERVEUR -->

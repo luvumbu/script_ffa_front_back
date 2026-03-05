@@ -235,6 +235,10 @@ if ($page === 'clubs') {
     $seoTitle = 'Comparateur athlètes & clubs — Bokonzi';
     $seoDesc  = 'Comparez visuellement les performances d\'athlètes et clubs d\'athlétisme avec graphiques interactifs.';
     $seoNoIndex = true;
+} elseif ($page === 'espace') {
+    $seoTitle = 'Mon Espace — Bokonzi';
+    $seoDesc  = 'Gérez vos athlètes et clubs suivis, consultez votre historique de recherches.';
+    $seoNoIndex = true;
 } elseif ($page === 'tuto') {
     $seoTitle = 'Tutoriel — Comment utiliser Bokonzi';
     $seoDesc  = 'Guide interactif étape par étape pour explorer les données d\'athlétisme sur Bokonzi.';
@@ -725,6 +729,7 @@ document.addEventListener('DOMContentLoaded', updateAllCmpButtons);
     <a href="<?= $_canonBase ?>/?page=epreuves" class="<?= $page === 'epreuves' ? 'active' : '' ?>">Épreuves</a>
     <a href="<?= $_canonBase ?>/?page=villes" class="<?= $page === 'villes' ? 'active' : '' ?>">Villes</a>
     <a href="<?= $_canonBase ?>/?page=comparer" class="<?= $page === 'comparer' ? 'active' : '' ?>" style="color:#f59e0b;">Comparer</a>
+    <?php if ($navUser): ?><a href="<?= $_canonBase ?>/?page=espace" class="<?= $page === 'espace' ? 'active' : '' ?>" style="color:#a29bfe;">Mon Espace</a><?php endif; ?>
     <a href="<?= $_canonBase ?>/?page=tuto" class="<?= $page === 'tuto' ? 'active' : '' ?>" style="color:#34d399;">Tuto</a>
 </nav>
 
@@ -4718,6 +4723,207 @@ elseif ($page === 'comparer'):
     </div>
 </div>
 </div>
+
+<?php
+// ================================================================
+//  MON ESPACE — Suivis + Historique
+// ================================================================
+elseif ($page === 'espace'):
+    // Rediriger si pas connecte
+    $espUser = getCurrentUser($conn);
+    if (!$espUser) {
+        $loginUrl = $isLocal ? '/BK/login.php' : '/login.php';
+        header('Location: ' . $loginUrl . '?redirect=espace');
+        exit;
+    }
+    $espEmail = $conn->real_escape_string($espUser['email']);
+    $espUserId = (int)$espUser['id_user'];
+
+    // Charger athletes suivis
+    $resAth = $conn->query("SELECT af.athlete_id_ext, af.created_at, a.nom_complet_athlete, a.sexe_athlete, a.categorie_athlete, a.nationalite_athlete
+        FROM athlete_follows af
+        LEFT JOIN athletes a ON a.athlete_id_externe = af.athlete_id_ext
+        WHERE af.email = '$espEmail'
+        ORDER BY af.created_at DESC");
+    $followedAthletes = [];
+    if ($resAth) while ($row = $resAth->fetch_assoc()) $followedAthletes[] = $row;
+
+    // Charger clubs suivis
+    $resClub = $conn->query("SELECT cf.club_id, cf.created_at, c.nom_club
+        FROM club_follows cf
+        LEFT JOIN clubs c ON c.id_club = cf.club_id
+        WHERE cf.email = '$espEmail'
+        ORDER BY cf.created_at DESC");
+    $followedClubs = [];
+    if ($resClub) while ($row = $resClub->fetch_assoc()) $followedClubs[] = $row;
+
+    // Charger historique recherches (par IP ou user, 50 derniers)
+    $espIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $espIpEsc = $conn->real_escape_string($espIp);
+    $resHist = $conn->query("SELECT query_text, search_type, source, entity_name, entity_id, created_at
+        FROM search_tracking
+        WHERE ip = '$espIpEsc'
+        ORDER BY created_at DESC
+        LIMIT 50");
+    $history = [];
+    if ($resHist) while ($row = $resHist->fetch_assoc()) $history[] = $row;
+?>
+
+<h1 style="margin-bottom:8px;">Mon Espace</h1>
+<p style="color:#8b949e;font-size:14px;margin-bottom:24px;">Bienvenue <?= htmlspecialchars($espUser['prenom'] ?: $espUser['email']) ?> — gerez vos suivis et votre historique.</p>
+
+<!-- ===== SUIVIS ===== -->
+<div
+
+<!-- Athletes suivis -->
+<h2 style="font-size:18px;color:#a29bfe;margin-bottom:12px;">&#9889; Athletes suivis (<?= count($followedAthletes) ?>)</h2>
+<?php if (empty($followedAthletes)): ?>
+    <p style="color:#8b949e;font-size:14px;margin-bottom:24px;">Vous ne suivez aucun athlete. Visitez un profil et cliquez sur "Suivre" !</p>
+<?php else: ?>
+<div class="table-wrap" style="margin-bottom:24px;">
+    <table class="bk-table"><tr><th>#</th><th>Athlete</th><th>Cat</th><th>Sexe</th><th>Nat</th><th>Suivi le</th><th></th></tr></table>
+    <table class="bk-table">
+    <?php foreach ($followedAthletes as $i => $fa): ?>
+        <tr>
+            <td><?= $i + 1 ?></td>
+            <td><a href="?page=profil&id=<?= (int)$fa['athlete_id_ext'] ?>" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars($fa['nom_complet_athlete'] ?: 'Athlete #' . $fa['athlete_id_ext']) ?></a></td>
+            <td><?= htmlspecialchars($fa['categorie_athlete'] ?? '-') ?></td>
+            <td><?= htmlspecialchars($fa['sexe_athlete'] ?? '-') ?></td>
+            <td><?= htmlspecialchars($fa['nationalite_athlete'] ?? '-') ?></td>
+            <td style="color:#8b949e;font-size:12px;"><?= $fa['created_at'] ? date('d/m/Y', strtotime($fa['created_at'])) : '-' ?></td>
+            <td><button onclick="_espUnfollowAth(<?= (int)$fa['athlete_id_ext'] ?>, this)" style="padding:4px 10px;background:#ff6b6b20;border:1px solid #ff6b6b;border-radius:6px;color:#ff6b6b;font-size:11px;cursor:pointer;">Retirer</button></td>
+        </tr>
+    <?php endforeach; ?>
+    </table>
+    <table class="bk-table"><tr><th>#</th><th>Athlete</th><th>Cat</th><th>Sexe</th><th>Nat</th><th>Suivi le</th><th></th></tr></table>
+</div>
+<?php endif; ?>
+
+<!-- Clubs suivis -->
+<h2 style="font-size:18px;color:#34d399;margin-bottom:12px;">&#127965; Clubs suivis (<?= count($followedClubs) ?>)</h2>
+<?php if (empty($followedClubs)): ?>
+    <p style="color:#8b949e;font-size:14px;">Vous ne suivez aucun club. Ouvrez un panneau club et cliquez sur "Suivre" !</p>
+<?php else: ?>
+<div class="table-wrap">
+    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Suivi le</th><th></th></tr></table>
+    <table class="bk-table">
+    <?php foreach ($followedClubs as $i => $fc): ?>
+        <tr>
+            <td><?= $i + 1 ?></td>
+            <td><a href="?page=recherche&club=<?= urlencode(rtrim($fc['nom_club'] ?? '', '* ')) ?>" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars($fc['nom_club'] ?: 'Club #' . $fc['club_id']) ?></a></td>
+            <td style="color:#8b949e;font-size:12px;"><?= $fc['created_at'] ? date('d/m/Y', strtotime($fc['created_at'])) : '-' ?></td>
+            <td><button onclick="_espUnfollowClub(<?= (int)$fc['club_id'] ?>, this)" style="padding:4px 10px;background:#ff6b6b20;border:1px solid #ff6b6b;border-radius:6px;color:#ff6b6b;font-size:11px;cursor:pointer;">Retirer</button></td>
+        </tr>
+    <?php endforeach; ?>
+    </table>
+    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Suivi le</th><th></th></tr></table>
+</div>
+<?php endif; ?>
+
+</div>
+
+<!-- ===== HISTORIQUE ===== -->
+<div style="margin-top:32px;">
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h2 style="font-size:18px;color:#f59e0b;margin:0;">&#128337; Historique de recherches</h2>
+    <?php if (!empty($history)): ?>
+    <button onclick="_espClearHistory()" style="padding:6px 16px;background:#ff6b6b20;border:1px solid #ff6b6b;border-radius:6px;color:#ff6b6b;font-size:12px;font-weight:600;cursor:pointer;">Effacer l'historique</button>
+    <?php endif; ?>
+</div>
+
+<?php if (empty($history)): ?>
+    <p style="color:#8b949e;font-size:14px;">Aucun historique de recherche.</p>
+<?php else: ?>
+<div class="table-wrap">
+    <table class="bk-table"><tr><th>#</th><th>Recherche / Consultation</th><th>Type</th><th>Source</th><th>Date</th></tr></table>
+    <table class="bk-table" id="espHistTable">
+    <?php
+    $typeBadges = [
+        'athlete' => 'background:#6c5ce720;color:#a29bfe;',
+        'club'    => 'background:#34d39920;color:#34d399;',
+        'epreuve' => 'background:#f59e0b20;color:#f59e0b;',
+        'ville'   => 'background:#3b82f620;color:#60a5fa;',
+        'general' => 'background:#8b949e20;color:#8b949e;',
+    ];
+    $srcLabels = ['live_search' => 'Recherche', 'page_view' => 'Consultation', 'panel_open' => 'Panneau'];
+    foreach ($history as $i => $h):
+        $label = $h['entity_name'] ?: $h['query_text'] ?: '-';
+        $typeStyle = $typeBadges[$h['search_type']] ?? $typeBadges['general'];
+        $srcLabel = $srcLabels[$h['source']] ?? $h['source'];
+        $link = '';
+        if ($h['search_type'] === 'athlete' && $h['entity_id']) {
+            $link = '?page=profil&id=' . (int)$h['entity_id'];
+        } elseif ($h['search_type'] === 'club' && $h['entity_name']) {
+            $link = '?page=recherche&club=' . urlencode($h['entity_name']);
+        } elseif ($h['search_type'] === 'epreuve' && $h['entity_name']) {
+            $link = '?page=epreuves&nom=' . urlencode($h['entity_name']);
+        } elseif ($h['search_type'] === 'ville' && $h['entity_name']) {
+            $link = '?page=villes&open=' . urlencode($h['entity_name']);
+        }
+    ?>
+        <tr>
+            <td><?= $i + 1 ?></td>
+            <td><?php if ($link): ?><a href="<?= $link ?>" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars($label) ?></a><?php else: ?><?= htmlspecialchars($label) ?><?php endif; ?></td>
+            <td><span style="<?= $typeStyle ?>padding:2px 8px;border-radius:10px;font-size:11px;"><?= htmlspecialchars($h['search_type']) ?></span></td>
+            <td style="color:#8b949e;font-size:12px;"><?= htmlspecialchars($srcLabel) ?></td>
+            <td style="color:#8b949e;font-size:12px;"><?= date('d/m/Y H:i', strtotime($h['created_at'])) ?></td>
+        </tr>
+    <?php endforeach; ?>
+    </table>
+    <table class="bk-table"><tr><th>#</th><th>Recherche / Consultation</th><th>Type</th><th>Source</th><th>Date</th></tr></table>
+</div>
+<?php endif; ?>
+
+</div>
+
+<script>
+function _espUnfollowAth(athleteId, btn) {
+    if (!confirm('Retirer cet athlete de vos suivis ?')) return;
+    fetch('<?= BK_BASE ?>/api/follow.php', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success && !d.following) {
+            var tr = btn.closest('tr');
+            tr.style.transition = 'opacity 0.3s';
+            tr.style.opacity = '0';
+            setTimeout(function() { tr.remove(); }, 300);
+        }
+    });
+}
+
+function _espUnfollowClub(clubId, btn) {
+    if (!confirm('Retirer ce club de vos suivis ?')) return;
+    fetch('<?= BK_BASE ?>/api/follow.php', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ club_id: clubId })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success && !d.following) {
+            var tr = btn.closest('tr');
+            tr.style.transition = 'opacity 0.3s';
+            tr.style.opacity = '0';
+            setTimeout(function() { tr.remove(); }, 300);
+        }
+    });
+}
+
+function _espClearHistory() {
+    if (!confirm('Effacer tout votre historique de recherches ?')) return;
+    fetch('<?= BK_BASE ?>/api/search_track.php', {
+        method: 'DELETE', credentials: 'same-origin'
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.ok || d.success) {
+            document.getElementById('espHistTable').innerHTML = '';
+            alert('Historique efface !');
+        } else {
+            alert('Erreur : ' + (d.error || 'echec'));
+        }
+    }).catch(function() { alert('Erreur reseau'); });
+}
+</script>
 
 <?php
 // ================================================================

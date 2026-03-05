@@ -7,7 +7,7 @@
 require_once __DIR__ . '/../core/db.php';
 
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Access-Control-Allow-Methods: POST, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 header("Content-Type: application/json; charset=utf-8");
 
@@ -16,9 +16,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// DELETE : effacer l'historique de l'utilisateur connecte
+if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    require_once __DIR__ . '/../core/auth.php';
+    $delIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    $delIp = trim(explode(',', $delIp)[0]);
+    $stmt = $conn->prepare("DELETE FROM search_tracking WHERE ip = ?");
+    $stmt->bind_param("s", $delIp);
+    $stmt->execute();
+    $deleted = $stmt->affected_rows;
+    $stmt->close();
+    echo json_encode(['success' => true, 'ok' => true, 'deleted' => $deleted]);
+    $conn->close();
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'POST requis']);
+    echo json_encode(['success' => false, 'error' => 'POST ou DELETE requis']);
     exit;
 }
 
