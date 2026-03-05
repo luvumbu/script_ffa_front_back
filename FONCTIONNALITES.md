@@ -42,12 +42,13 @@ BK/
 |   |-- paths.php        Constante BK_BASE (local /BK vs prod vide)
 |   |-- seo.php          Generation SEO : meta, Open Graph, Twitter Cards, Schema.org JSON-LD
 |   |-- insert_athle.php Insertion BDD depuis scraping (cache memoire)
-|   |-- dbCheck_athle.php Creation schema BDD (20 tables + 38 FK)
+|   |-- dbCheck_athle.php Creation schema BDD (23 tables + 38 FK)
 |
-|-- api/                 API REST JSON (21 endpoints publics + auth)
+|-- api/                 API REST JSON (22 endpoints publics + auth)
 |   |-- config.php       Configuration partagee (BDD, headers JSON, CORS)
 |   |-- athlete.php      Profil complet d'un athlete (10 categories de donnees)
 |   |-- search.php       Recherche avancee multi-criteres (12 filtres)
+|   |-- search_track.php Tracking recherches/consultations (POST sendBeacon)
 |   |-- liste.php        Liste paginee de tous les athletes
 |   |-- stats.php        Statistiques globales (cache 24h)
 |   |-- classement.php   Classement par epreuve
@@ -58,13 +59,20 @@ BK/
 |   |-- epreuve_records.php Records d'une epreuve
 |   |-- villes.php       Liste des villes
 |   |-- ville_stats.php  Stats detaillees d'une ville
+|   |-- top_searched.php Top clubs/athletes recherches (depuis search_tracking, cache 10min)
 |   |-- competitions.php Liste des competitions
 |   |-- performances.php CRUD performances manuelles
+|   |-- contact.php      Messages contact (POST=envoyer, GET=admin actions)
+|   |-- log.php          Logging actions utilisateur (POST batch BDD, GET lecture)
+|   |-- follow.php       Suivi athletes + clubs (POST toggle, GET status)
+|   |-- subscribe.php    Collecte email (newsletter, PDF)
 |   |-- auth/            Endpoints d'authentification
-|       |-- login.php    Connexion classique (POST, super admin uniquement)
+|       |-- login.php    Connexion classique (POST, super admin, rate limit 5/jour)
 |       |-- register.php Inscription classique (POST, legacy)
 |       |-- logout.php   Deconnexion (POST)
 |       |-- me.php       Utilisateur courant (GET)
+|       |-- forgot_password.php  Demande reinitialisation mdp (POST email)
+|       |-- reset_password.php   Reset mdp avec token (POST token+password)
 |       |-- google_login.php    Initie le flux OAuth Google (state CSRF + redirect)
 |       |-- google_callback.php Callback Google (echange code, cree/lie user, session)
 |
@@ -177,16 +185,34 @@ Le noyau de l'application. Contient 7 fichiers qui fournissent les services esse
 Le fichier verifie l'existence du fichier src/ avec `file_exists()` avant de le lire.
 
 ### core/insert_athle.php
-**Role** : Insertion d'un athlete complet en BDD apres scraping.
-- `loadRefCache($conn)` : pre-charge toutes les tables de reference en memoire (villes, clubs, epreuves, competitions, categories, nationalites). Elimine les SELECT repetitifs pendant l'insertion en masse.
-- `cachedGetOrInsertId(...)` : cherche d'abord dans le cache memoire, puis INSERT IGNORE si absent. Retourne l'ID.
-- `insertAthleteData($scraper, $conn, &$cache)` : insertion complete — cree l'athlete + insere dans les 9 tables enfants (clubs, medailles, records, progressions, resultats, podiums, selections, niveaux, niv_perfs)
+**Role** : Insertion optimisee d'un athlete complet en BDD apres scraping.
+
+**Fonctions exportees** :
+- `loadRefCache($conn) : array` — pre-charge 6 tables de reference en memoire (villes, clubs, epreuves, competitions, categories, nationalites). Elimine les SELECT repetitifs pendant l'insertion en masse. Appele 1 seule fois par session de scraping, reutilise pour 1000+ athletes.
+- `fk($val) : string` — helper NULL-safe pour FK (`NULL` ou `'valeur'`)
+- `cachedGetOrInsertId(&$cache, $conn, $table, $colId, $colNom, $valeur, $extraCols) : int|null` — lookup cache memoire (0 query si hit) → INSERT IGNORE si absent → SELECT ID. Met a jour le cache pour les lookups suivants.
+- `cachedGetCategorieId(&$cache, $code) : int|null` — lookup cache seulement (categories pre-remplies, pas d'INSERT)
+- `insertAthleteData($scraper, $conn, &$cache)` — insertion complete en 9 sections :
+  1. **athletes** : INSERT ou UPDATE (si `athlete_id_externe` existe → DELETE CASCADE enfants → re-INSERT)
+  2. **athlete_clubs** : batch INSERT (id_club, annee_debut, annee_fin)
+  3. **athlete_medailles** : batch INSERT (type, competition, epreuve, ville, annee)
+  4. **athlete_selections** : batch INSERT (type, date, duree, age, competition, epreuve, classement, perf)
+  5. **athlete_progressions** : batch INSERT (epreuve, categorie, club, annee, perf, vent, date, lieu)
+  6. **athlete_records** : batch INSERT (epreuve, categorie, perf, date, club, lieu)
+  7. **athlete_podiums** : batch INSERT (annee, niveau, place, rang, epreuve, perf, vent, date, lieu)
+  8. **athlete_resultats** : batch INSERT (annee, date, epreuve, perf, vent, tour, place, niveau, points, lieu)
+  9. **athlete_niveaux + athlete_niv_perfs** : sequentiel (besoin de l'ID insere pour les sous-perfs)
+
+**Optimisation** : 1 seul INSERT multi-lignes par section (pas 1 query par ligne)
 
 ### core/dbCheck_athle.php
 **Role** : Creation automatique du schema de la base de donnees.
-- Cree les 20 tables avec tous les champs
-- Ajoute les 38 cles etrangeres avec ON DELETE CASCADE/SET NULL
-- Idempotent : peut etre relance sans risque (CREATE TABLE IF NOT EXISTS)
+- Cree les 23 tables avec tous les champs et index
+- Ajoute les 30+ cles etrangeres (ON DELETE CASCADE pour athletes, ON DELETE SET NULL pour references)
+- Pre-remplit les categories FFA (EA, PO, BE, MI, CA, JU, ES, SE, V1-V4)
+- Pre-remplit les nationalites (codes ISO 3 lettres)
+- Idempotent : `CREATE TABLE IF NOT EXISTS` (peut etre relance sans risque)
+- N'affiche plus le schema quand les tables existent deja
 
 ---
 
@@ -360,39 +386,138 @@ Tous les endpoints incluent `api/config.php` qui fournit la connexion BDD + head
 
 ## DOSSIER : scraping/
 
-Pipeline de collecte de donnees depuis athle.fr. Scrape les pages HTML des athletes pour extraire leurs donnees.
+Pipeline complet de collecte de donnees depuis athle.fr. Scrape les pages HTML des 300 000+ athletes, extrait les donnees structurees, et les insere en base de donnees MySQL.
+
+### Architecture du pipeline
+
+```
+Table nom_et_liens (300k URLs)
+    ↓ urls_cache.json (cache local)
+    ↓
+scraper.php (orchestrateur)
+    ↓ Charge athlete_id_externe deja en BDD → skip sans scraper
+    ↓ Batch de 7 athletes
+    ↓
+scrape_functions.php → scrapeParallel()
+    ↓ curl_multi : 7 athletes x 3 pages = 21 requetes paralleles
+    ↓ CURLOPT_TIMEOUT = 15s, User-Agent Mozilla
+    ↓
+AthleteScraper.php (Class/)
+    ↓ Parsing HTML (regex) → 9 sections de donnees
+    ↓ extractIdentite/Medailles/Clubs/Progressions/Records/Podiums/Resultats/Niveaux/Selections
+    ↓
+insert_athle.php (core/)
+    ↓ Cache memoire (loadRefCache) → 0 SELECT repetitifs
+    ↓ Batch INSERT (1 query par section, 9 tables enfants)
+    ↓
+MySQL (athletes + 9 tables FK) + src/{id}.php (JSON)
+```
 
 ### scraping/scrape_functions.php
 **Role** : Fonction `scrapeParallel()` partagee entre les scripts de scraping.
+
+**Fonction** : `scrapeParallel(array $athleteIds, string $baseUrl = "https://athle.fr/athletes/") : array`
 - Utilise `curl_multi` pour telecharger plusieurs pages simultanement
-- 7 athletes x 3 pages (bilans, records, selections) = 21 requetes paralleles
-- Retourne un tableau `[athleteId => [bilans => html, records => html, selections => html]]`
+- 3 URLs par athlete : `/{id}/bilans`, `/{id}/records`, `/{id}/selections`
+- Options curl : `CURLOPT_TIMEOUT = 15`, `CURLOPT_FOLLOWLOCATION = true`, `SSL_VERIFYPEER = false`
+- Seules les reponses HTTP 200 sont conservees (sinon null)
+- **Retourne** : `[athleteId => ['bilans' => html|null, 'records' => html|null, 'selections' => html|null]]`
+- **Utilisee par** : `scraper.php`, `check_sync.php` (Phase 2)
 
 ### scraping/scraper.php
-**Role** : Script de scraping principal.
-- Scrape tous les athletes listes dans la table `nom_et_liens`
-- Batch de 7 athletes simultanement, pause de 1 seconde entre chaque batch
-- TIME_LIMIT de 25 secondes, auto-refresh (la page se recharge automatiquement pour continuer)
-- Genere les fichiers `src/{id}.php` (JSON avec headers PHP)
-- Insere directement en BDD via `insertAthleteData()`
-- Skip les athletes dont le fichier src/ existe deja
+**Role** : Script de scraping principal et orchestrateur.
+- **URL** : `https://bokonzi.com/scraping/scraper.php`
+- **Constantes** : `$TIME_LIMIT = 25` (secondes max par cycle), `$PARALLEL = 7` (athletes en parallele)
+
+**Workflow par cycle** (25s max, puis auto-refresh automatique) :
+1. Charge toutes les URLs depuis table `nom_et_liens` → cache local `urls_cache.json`
+2. Charge tous les `athlete_id_externe` deja en BDD dans `$existingAthletes[]` (SET en memoire)
+3. Affiche progression : `X / Y traites (Z%)` avec barre de progression rouge
+4. Boucle batch :
+   - Collecte 7 prochains athletes **non-existants** en BDD (skip sans meme scraper)
+   - `scrapeParallel()` → telecharge 21 pages en parallele
+   - Pour chaque athlete du batch :
+     - `AthleteScraper` → extraction des 9 sections
+     - Sauvegarde JSON → `src/{id}.php` (avec headers PHP CORS)
+     - Insertion BDD → `insertAthleteData($scraper, $conn, $cache)`
+     - Ajout a `$existingAthletes` pour eviter doublons dans le meme cycle
+   - Echecs → `failed.json` (nom, ID, date, message erreur)
+   - `sleep(1)` entre chaque batch (protection athle.fr)
+5. Sauvegarde progression → `progress.txt` + `$_SESSION["url"]`
+6. Affiche resume : athletes traites, duree, ETA
+7. `header("Refresh: 1")` → page se recharge automatiquement
+
+**Bouton reset** :
+- Formulaire en haut de page : champ numerique + bouton "Reset" + bouton "Tout reprendre (0)"
+- `?reset_to=N` : ecrit N dans `progress.txt`, efface la session, redirige
+
+**Interface visuelle** :
+- Fond noir, texte vert (style terminal)
+- Couleurs : vert (succes), rouge (erreur), orange (skip), cyan (timing)
+- Barre de progression rouge avec pourcentage
+- ETA estime en heures/minutes
+
+**Performance** : ~3.5 jours pour 300 000 athletes (vs ~17 jours en sequentiel)
 
 ### scraping/check_sync.php
-**Role** : Verification et synchronisation.
-- **Phase 1** : verifie les 300k URLs de `nom_et_liens` → genere `absents2.json` (liste des athletes manquants)
-- **Phase 2** : scrape automatiquement les absents (meme logique batch de 7)
+**Role** : Verification et synchronisation en 2 phases.
+
+**Phase 1 — Verification** (execution unique) :
+- Parcourt toutes les URLs de `nom_et_liens`
+- Verifie si le fichier `src/{athleteId}.php` existe pour chaque URL
+- Genere `absents2.json` avec la liste des athletes manquants
+- Si aucun absent : affiche "Tous les athletes sont presents"
+
+**Phase 2 — Scraping des absents** (automatique apres Phase 1) :
+- Charge la liste depuis `absents2.json`
+- Scrape les athletes manquants par batch de 7 (meme logique que `scraper.php`)
+- Progression dans `progress_absents.txt`
+- Echecs dans `failed_absents.json`
+- Auto-refresh jusqu'a completion
+
+**Reset** : `?reset=1` → supprime `absents2.json`, `progress_absents.txt`, `failed_absents.json`
 
 ### scraping/check_athletes.php
-**Role** : Comparaison src/ vs BDD.
-- Verifie si les fichiers `src/{id}.php` existent pour chaque athlete en BDD
-- Genere `absents.json` avec la liste des fichiers manquants
+**Role** : Audit de completude BDD vs fichiers JSON.
+- Compare chaque `athlete_id_externe` de la table `athletes` avec l'existence du fichier `src/{id}.php`
+- Genere `absents.json` avec la liste detaillee :
+  ```json
+  {"total_verifies": 250000, "total_presents": 249500, "total_absents": 500,
+   "absents": [{"id_athlete": 123, "athlete_id_externe": 456789, "nom_complet": "...", "fichier_attendu": "src/456789.php"}]}
+  ```
+- Interface avec 4 cartes stats : Total, Present, Absent, Progression %
 
 ### scraping/import_bdd.php
-**Role** : Import en masse depuis les fichiers JSON.
-- Lit les fichiers JSON dans le dossier `src/` et les insere en BDD un par un
-- Auto-refresh pour traiter de gros volumes
+**Role** : Import en masse depuis les fichiers JSON existants.
+- Parcourt tous les fichiers `src/*.php` dans l'ordre alphabetique
+- Pour chaque fichier : extrait le JSON (supprime le wrapper PHP) → `insertAthleteData()`
+- Progression dans `import_progress.txt` + `$_SESSION["import"]`
+- Auto-refresh chaque seconde jusqu'a completion
+- **Quand l'utiliser** : si les fichiers JSON ont ete scrapes offline ou copies separement
 
-**Performance du scraping** : 7 athletes en parallele x 3 pages = 21 requetes simultanees. Pause 1s entre chaque batch. ~3.5 jours pour 300 000 athletes (vs ~17 jours en sequentiel).
+### Fichiers de donnees generes par le scraping
+
+| Fichier | Contenu | Genere par |
+|---------|---------|------------|
+| `urls_cache.json` | Cache de la table `nom_et_liens` (300k URLs) | `scraper.php` (1ere execution) |
+| `progress.txt` | Position ID courante du scraping | `scraper.php` |
+| `progress_absents.txt` | Position courante de check_sync Phase 2 | `check_sync.php` |
+| `import_progress.txt` | Index fichier courant de l'import BDD | `import_bdd.php` |
+| `failed.json` | Athletes echoues (ID, erreur, date) | `scraper.php` |
+| `failed_absents.json` | Athletes echoues du rattrapage | `check_sync.php` |
+| `absents.json` | Fichiers src/ manquants vs BDD | `check_athletes.php` |
+| `absents2.json` | URLs manquantes vs fichiers src/ | `check_sync.php` |
+| `src/{id}.php` | JSON athlete avec headers PHP (CORS + Content-Type) | `scraper.php`, `check_sync.php` |
+
+### Controle a distance (admin/remote_check.php)
+API JSON securisee par cle API (`?bk_key=bk_s3cr3t_2026_xK9mP`).
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| `scrape_status` | - | Retourne : total_urls, total_bdd, restants, pct, progress_file |
+| `test_scrape` | `id`, `skip_bdd`, `force` | Scrape 1 athlete de test, retourne identite + stats + timing |
+| `count` | - | Compteurs de toutes les tables |
+| `columns` | `table` | Schema d'une table specifique |
 
 ---
 
@@ -469,15 +594,16 @@ Scripts d'administration de la base de donnees. A executer manuellement.
 - Pre-remplit les categories FFA (EA, PO, BE, MI, CA, JU, ES, SE, V1, V2, V3, V4)
 - Idempotent (peut etre relance sans risque)
 
-### admin/drop_all.php
-**Role** : Suppression de toutes les tables.
-- DROP TABLE pour les 15 tables du projet
-- Reset total de la structure
+### admin/remote_check.php
+**Role** : API JSON d'administration a distance (securisee par cle API).
+- **Securite** : `?bk_key=bk_s3cr3t_2026_xK9mP` (param URL ou header `X-BK-KEY`)
+- `?action=scrape_status` : progression du scraping (total_urls, total_bdd, restants, pct)
+- `?action=test_scrape&id=123` : scrape 1 athlete de test (+ `&skip_bdd`, `&force`)
+- `?action=count` : compteurs de lignes de toutes les tables
+- `?action=columns&table=athletes` : schema detaille d'une table
+- `?action=query&q=SELECT...` : requete SQL en lecture seule
 
-### admin/reset.php
-**Role** : Reset du compteur de scraping.
-- Remet le compteur scraping a 0, supprime le cache URLs
-- Avec `?bdd=1` : TRUNCATE toutes les tables + re-insere les categories FFA
+**Note** : `admin/drop_all.php` et `admin/reset.php` ont ete **supprimes** pour des raisons de securite.
 
 ### admin/cache_urls.php
 **Role** : Regeneration du cache URLs.
@@ -490,12 +616,40 @@ Scripts d'administration de la base de donnees. A executer manuellement.
 Classes utilitaires PHP reutilisables.
 
 ### Class/AthleteScraper.php (56 Ko)
-**Role** : Scraper web pour athle.fr.
-- Parse les pages HTML d'athle.fr pour extraire les donnees d'un athlete
-- Extrait 9 sections : identite, clubs, medailles, selections, progressions, records, podiums, resultats, niveaux
-- Gere les differents formats de pages athle.fr (bilans, records, selections)
-- Utilise cURL pour les requetes HTTP
-- Methodes principales : `scrapeAll()`, `fetchAllPages()`, `extractIdentite()`, `extractClubs()`, `extractMedailles()`, `extractProgressions()`, `extractRecords()`, `extractResultats()`, `extractPodiums()`, `extractSelections()`, `extractNiveaux()`, `toArray()`
+**Role** : Scraper web pour athle.fr — parsing HTML → donnees structurees.
+
+**Constructeur** : `new AthleteScraper($input)` — accepte un ID entier ou une URL complete (`/athletes/12345/bilans`)
+
+**Proprietes publiques** (remplies par les methodes extract) :
+- `$identite[]` — nom, prenom, date naissance, lieu naissance, taille, poids, categorie, sexe, nationalite, licence
+- `$clubs[]` — liste des clubs avec annees debut/fin
+- `$medailles[]` — or/argent/bronze avec competition, epreuve, lieu, annee
+- `$selections[]` — selections en equipe (type, date, duree, age, competition, epreuve, classement, perf)
+- `$progressions[]` — meilleures perfs par saison (epreuve, annee, categorie, club, perf, vent, date, lieu)
+- `$records[]` — records personnels (epreuve, categorie, perf, date, club, lieu)
+- `$podiums[]` — top 3 (annee, niveau, place, epreuve, perf, vent, date, lieu)
+- `$resultats[]` — tous les resultats de competition (annee, date, epreuve, perf, place, niveau D/R/N/I, points, lieu)
+- `$niveaux[]` — qualifications (code, points, annee) + perfs requises par epreuve
+
+**Methodes d'extraction** (chacune parse `$this->html`) :
+- `extractIdentite()` — regex sur `<h1>`, dates, taille/poids, categorie/sexe/nationalite
+- `extractClubs()` — deduit depuis les progressions (agregation min/max annees)
+- `extractMedailles()` — pattern "Medaille d'or / 1997 - Ljubljana (SLO) : 4 x 400 m"
+- `extractSelections()` — blocs selections equipe
+- `extractProgressions()` — section "Meilleures performances par saison" (groupees par epreuve)
+- `extractRecords()` — page records (similaire aux progressions)
+- `extractPodiums()` — top 3 finishes avec lieux
+- `extractResultats()` — tous les resultats competition (avec niveaux D1-IE)
+- `extractNiveaux()` — qualifications + perfs requises
+
+**Methodes utilitaires** :
+- `toArray() : array` — export toutes les proprietes en tableau associatif (pour JSON)
+- `scrapeAll() : array` — tout-en-un : fetch 3 pages + extract tout + retourne resultat
+
+**Methodes statiques critiques** :
+- `performanceToInt($perf) : int|null` — conversion texte → centiemes (7 patterns). **ATTENTION** : `str_pad($digit, 2, '0', STR_PAD_RIGHT)` pour les dixiemes (10''9 → 1090, pas 1009)
+- `splitNomPrenom($nom) : array` — separation nom/prenom par heuristique majuscules
+- `getCategorieCode($anneeNaissance, $anneeSaison) : string` — age → code FFA (EA/PO/BE/MI/CA/JU/ES/SE/V1-V4)
 
 ### Class/DatabaseHandler.php (63 Ko)
 **Role** : Gestionnaire de base de donnees avance.

@@ -16,6 +16,7 @@ BK/
 │   ├── contact.php     Messages contact (POST=envoyer, GET=mark_read/delete/unban_ip)
 │   ├── athlete.php     Fiche complete athlete (?id= ou ?id_athlete=)
 │   ├── search.php      Recherche multi-criteres (12 filtres combinables)
+│   ├── search_track.php Tracking recherches/consultations (POST sendBeacon)
 │   ├── club_stats.php  Stats club (?id=, ?nom=, ?annee=, ?rp=, ?ep=, ?nationalite=, ?sexe=, ?categorie=)
 │   ├── ville_stats.php Stats ville (?nom=, ?niv=, ?nat=, ?ans=)
 │   ├── epreuve_stats.php Stats epreuve (?nom=, ?page=, ?limit=, ?sexe=, ?categorie=)
@@ -29,7 +30,7 @@ BK/
 │   ├── follow.php      Suivi athletes + clubs (POST=toggle, GET=status)
 │   ├── subscribe.php   Collecte email (newsletter, PDF)
 │   ├── performances.php CRUD perfs manuelles (auth requise)
-│   ├── top_searched.php Top clubs/athletes recherchés (logs BDD, cache 1h)
+│   ├── top_searched.php Top clubs/athletes recherchés (search_tracking, cache 10min)
 │   ├── epreuve_records.php Records paginés par épreuve
 │   ├── ville_epreuves.php Épreuves par ville
 │   ├── competitions.php Liste des compétitions
@@ -50,17 +51,24 @@ BK/
 │   ├── auth.php        Auth (hash, sessions 30j, roles, requireAuth/requireRole)
 │   ├── oauth_config.php Config OAuth Google (extensible Facebook/Instagram)
 │   ├── ip_logger.php   Logger IP universel (rate limiting desactive)
-│   ├── dbCheck_athle.php Schema BDD (22 tables, 30+ FK)
+│   ├── dbCheck_athle.php Schema BDD (23 tables, 30+ FK)
 │   ├── insert_athle.php Import donnees → BDD
 │   ├── seo.php         Generation meta/OG/Twitter/JSON-LD Schema.org
 │   └── paths.php       Constante BK_BASE
 ├── admin/              Administration
-│   ├── panel.php       Super Admin dashboard (14 sections, auth BDD credentials)
+│   ├── panel.php       Super Admin dashboard (16 sections, auth BDD credentials)
 │   ├── setup_bdd.php   Creation BDD + toutes les tables
 │   ├── clear_cache.php Vider cache (?prefix= pour cibler)
 │   ├── cache_urls.php  Pre-generation cache
 │   ├── fix_perf_int.php Correction INT perfs (padding dixiemes, ?go pour executer)
-│   └── logs.php        Visualisation logs (acces restreint par email)
+│   ├── logs.php        Visualisation logs (acces restreint par email)
+│   └── remote_check.php API JSON admin a distance (test_scrape, scrape_status, count, query)
+├── scraping/           Pipeline de collecte de donnees athle.fr
+│   ├── scrape_functions.php  scrapeParallel() — curl_multi 7 athletes x 3 pages
+│   ├── scraper.php           Scraping principal (batch 7, skip BDD, auto-refresh, bouton reset)
+│   ├── check_sync.php        Verification + scraping des absents (2 phases)
+│   ├── check_athletes.php    Comparaison src/ vs BDD → absents.json
+│   └── import_bdd.php        Import fichiers JSON src/ → BDD
 ├── Class/              53 classes utilitaires
 │   ├── DatabaseHandler.php  Wrapper BDD / ORM leger (63 KB)
 │   └── ... (convertisseurs, validateurs, formatters, etc.)
@@ -69,10 +77,13 @@ BK/
 │   ├── ip_view.php     Viewer distant logs IP (auth email whitelist)
 │   ├── ip_track_YYYY-MM.php  Log mensuel JSON (protege par die())
 │   ├── ip_daily_YYYY-MM-DD.php  Compteurs rate limiting journaliers
-│   └── ip_banned.php        IPs bannies definitivement (JSON protege par die())
+│   ├── ip_banned.php        IPs bannies definitivement (JSON protege par die())
+│   ├── .page_limits.php     Compteurs anti-scraping journaliers par IP (protege par die())
+│   ├── .st_ignored_ips.php  IPs ignorees du search tracking (protege par die())
+│   └── .sa_sessions.php     Sessions super admin (protege par die())
 ├── docs/               Documentation technique
 ├── generate_og_image.html Generateur image OG (canvas 1200x630)
-├── index.php           PAGE PRINCIPALE (~8400 lignes PHP+HTML+JS)
+├── index.php           PAGE PRINCIPALE (~8500 lignes PHP+HTML+JS, anti-scraping 20 pages/jour)
 ├── dashboard.css       Styles du dashboard (~550 lignes)
 ├── common.css          Styles globaux
 ├── login.php / register.php / forgot_password.php / reset_password.php / nav.php / panel.php
@@ -247,17 +258,20 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 - `type` (requis) : `clubs` ou `athletes`
 - `limit` : max items (defaut 50, max 50)
 - `days` : periode en jours (1, 7, 30, 365 — defaut 1)
-- Compte les vues depuis les tables de tracking (`athlete_vues_ip` / `club_vues_ip`) filtrees par `created_at`
-- Chaque visite de profil ou page club incremente le compteur via INSERT IGNORE (1 vue/IP)
+- **Lit depuis `search_tracking`** : `COUNT(DISTINCT ip)` comme vues, filtre par `created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)`
+- **2 sources** : entity_name (tracking serveur) + query_text (tracking JS live_search) — deduplique par nom
+- **Enrichissement** : athletes (sexe, categorie, nationalite, club), clubs (nb_athletes)
 - Cache 10min : `topsearched_{type}_{limit}_{days}d.json`
 - `?nocache` : bypass cache
-- `?reset=athletes|clubs|all&bk_key=...` : reset compteurs vues + truncate tables tracking
+- `?reset=athletes|clubs|all&bk_key=...` : reset vues + `DELETE FROM search_tracking WHERE search_type = '...'`
 
 ## Page Accueil — Top Consultés
 - 2 sections apres les stat cards, avant les courbes
-- **Top Clubs Consultés** + **Top Athlètes Consultés**
+- **Top Clubs Consultés** : colonnes #, Club, Athletes, Vues
+- **Top Athlètes Consultés** : colonnes #, Athlete, Club, Cat, Sexe, Vues
 - **Onglets periode** : Jour (1j, defaut), Semaine (7j), Mois (30j), Année (365j)
 - Onglet actif = violet (#6c5ce7), inactif = gris
+- **Donnees depuis `search_tracking`** via `top_searched.php` (COUNT DISTINCT ip)
 - Pagination : 10/page, max 5 pages + bouton "Voir tout"
 - Fallback : si vues=0, utilise `$detailData` de `stats_detail_30.json` via `_fbMapClubs()`/`_fbMapAth()`
 - Auto-refresh : `setInterval` 60s avec `?nocache`
@@ -339,6 +353,7 @@ html += '</div>';
 | `email_subscribers` | id_sub, email, source, detail | Newsletter + PDF (UK: email+source) |
 | `contact_messages` | id_msg PK, ip, nom, email, message, lu | Messages contact (lu=0/1) |
 | `password_resets` | id_reset PK, id_user FK, token UNIQUE, expire_at, used | Tokens reinitialisation mdp (1h TTL) |
+| `search_tracking` | id_search PK, ip, query_text, search_type ENUM, source ENUM | Tracking recherches/consultations (entity_id, entity_name, result_count, page, created_at) |
 
 ## Cache systeme
 - **Emplacement** : `cache/` (fichiers JSON, protege .htaccess)
@@ -368,11 +383,23 @@ html += '</div>';
 - **Viewer** : `logs/ip_view.php` — auth email whitelist, params `?month=`, `?ip=`, `?raw=1`
 - **Pages avec logIp()** : index.php, api/config.php, pages/*.php, login.php, register.php
 
-### Rate limiting (DESACTIVE)
-- **Rate limiting et ban permanent desactives** — API et pages accessibles sans restriction IP
+### Rate limiting
+- **API et pages** : rate limiting global desactive (pas de limite req/jour)
+- **Admin login** (`api/auth/login.php`) : **5 tentatives/jour** par IP, blocage 24h apres 5 echecs
+  - Fichier : `logs/.admin_attempts.php` (JSON protege par die())
+  - **Whitelist illimitee** : Google (66.249.*, 66.102.*, 64.233.*, 72.14.*, 74.125.*, 209.85.*, 216.239.*, 35.*, 34.*), Hostinger (153.92.*, 31.170.*, 185.201.*), localhost (127.0.0.1, ::1)
+  - Utilise `goto skipRateLimit;` pour bypass whitelistees
 - **Fonctions conservees** (code present mais non appele) : `banIp()`, `isIpBanned()`, `readBannedIps()`, `showRateLimitPage()`
-- **Whitelist** : IPs serveur Hostinger + Google toujours presentes (non loguees)
 - **IPs whitelistees ne sont PAS loguees** (early return dans `logIp()`)
+
+### Anti-scraping (protection pages)
+- **Limite** : 20 pages/jour max pour les visiteurs anonymes
+- **Compteur** : `logs/.page_limits.php` — compteurs journaliers par IP (JSON protege par die())
+- **Apres 20 pages** : redirection vers `login.php?limit=1` (message "Connectez-vous avec Google pour continuer")
+- **Whitelist illimitee** : Google, Hostinger, localhost (meme prefixes que admin login)
+- **Utilisateurs connectes illimites** : cookie `bk_token` ou `bk_sa_token` → pas de limite
+- **Implementation** : IIFE anonyme dans index.php apres `logIp()`, avant le contenu
+- **Nettoyage** : fichier regenere quotidiennement (check date)
 
 ### Cle API (config.php)
 - **Cle API conservee** : `BK_API_KEY = 'bk_s3cr3t_2026_xK9mP'`
@@ -390,6 +417,51 @@ html += '</div>';
   - `?unban_ip=X` : debannir une IP
 - **Formulaire visible** : page de blocage (429) + footer index.php
 - **Admin panel** : section 14, alerte violette pulsante si messages non lus
+
+### Search Tracking (systeme complet)
+Systeme de suivi de toutes les recherches et consultations sur le site.
+
+#### Table `search_tracking`
+- **Colonnes** : id_search, ip, query_text, search_type (ENUM: athlete/club/epreuve/ville/general), source (ENUM: live_search/page_view/panel_open), entity_id, entity_name, result_count, page, created_at
+- **6 index** : idx_st_type, idx_st_source, idx_st_created, idx_st_ip, idx_st_entity, idx_st_query
+
+#### Sources de tracking
+1. **JS (sendBeacon)** → `api/search_track.php` :
+   - `liveSearch()` : debounce 2s apres derniere frappe, envoie q/type/source/results/pg
+   - `_openClubPanel()` : envoie type=club, source=panel_open, entity_name=nom_club, entity_id=id
+   - `openEpreuveDetail()` : envoie type=epreuve, source=panel_open, entity_name=nom_epreuve
+   - Helper JS : `_trackSearch(params)` + `_trackTimer` (clearTimeout pour debounce)
+2. **PHP (INSERT direct)** dans index.php :
+   - Page profil athlete : INSERT type=athlete, source=page_view, entity_name=nom+prenom, entity_id=athlete_id_externe
+   - Page recherche avec `?club=X` : INSERT type=club, source=page_view, entity_name=nom_club, entity_id=id_club
+
+#### API `search_track.php`
+- **POST** : recoit JSON body `{ q, type, source, entity_id, entity_name, results, pg }`
+- Gere aussi `$_POST` (fallback)
+- IP detection CloudFlare/proxy
+- **Nettoyage probabiliste** : 1% chance de `DELETE WHERE created_at < 90 jours`
+- Retourne `{ ok: true }` (leger, pour sendBeacon)
+
+#### Admin panel — Section Search Tracking (Section 15)
+- **8 KPI cards** : total, aujourd'hui, 7j, 30j, IPs uniques, taux succes, IPs ignorees, derniere recherche
+- **Chart 14 jours** : Chart.js bar stacked (5 datasets : athlete, club, epreuve, ville, general)
+- **7 onglets interactifs** (pattern `.vue-tab`) :
+  1. Recherches : top 50 queries (query, type badge, source, count, IPs, resultats moy, derniere date)
+  2. Athletes : TOUTES les entrees type=athlete (nom, entity_id, IP, source, heure, nb resultats) — sans limite
+  3. Clubs : TOUTES les entrees type=club — sans limite
+  4. Entites : top 50 epreuves/villes (entity_name, type badge, vues, IPs)
+  5. IPs : toutes les IPs avec count + bouton "Ignorer" par IP
+  6. Horaire : Chart.js bar horizontal (distribution 0h-23h)
+  7. Sources : Chart.js doughnut (live_search vs page_view vs panel_open) + detail par type
+- **Chaque tab** : barre de recherche filtre + headers triables + lignes
+- **Boutons reset** : athletes, clubs, tout le tracking (confirm JS requis)
+- **Section IPs ignorees** : liste avec label + bouton "Reactiver", input ajout manuel, bouton "Ignorer mon IP actuelle"
+
+#### Systeme d'IPs ignorees
+- **Fichier** : `logs/.st_ignored_ips.php` (format `<?php die(); ?>\n` + JSON)
+- **Structure** : `{"1.2.3.4": {"added":"2026-03-02","label":"Mon IP"}, ...}`
+- **Impact** : toutes les queries SQL search_tracking dans panel.php ont `WHERE ip NOT IN (...)`
+- **Actions** : POST vers panel.php avec `st_action` = `ignore_ip` / `unignore_ip` / `reset_tracking`
 
 ### Fichiers dangereux SUPPRIMES
 - `admin/drop_all.php` — SUPPRIME (supprimait toutes les tables)
@@ -432,11 +504,23 @@ html += '</div>';
 
 ### Super Admin
 - **Login** : meme formulaire `login.php` (input type="text"), detecte si email = BDD username + password = BDD password
+- **Rate limit login** : 5 tentatives/jour par IP, Google/Hostinger whitelistees (illimite)
 - **Cookie** : `bk_sa_token` (7 jours), stocke dans `logs/.sa_sessions.php`
-- **Dashboard** : `admin/panel.php` — 14 sections (overview, requetes temps reel, activite horaire, top IPs, users, BDD info, IPs bannies, messages contact, etc.)
+- **Dashboard** : `admin/panel.php` — 16 sections :
+  1. Overview (compteurs tables)
+  2. Requetes temps reel
+  3. Logs BDD (30 derniers, URLs cliquables)
+  4. Activite horaire
+  5. Top IPs
+  6. Users
+  7-10. (autres stats)
+  11. Actions rapides (reset vues)
+  12. Analytics Vues (tabs, charts, tri, filtre, drawer)
+  13. IPs bloquees & bannies (avec bouton debannir)
+  14. Messages contact (lu/non-lu/supprimer/tout marquer lu)
+  15. **Search Tracking** (8 KPI, chart 14j, 7 tabs interactifs, reset, IPs ignorees)
+  16. (autres)
 - **Detection** : `api/auth/login.php` compare avec `$username`/`$password` de `core/credentials.php`
-- **Section 13** : IPs bloquees & bannies (avec bouton debannir)
-- **Section 14** : Messages contact (lu/non-lu/supprimer/tout marquer lu)
 - **Actions rapides** : reset vues athletes/clubs (appelle `top_searched.php?reset=`)
 
 ## localStorage (navigateur)
@@ -572,6 +656,100 @@ Quand il n'y a qu'1 chiffre apres `''`, `m` ou `.`, c'est un **dixieme** (pas un
 - Sans param : dry run (montre le nombre de lignes affectees)
 - `?go` : execute la correction SQL : `FLOOR(perf/100)*100 + MOD(perf,100)*10`
 - Tables corrigees : `athlete_records`, `athlete_progressions`, `athlete_resultats`
+
+## Systeme de scraping (pipeline complet)
+
+### Architecture globale
+```
+athle.fr (HTML)
+    ↓ curl_multi (7 athletes x 3 pages = 21 requetes paralleles)
+    ↓ scrape_functions.php → scrapeParallel()
+    ↓
+AthleteScraper.php (parsing HTML → donnees structurees)
+    ↓ extractIdentite/Medailles/Clubs/Progressions/Records/Podiums/Resultats/Niveaux/Selections
+    ↓
+insert_athle.php → insertAthleteData($scraper, $conn, $cache)
+    ↓ cache memoire (loadRefCache) → 0 SELECT repetitifs
+    ↓ batch INSERT (1 query par section)
+    ↓
+MySQL (9 tables enfants) + src/{id}.php (JSON)
+```
+
+### Fichiers et roles
+
+| Fichier | Role | Entree | Sortie |
+|---------|------|--------|--------|
+| `scraping/scrape_functions.php` | Telechargement parallele | IDs athletes | HTML brut (bilans, records, selections) |
+| `Class/AthleteScraper.php` | Parsing HTML athle.fr | HTML brut | Donnees structurees (identite, clubs, medailles...) |
+| `core/insert_athle.php` | Insertion BDD optimisee | Objet scraper | 9 tables MySQL |
+| `core/dbCheck_athle.php` | Creation schema BDD | - | Tables + FK + categories + nationalites |
+| `scraping/scraper.php` | Orchestrateur principal | Table `nom_et_liens` | JSON + BDD |
+| `scraping/import_bdd.php` | Import JSON → BDD | Fichiers `src/*.php` | BDD |
+| `scraping/check_sync.php` | Verification + rattrapage | `nom_et_liens` vs `src/` | `absents2.json` + scrape manquants |
+| `scraping/check_athletes.php` | Audit completude | `athletes` table vs `src/` | `absents.json` |
+
+### scraping/scraper.php — Orchestrateur principal
+- **URL** : `https://bokonzi.com/scraping/scraper.php`
+- **Constantes** : `$TIME_LIMIT = 25s`, `$PARALLEL = 7`
+- **Workflow par cycle** (25s max, puis auto-refresh) :
+  1. Charge toutes les URLs depuis `nom_et_liens` → cache `urls_cache.json`
+  2. Charge tous les `athlete_id_externe` deja en BDD → `$existingAthletes[]`
+  3. Boucle batch : collecte 7 athletes non-existants, skip les existants sans meme les scraper
+  4. `scrapeParallel()` → telecharge 21 pages en parallele
+  5. Pour chaque athlete : `AthleteScraper` → extraction → JSON `src/{id}.php` → BDD `insertAthleteData()`
+  6. Echecs → `failed.json`
+  7. Progression → `progress.txt` + `$_SESSION["url"]`
+  8. `header("Refresh: 1")` → cycle suivant
+- **Bouton reset** : `?reset_to=N` pour reprendre a un numero choisi
+- **Performance** : ~3.5 jours pour 300k athletes (vs ~17 jours en sequentiel)
+
+### scrapeParallel($athleteIds) — curl_multi
+- **Fichier** : `scraping/scrape_functions.php`
+- **Signature** : `scrapeParallel(array $athleteIds, string $baseUrl = "https://athle.fr/athletes/") : array`
+- 3 URLs par athlete : `/bilans`, `/records`, `/selections`
+- `CURLOPT_TIMEOUT = 15s`, User-Agent Mozilla
+- **Retourne** : `[athleteId => ['bilans' => html|null, 'records' => html|null, 'selections' => html|null]]`
+
+### AthleteScraper — Extraction HTML
+- **Fichier** : `Class/AthleteScraper.php` (56 KB)
+- **Constructeur** : `new AthleteScraper($id)` — accepte ID entier ou URL complete
+- **Proprietes publiques** : `$identite`, `$clubs`, `$medailles`, `$selections`, `$progressions`, `$records`, `$podiums`, `$resultats`, `$niveaux`
+- **Methodes d'extraction** : `extractIdentite()`, `extractClubs()`, `extractMedailles()`, `extractSelections()`, `extractProgressions()`, `extractRecords()`, `extractPodiums()`, `extractResultats()`, `extractNiveaux()`
+- **Export** : `toArray()` → tableau associatif, `scrapeAll()` → tout-en-un (fetch + extract)
+- **Methodes statiques** :
+  - `performanceToInt($perf)` : conversion texte → centièmes (7 patterns, str_pad pour dixiemes)
+  - `splitNomPrenom($nom)` : separation nom/prenom (heuristique majuscules)
+  - `getCategorieCode($anneeNaissance, $anneeSaison)` : age → code FFA
+
+### insertAthleteData() — Insertion BDD
+- **Fichier** : `core/insert_athle.php`
+- **Fonctions** :
+  - `loadRefCache($conn)` : charge 6 tables de reference en memoire (villes, clubs, epreuves, competitions, categories, nationalites)
+  - `cachedGetOrInsertId(&$cache, $conn, ...)` : lookup cache → INSERT IGNORE → SELECT (0 query si cache hit)
+  - `insertAthleteData($scraper, $conn, &$cache)` : insertion complete 9 sections
+- **Sections inserees** : athletes, athlete_clubs, athlete_medailles, athlete_selections, athlete_progressions, athlete_records, athlete_podiums, athlete_resultats, athlete_niveaux + athlete_niv_perfs
+- **Strategie UPDATE** : si `athlete_id_externe` existe → DELETE CASCADE enfants → re-INSERT tout
+
+### Fichiers de progression et logs
+
+| Fichier | Contenu | Persistence |
+|---------|---------|-------------|
+| `progress.txt` | ID courant du scraper principal | Survit aux redemarrages |
+| `progress_absents.txt` | ID courant de check_sync phase 2 | Idem |
+| `import_progress.txt` | Index fichier import_bdd | Idem |
+| `urls_cache.json` | Cache table `nom_et_liens` | Regenere si supprime |
+| `failed.json` | Athletes echoues (scraper principal) | Accumule |
+| `failed_absents.json` | Athletes echoues (check_sync) | Accumule |
+| `absents.json` | Fichiers src/ manquants (check_athletes) | Regenere |
+| `absents2.json` | URLs manquantes (check_sync) | Regenere |
+| `src/{id}.php` | JSON athlete avec headers PHP | 1 fichier par athlete |
+
+### Admin distant — remote_check.php
+- **URL** : `https://bokonzi.com/admin/remote_check.php?bk_key=...`
+- `?action=scrape_status` : total_urls, total_bdd, restants, pct, progress_file
+- `?action=test_scrape&id=123` : scrape 1 athlete de test (+ `&skip_bdd`, `&force`)
+- `?action=count` : compteurs de toutes les tables
+- `?action=columns&table=athletes` : schema d'une table
 
 ## Points d'attention CRITIQUES
 - `index.php` est ENORME (~8400 lignes) : PHP + HTML + JS tout-en-un. Lire par sections.
