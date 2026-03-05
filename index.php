@@ -19,9 +19,12 @@ logIp();
     $ip = trim(explode(',', $ip)[0]);
     if ($ip === '') return;
 
-    // Whitelist Google + Hostinger + localhost
+    // Whitelist Google + Hostinger + localhost + bots/API
     $wl = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
     foreach ($wl as $p) { if (strpos($ip, $p) === 0) return; }
+    // Bypass pour requetes API/curl/bots (pas de UA navigateur)
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    if ($ua === '' || strpos($ua, 'curl') !== false || strpos($ua, 'bot') !== false || strpos($ua, 'Bot') !== false) return;
 
     // Compteur journalier par IP
     $file = __DIR__ . '/logs/.page_limits.php';
@@ -767,33 +770,28 @@ if ($page === 'accueil'):
     </div></a>
 </div>
 
-<!-- ======== TOP CLUBS CONSULTES ======== -->
+<!-- ======== TOP 30 ATHLETES ======== -->
+<?php if ($detailData && !empty($detailData['top_athletes'])): ?>
 <div style="margin-top:24px;margin-bottom:24px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-        <h2 style="margin:0;"><span class="chart-icon" style="background:#8b5cf620;color:#a78bfa;">&#127963;</span> Top Clubs Consult&#233;s <span id="topSearchClubsCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-        <div id="topClubsTabs" style="display:flex;gap:4px;"></div>
-    </div>
+    <h2 style="margin:0 0 12px;"><span class="chart-icon" style="background:#ec489920;color:#f472b6;">&#127939;</span> Top 30 Athl&#232;tes</h2>
     <div class="table-wrap">
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th>Athletes</th><th style="width:80px;">Vues</th></tr></table>
-    <table class="bk-table"><tbody id="topSearchClubsBody"><tr><td colspan="4" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Club</th><th>Athletes</th><th style="width:80px;">Vues</th></tr></table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Sexe</th><th>Records</th><th>Podiums</th></tr></table>
+    <table class="bk-table">
+    <?php foreach (array_slice($detailData['top_athletes'], 0, 30) as $idx => $a): ?>
+        <tr>
+            <td style="color:#5a6580;"><?= $idx + 1 ?></td>
+            <td><a href="?page=profil&id=<?= $a['athlete_id'] ?>" style="color:#a29bfe;text-decoration:none;font-weight:600;"><?= htmlspecialchars($a['nom']) ?></a></td>
+            <td style="color:#8b949e;font-size:12px;"><?= htmlspecialchars(rtrim($a['club'] ?? '', '* ')) ?></td>
+            <td><span class="badge badge-<?= strtolower($a['sexe'] ?? '') ?>" style="font-size:11px;"><?= htmlspecialchars($a['sexe'] ?? '-') ?></span></td>
+            <td><?= ($a['nb_records'] ?? 0) > 0 ? '<span class="badge badge-perf">' . $a['nb_records'] . '</span>' : '-' ?></td>
+            <td><?= ($a['nb_podiums'] ?? 0) > 0 ? '<span style="color:#34d399;font-weight:600;">' . $a['nb_podiums'] . '</span>' : '-' ?></td>
+        </tr>
+    <?php endforeach; ?>
+    </table>
+    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Sexe</th><th>Records</th><th>Podiums</th></tr></table>
     </div>
-    <div id="topSearchClubsPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
 </div>
-
-<!-- ======== TOP ATHLETES CONSULTES ======== -->
-<div style="margin-bottom:24px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-        <h2 style="margin:0;"><span class="chart-icon" style="background:#ec489920;color:#f472b6;">&#127939;</span> Top Athl&#232;tes Consult&#233;s <span id="topSearchAthCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-        <div id="topAthTabs" style="display:flex;gap:4px;"></div>
-    </div>
-    <div class="table-wrap">
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Cat</th><th>Sexe</th><th style="width:80px;">Vues</th></tr></table>
-    <table class="bk-table"><tbody id="topSearchAthBody"><tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Cat</th><th>Sexe</th><th style="width:80px;">Vues</th></tr></table>
-    </div>
-    <div id="topSearchAthPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;"></div>
-</div>
+<?php endif; ?>
 
 <!-- ======== GRAPHIQUES LIGNE 1 : Sexe + Categories ======== -->
 <div class="charts-row">
@@ -1019,6 +1017,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <?php if ($detailData): ?>
     // Cache disponible → injection directe (0 HTTP)
     _buildAccueilTables(<?= json_encode($detailData, JSON_UNESCAPED_UNICODE) ?>);
+    window._topFallbackData = <?= json_encode(['top_athletes' => $detailData['top_athletes'] ?? [], 'top_clubs' => $detailData['top_clubs'] ?? []], JSON_UNESCAPED_UNICODE) ?>;
     <?php else: ?>
     // Pas de cache → AJAX fallback (1er visiteur uniquement)
     fetch(BASE_API + '/stats.php?detail=1&top=30')
@@ -1039,7 +1038,17 @@ document.addEventListener('DOMContentLoaded', function(){
 document.addEventListener('DOMContentLoaded', function(){
     function _esc2(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-    // Pas de fallback : si aucune vue, affiche "Aucune donnee"
+    // Fallback : si search_tracking vide, utilise stats_detail_30 (top_athletes/top_clubs par score)
+    function _fbMapAth(athletes) {
+        return athletes.map(function(a) {
+            return { id: a.athlete_id, nom: a.nom, club: (a.club || '').replace(/\*\s*$/, ''), categorie: a.categorie || '', sexe: a.sexe || '', vues: (a.nb_medailles||0)*5 + (a.nb_podiums||0)*3 + (a.nb_selections||0)*4 + (a.nb_records||0) };
+        });
+    }
+    function _fbMapClubs(clubs) {
+        return clubs.map(function(c) {
+            return { id: 0, nom: (c.club || '').replace(/\*\s*$/, ''), nb_athletes: c.nb_athletes || 0, vues: c.nb_athletes || 0 };
+        });
+    }
 
     function _topSearchPag(items, bodyId, pagId, perPage, maxPages, renderRow) {
         var pg = 0, expanded = false;
@@ -1099,11 +1108,17 @@ document.addEventListener('DOMContentLoaded', function(){
             .then(function(d) {
                 if (d.success && d.items && d.items.length) {
                     _renderTopClubs(d.items);
+                } else if (window._topFallbackData && window._topFallbackData.top_clubs && window._topFallbackData.top_clubs.length) {
+                    _renderTopClubs(_fbMapClubs(window._topFallbackData.top_clubs));
                 } else {
                     _renderTopClubs([]);
                 }
             })
-            .catch(function() { _renderTopClubs([]); });
+            .catch(function() {
+                if (window._topFallbackData && window._topFallbackData.top_clubs && window._topFallbackData.top_clubs.length) {
+                    _renderTopClubs(_fbMapClubs(window._topFallbackData.top_clubs));
+                } else { _renderTopClubs([]); }
+            });
     }
     function _renderTopClubs(items) {
         if (!items || !items.length) {
@@ -1122,10 +1137,10 @@ document.addEventListener('DOMContentLoaded', function(){
         });
     }
 
-    // ---- Load & render athletes ----
+    // ---- Load & render athletes (depuis search_tracking) ----
     window._switchAthDays = function(d) { _athDays = d; _renderTabs('topAthTabs', _athDays, '_switchAthDays'); _loadTopAth(true); };
     function _loadTopAth(nc) {
-        document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
+        document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
         document.getElementById('topSearchAthPag').innerHTML = '';
         fetch(BASE_API + '/top_searched.php?type=athletes&days=' + _athDays + (nc ? '&nocache' : ''))
             .then(function(r) { return r.json(); })
@@ -1140,7 +1155,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
     function _renderTopAth(items) {
         if (!items || !items.length) {
-            document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
+            document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
             document.getElementById('topSearchAthCount').textContent = '';
             return;
         }
@@ -1150,7 +1165,6 @@ document.addEventListener('DOMContentLoaded', function(){
                 + '<td style="color:#5a6580;width:40px;">' + (i+1) + '</td>'
                 + '<td><a href="?page=profil&id=' + a.id + '" style="color:#a29bfe;text-decoration:none;font-weight:600;">' + _esc2(a.nom) + '</a></td>'
                 + '<td style="color:#8b949e;font-size:12px;">' + _esc2(a.club || '-') + '</td>'
-                + '<td><span class="badge badge-cat" style="font-size:11px;">' + _esc2(a.categorie || '-') + '</span></td>'
                 + '<td><span class="badge badge-' + ((a.sexe||'').toLowerCase()) + '" style="font-size:11px;">' + _esc2(a.sexe || '-') + '</span></td>'
                 + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:600;">' + a.vues + '</span></td>'
                 + '</tr>';
@@ -1458,8 +1472,9 @@ elseif ($page === 'recherche'):
                 @$conn->query("UPDATE clubs SET vues = vues + 1 WHERE id_club = $__cid");
             }
             // Tracking search_tracking
-            $__stQ = $conn->real_escape_string($_GET['club']);
-            @$conn->query("INSERT INTO search_tracking (ip, query_text, search_type, source, entity_id, entity_name, page) VALUES ('$__ip', '$__stQ', 'club', 'page_view', $__cid, '$__stQ', 'recherche')");
+            $__stQ = $_GET['club'];
+            $__stStmt = $conn->prepare("INSERT INTO search_tracking (ip, query_text, search_type, source, entity_id, entity_name, result_count, page) VALUES (?, ?, 'club', 'page_view', ?, ?, 0, 'recherche')");
+            if ($__stStmt) { $__stStmt->bind_param("ssis", $__ip, $__stQ, $__cid, $__stQ); $__stStmt->execute(); $__stStmt->close(); }
         }
     }
 ?>
@@ -1986,10 +2001,7 @@ elseif ($page === 'profil' && $id):
     if ($conn->affected_rows > 0) {
         @$conn->query("UPDATE athletes SET vues = vues + 1 WHERE athlete_id_externe = $__eid");
     }
-    // Tracking search_tracking
-    $__athNameRes = $conn->query("SELECT CONCAT(prenom_athlete, ' ', nom_athlete) as nom FROM athletes WHERE athlete_id_externe = $__eid LIMIT 1");
-    $__athName = ($__athNameRes && ($__athNameRow = $__athNameRes->fetch_assoc())) ? $conn->real_escape_string($__athNameRow['nom']) : '';
-    @$conn->query("INSERT INTO search_tracking (ip, query_text, search_type, source, entity_id, entity_name, page) VALUES ('$__ip', '$__athName', 'athlete', 'page_view', $__eid, '$__athName', 'profil')");
+    // Tracking search_tracking → fait côté JS (sendBeacon) après chargement profil
 
     $data = apiCall("$BASE_API/athlete.php?id=$id");
     $section = $_GET['s'] ?? 'all';
@@ -1998,6 +2010,12 @@ elseif ($page === 'profil' && $id):
         $i = $data['identite'];
 ?>
 
+<script>
+(function(){
+    var d = {q:<?= json_encode($i['nom_complet']) ?>,type:'athlete',source:'page_view',entity_id:<?= (int)$id ?>,entity_name:<?= json_encode($i['nom_complet']) ?>,results:1,pg:'profil'};
+    try { navigator.sendBeacon(<?= json_encode($BASE_API . '/search_track.php') ?>, JSON.stringify(d)); } catch(e){}
+})();
+</script>
 <div class="profil-header">
     <div>
         <div class="name"><?= htmlspecialchars($i['nom_complet']) ?>
@@ -7955,9 +7973,23 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                 input.classList.remove('ls-loading');
 
                 if (!data.success) {
-                    status.textContent = data.error || 'Erreur';
-                    status.className = 'ls-status error';
-                    input.style.borderColor = '#ff7675';
+                    if (data.limit_reached) {
+                        status.innerHTML = '';
+                        results.innerHTML = '<div style="text-align:center;padding:30px 20px;color:#c9d1d9;">'
+                            + '<div style="font-size:40px;margin-bottom:12px;">&#9203;</div>'
+                            + '<div style="font-size:16px;font-weight:600;color:#ff7675;margin-bottom:8px;">Limite de recherches atteinte</div>'
+                            + '<div style="color:#8b949e;font-size:14px;line-height:1.6;">'
+                            + 'Vous avez utilisé vos <b style="color:#a29bfe;">' + data.limit + ' recherches</b> du jour.<br>'
+                            + 'Revenez demain ou <a href="login.php" style="color:#6c5ce7;text-decoration:underline;">connectez-vous</a> pour des recherches illimitées !'
+                            + '</div></div>';
+                        results.style.display = 'block';
+                        paginated.style.display = 'none';
+                        input.style.borderColor = '#ff7675';
+                    } else {
+                        status.textContent = data.error || 'Erreur';
+                        status.className = 'ls-status error';
+                        input.style.borderColor = '#ff7675';
+                    }
                     return;
                 }
 

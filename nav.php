@@ -113,6 +113,13 @@ $navItems = [
     font-family: inherit;
 }
 .bk-nav-auth .btn-auth:hover { opacity: 0.8; }
+.bk-nav-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid #6c5ce7;
+    object-fit: cover;
+}
 .bk-nav-spacer {
     height: 50px;
 }
@@ -136,6 +143,9 @@ $navItems = [
     </div>
     <div class="bk-nav-auth">
     <?php if ($navUser): ?>
+        <?php if (!empty($navUser['picture'])): ?>
+            <img src="<?= htmlspecialchars($navUser['picture']) ?>" alt="" class="bk-nav-avatar" referrerpolicy="no-referrer">
+        <?php endif; ?>
         <span class="auth-name"><?= htmlspecialchars($navUser['prenom'] ?: $navUser['email']) ?></span>
         <span class="auth-role"><?= htmlspecialchars($navUser['role']) ?></span>
         <?php if ($navUser['role'] === 'athlete' || $navUser['role'] === 'coach'): ?>

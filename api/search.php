@@ -23,6 +23,42 @@
 
 require_once __DIR__ . '/config.php';
 
+// ---- Rate limiting recherches : 50/jour par IP ----
+$SEARCH_LIMIT = 50;
+$_searchIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+if (strpos($_searchIp, ',') !== false) $_searchIp = trim(explode(',', $_searchIp)[0]);
+
+// Whitelist : Google, Hostinger, localhost, users connectes
+$_searchWhitelisted = false;
+$_wlPrefixes = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
+foreach ($_wlPrefixes as $p) { if (strpos($_searchIp, $p) === 0) { $_searchWhitelisted = true; break; } }
+if (!$_searchWhitelisted && (!empty($_COOKIE['bk_token']) || !empty($_COOKIE['bk_sa_token']))) $_searchWhitelisted = true;
+
+if (!$_searchWhitelisted) {
+    $limFile = __DIR__ . '/../logs/.search_limits.php';
+    $today = date('Y-m-d');
+    $limData = [];
+    if (file_exists($limFile)) {
+        $raw = file_get_contents($limFile);
+        $limData = @json_decode(substr($raw, strpos($raw, "\n") + 1), true) ?: [];
+    }
+    // Reset si jour different
+    if (($limData['_date'] ?? '') !== $today) $limData = ['_date' => $today];
+    $cnt = (int)($limData[$_searchIp] ?? 0);
+    if ($cnt >= $SEARCH_LIMIT) {
+        jsonResponse([
+            'success' => false,
+            'error' => 'Vous avez atteint la limite de ' . $SEARCH_LIMIT . ' recherches pour aujourd\'hui. Revenez demain pour continuer vos recherches !',
+            'limit_reached' => true,
+            'limit' => $SEARCH_LIMIT,
+            'reset' => 'minuit'
+        ], 429);
+    }
+    // Incrementer
+    $limData[$_searchIp] = $cnt + 1;
+    file_put_contents($limFile, "<?php die(); ?>\n" . json_encode($limData, JSON_UNESCAPED_UNICODE));
+}
+
 function highestNiveau($niveaux) {
     $order = ['IE'=>100,'IR'=>99];
     foreach (['N'=>90,'R'=>80,'D'=>70] as $p=>$b)
