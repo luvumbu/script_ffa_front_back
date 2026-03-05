@@ -195,6 +195,17 @@ switch ($action) {
         $out['mail_error'] = error_get_last();
         break;
 
+    case 'welcome_log':
+        $logFile = __DIR__ . '/../logs/.welcome_mail_log.php';
+        if (file_exists($logFile)) {
+            $raw = file_get_contents($logFile);
+            $out['log'] = json_decode(substr($raw, strpos($raw, "\n") + 1), true);
+        } else {
+            $out['log'] = null;
+            $out['message'] = 'Aucun log — email de bienvenue jamais envoye';
+        }
+        break;
+
     case 'my_ip':
         $out['remote_addr'] = $_SERVER['REMOTE_ADDR'] ?? null;
         $out['cf_ip'] = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null;

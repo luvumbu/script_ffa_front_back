@@ -201,7 +201,17 @@ if ($isNewUser) {
     $headers .= "Reply-To: noreply@bokonzi.com\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
 
-    @mail($email, $subject, $html, $headers);
+    $mailResult = mail($email, $subject, $html, $headers);
+    // Log debug
+    $logFile = __DIR__ . '/../../logs/.welcome_mail_log.php';
+    $logData = "<?php die(); ?>\n" . json_encode([
+        'time' => date('Y-m-d H:i:s'),
+        'email' => $email,
+        'prenom' => $prenom,
+        'mail_result' => $mailResult,
+        'userId' => $userId,
+    ], JSON_UNESCAPED_UNICODE);
+    file_put_contents($logFile, $logData);
 }
 
 // --- 8. Rediriger vers l'accueil ---
