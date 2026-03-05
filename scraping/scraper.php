@@ -76,6 +76,13 @@ require_once dirname(__DIR__) . "/core/dbCheck_athle.php";
 $conn = $databaseHandler->connection;
 $cache = loadRefCache($conn);
 
+// Charger tous les athlete_id_externe deja en BDD → skip sans scraper
+$existingAthletes = [];
+$rExist = $conn->query("SELECT athlete_id_externe FROM athletes");
+if ($rExist) while ($row = $rExist->fetch_assoc()) $existingAthletes[(int)$row['athlete_id_externe']] = true;
+$nbExisting = count($existingAthletes);
+echo "<p style='color:cyan;'>$nbExisting athletes deja en BDD (seront ignores)</p>";
+
 // =============================================
 // 3. Progression
 // =============================================
@@ -135,8 +142,8 @@ while ($id <= $maxId) {
         // Extraire l'ID athlète depuis l'URL
         if (preg_match('#/athletes/(\d+)#', $url, $m)) {
             $athId = (int)$m[1];
-            // Skip si déjà présent dans src/
-            if (file_exists($srcDir . '/' . $athId . '.php')) {
+            // Skip si deja present en BDD
+            if (isset($existingAthletes[$athId])) {
                 $tempId++;
                 continue;
             }
@@ -209,6 +216,7 @@ while ($id <= $maxId) {
 
             // --- BDD ---
             insertAthleteData($scraper, $conn, $cache);
+            $existingAthletes[$athleteIdExt] = true;
 
             echo "<p>#$idNom $nom</p>";
             $batchDone++;

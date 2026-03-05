@@ -280,8 +280,103 @@ switch ($action) {
         $out['detected'] = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         break;
 
+    case 'test_scrape':
+        // Tester le scraping d'un athlete (par ID ou premier lien de nom_et_liens)
+        require_once __DIR__ . '/../Class/AthleteScraper.php';
+        require_once __DIR__ . '/../core/insert_athle.php';
+
+        $athId = trim($_GET['id'] ?? '');
+        $skipBdd = isset($_GET['skip_bdd']);
+        $forceRescrape = isset($_GET['force']);
+
+        // Si pas d'ID, prendre le premier de nom_et_liens
+        if (empty($athId)) {
+            $r = $conn->query("SELECT url FROM nom_et_liens ORDER BY id_nom_et_liens LIMIT 1");
+            if ($r && $row = $r->fetch_assoc()) {
+                $url = $row['url'];
+                if (preg_match('#/athletes/(\d+)#', $url, $m)) $athId = $m[1];
+                $out['source'] = 'nom_et_liens (premier lien)';
+                $out['url'] = $url;
+            }
+        }
+
+        if (empty($athId)) { $out['error'] = 'Aucun ID athlete. Param: ?id=123456 ou table nom_et_liens vide'; break; }
+
+        $athId = (int)$athId;
+        $out['athlete_id'] = $athId;
+
+        // Verifier si deja en BDD
+        $r = $conn->query("SELECT id_athlete, nom_complet_athlete FROM athletes WHERE athlete_id_externe = $athId LIMIT 1");
+        $existant = ($r && $r->num_rows > 0) ? $r->fetch_assoc() : null;
+        $out['deja_en_bdd'] = $existant ? true : false;
+        if ($existant) $out['nom_existant'] = $existant['nom_complet_athlete'];
+
+        if ($existant && !$forceRescrape) {
+            $out['message'] = 'Athlete deja en BDD. Ajouter &force pour re-scraper.';
+            break;
+        }
+
+        // Scraper
+        $t0 = microtime(true);
+        try {
+            $scraper = new AthleteScraper($athId);
+            $data = $scraper->scrapeAll();
+            $scrapeTime = round((microtime(true) - $t0) * 1000);
+
+            $out['scrape_time_ms'] = $scrapeTime;
+            $out['scrape_success'] = $data['success'] ?? false;
+
+            if ($data['success']) {
+                $out['identite'] = $data['identite'];
+                $out['stats'] = [
+                    'clubs' => count($data['clubs']),
+                    'records' => count($data['records']),
+                    'medailles' => count($data['medailles']),
+                    'selections' => count($data['selections']),
+                    'progressions' => count($data['progressions']),
+                    'podiums' => count($data['podiums']),
+                    'resultats' => count($data['resultats']),
+                    'niveaux' => count($data['niveaux']),
+                ];
+
+                // Inserer en BDD sauf si skip_bdd
+                if (!$skipBdd) {
+                    $cache = loadRefCache($conn);
+                    ob_start();
+                    insertAthleteData($scraper, $conn, $cache);
+                    $insertOutput = ob_get_clean();
+                    $out['insert'] = 'OK';
+                    $out['insert_detail'] = strip_tags($insertOutput);
+                } else {
+                    $out['insert'] = 'skip (skip_bdd)';
+                }
+
+                $out['message'] = 'Scraping reussi : ' . ($data['identite']['nom_complet'] ?? '?');
+            } else {
+                $out['message'] = $data['message'] ?? 'Echec scraping';
+            }
+        } catch (Exception $e) {
+            $out['scrape_time_ms'] = round((microtime(true) - $t0) * 1000);
+            $out['error'] = $e->getMessage();
+        }
+        break;
+
+    case 'scrape_status':
+        // Verifier l'etat du scraping : combien dans nom_et_liens, combien en BDD, combien restants
+        $totalUrls = 0; $totalBdd = 0;
+        $r = $conn->query("SELECT COUNT(*) as c FROM nom_et_liens"); if ($r) $totalUrls = (int)$r->fetch_assoc()['c'];
+        $r = $conn->query("SELECT COUNT(*) as c FROM athletes"); if ($r) $totalBdd = (int)$r->fetch_assoc()['c'];
+        $out['total_urls'] = $totalUrls;
+        $out['total_bdd'] = $totalBdd;
+        $out['restants'] = max(0, $totalUrls - $totalBdd);
+        $out['pct'] = $totalUrls > 0 ? round(($totalBdd / $totalUrls) * 100, 2) : 0;
+        // Progression fichier
+        $progFile = __DIR__ . '/../progress.txt';
+        $out['progress_file'] = file_exists($progFile) ? (int)file_get_contents($progFile) : 0;
+        break;
+
     default:
-        $out['error'] = 'Action inconnue. Actions: ping, users, sessions, columns, count, logs, query, search_limit, search_fill, search_max, search_reset, create_test_user, delete_test_user, test_search, my_ip';
+        $out['error'] = 'Action inconnue. Actions: ping, users, sessions, columns, count, logs, query, search_limit, search_fill, search_max, search_reset, create_test_user, delete_test_user, test_search, test_scrape, scrape_status, my_ip';
 }
 
 $conn->close();
