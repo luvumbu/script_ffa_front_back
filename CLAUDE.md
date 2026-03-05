@@ -701,6 +701,9 @@ MySQL (9 tables enfants) + src/{id}.php (JSON)
   7. Progression → `progress.txt` + `$_SESSION["url"]`
   8. `header("Refresh: 1")` → cycle suivant
 - **Bouton reset** : `?reset_to=N` pour reprendre a un numero choisi
+- **Test manuel** : `?test_url=ID` ou `?test_url=URL` — scrape 1 athlete, affiche stats, insere en BDD (independant du batch)
+  - `&skip_bdd` : test sans insertion
+  - `&force` : re-insertion meme si deja en BDD
 - **Performance** : ~3.5 jours pour 300k athletes (vs ~17 jours en sequentiel)
 
 ### scrapeParallel($athleteIds) — curl_multi

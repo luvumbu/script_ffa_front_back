@@ -76,12 +76,12 @@ BK/
 |       |-- google_login.php    Initie le flux OAuth Google (state CSRF + redirect)
 |       |-- google_callback.php Callback Google (echange code, cree/lie user, session)
 |
-|-- scraping/            Pipeline de collecte de donnees
-|   |-- scrape_functions.php  Fonction scrapeParallel() partagee
-|   |-- scraper.php           Scraping principal (batch 7, auto-refresh)
+|-- scraping/            Pipeline de collecte de donnees athle.fr
+|   |-- scrape_functions.php  scrapeParallel() — curl_multi 7 athletes x 3 pages
+|   |-- scraper.php           Scraping principal (batch 7, skip BDD, reset, test manuel)
 |   |-- check_sync.php        Verification + scraping des absents (2 phases)
-|   |-- check_athletes.php    Verification src/ vs BDD
-|   |-- import_bdd.php        Import fichiers JSON en BDD
+|   |-- check_athletes.php    Audit completude src/ vs BDD → absents.json
+|   |-- import_bdd.php        Import fichiers JSON src/ → BDD
 |
 |-- pages/               Pages frontend independantes
 |   |-- profil.php       Profil public partageable (SEO + QR code)
@@ -94,11 +94,14 @@ BK/
 |   |-- test_api.php     Interface test endpoints
 |   |-- athlete.php      Affichage JSON brut
 |
-|-- admin/               Scripts d'administration BDD
-|   |-- setup_bdd.php    Creation tables (20 tables + 38 FK)
-|   |-- drop_all.php     Suppression de toutes les tables
-|   |-- reset.php        Reset compteur scraping / BDD
+|-- admin/               Scripts d'administration
+|   |-- panel.php        Super Admin dashboard (16 sections, auth BDD credentials)
+|   |-- setup_bdd.php    Creation tables (23 tables + 30+ FK)
+|   |-- clear_cache.php  Vider cache (?prefix= pour cibler)
 |   |-- cache_urls.php   Regeneration cache URLs
+|   |-- fix_perf_int.php Correction INT perfs (padding dixiemes)
+|   |-- logs.php         Visualisation logs (acces restreint par email)
+|   |-- remote_check.php API JSON admin a distance (scrape_status, test_scrape, count)
 |
 |-- Class/               Classes utilitaires PHP
 |   |-- AthleteScraper.php  Scraper web athle.fr (56 Ko)
@@ -450,6 +453,15 @@ MySQL (athletes + 9 tables FK) + src/{id}.php (JSON)
 **Bouton reset** :
 - Formulaire en haut de page : champ numerique + bouton "Reset" + bouton "Tout reprendre (0)"
 - `?reset_to=N` : ecrit N dans `progress.txt`, efface la session, redirige
+
+**Test manuel d'URL** (independant du scraping principal) :
+- Champ texte "Tester" a cote des boutons reset
+- Accepte un **ID nu** (`123456`) ou une **URL complete** (`https://athle.fr/athletes/123456/bilans`)
+- `?test_url=123456` : scrape l'athlete, affiche identite + stats (clubs, records, medailles, etc.) + insere en BDD + sauve JSON
+- `?test_url=123456&skip_bdd` : scrape uniquement, sans toucher la BDD (bouton "Test seul")
+- `?test_url=123456&force` : force la re-insertion meme si deja en BDD
+- Affiche : nom, temps de scrape, tableau des compteurs par section, identite complete
+- Fait `exit` avant le code de scraping batch → totalement independant
 
 **Interface visuelle** :
 - Fond noir, texte vert (style terminal)
