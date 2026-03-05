@@ -36,7 +36,29 @@ require_once __DIR__ . "/scrape_functions.php";
 </head>
 <body>
 
-<a href="../admin/reset.php"><img width="64" height="64" src="https://img.icons8.com/sf-black/64/FA5252/recurring-appointment.png" alt="recurring-appointment"/></a>
+<?php
+// Reset progression si demande
+if (isset($_GET['reset_to'])) {
+    $resetVal = max(0, (int)$_GET['reset_to']);
+    $progressFile = dirname(__DIR__) . "/progress.txt";
+    file_put_contents($progressFile, $resetVal);
+    unset($_SESSION["url"]);
+    echo "<p style='color:lime;font-size:18px;'>Progression reinitialise a <b>$resetVal</b></p>";
+    echo "<script>setTimeout(function(){ window.location.href = window.location.pathname; }, 1000);</script>";
+    echo "</body></html>";
+    exit;
+}
+?>
+
+<!-- Reset progression -->
+<div style="margin:10px 0;padding:10px;background:#111;border:1px solid #333;border-radius:6px;display:inline-flex;gap:8px;align-items:center;">
+    <form method="GET" style="display:flex;gap:6px;align-items:center;">
+        <label style="color:cyan;font-size:13px;">Reprendre a :</label>
+        <input type="number" name="reset_to" value="0" min="0" style="width:100px;padding:4px 8px;background:#222;border:1px solid #555;color:#fff;border-radius:4px;font-family:monospace;">
+        <button type="submit" style="padding:4px 12px;background:#333;border:1px solid orange;color:orange;border-radius:4px;cursor:pointer;font-family:monospace;">Reset</button>
+    </form>
+    <form method="GET" style="display:inline;"><input type="hidden" name="reset_to" value="0"><button type="submit" style="padding:4px 12px;background:#333;border:1px solid red;color:red;border-radius:4px;cursor:pointer;font-family:monospace;">Tout reprendre (0)</button></form>
+</div>
 
 <?php
 // =============================================
