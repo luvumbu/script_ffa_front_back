@@ -220,48 +220,28 @@ switch ($action) {
         $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();
         $prenom = $row['prenom'] ?? 'Athlete';
-        $h = function($v) { return htmlspecialchars($v ?? '', ENT_QUOTES, 'UTF-8'); };
 
-        $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:0;">';
-        $html .= '<div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.1);">';
-        $html .= '<div style="background:linear-gradient(135deg,#6c5ce7,#5541d0);padding:40px;text-align:center;color:#fff;">';
-        $html .= '<div style="font-size:48px;margin-bottom:12px;">&#127939;</div>';
-        $html .= '<h1 style="margin:0 0 8px;font-size:28px;">Bienvenue sur Bokonzi !</h1>';
-        $html .= '<p style="margin:0;opacity:0.9;font-size:16px;">La base de donnees de l\'athletisme francais</p>';
-        $html .= '</div>';
-        $html .= '<div style="padding:32px 40px;">';
-        $html .= '<p style="font-size:16px;color:#333;line-height:1.6;">Bonjour <strong>' . $h($prenom) . '</strong>,</p>';
-        $html .= '<p style="font-size:15px;color:#555;line-height:1.6;">Votre compte a ete cree avec succes. Vous avez maintenant acces a toutes les fonctionnalites de Bokonzi :</p>';
-        $html .= '<div style="margin:24px 0;">';
-        $features = [
-            ['&#128269;', 'Recherche avancee', 'Explorez plus de 330 000 athletes avec 12 filtres combinables'],
-            ['&#9825;', 'Suivi athletes & clubs', 'Suivez vos athletes et clubs favoris pour ne rien manquer'],
-            ['&#128196;', 'Fiches PDF', 'Telechargez les fiches completes des athletes'],
-            ['&#127942;', 'Classements', 'Consultez les classements par epreuve en temps reel'],
-        ];
-        foreach ($features as $f) {
-            $html .= '<div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px;">';
-            $html .= '<div style="font-size:24px;flex-shrink:0;">' . $f[0] . '</div>';
-            $html .= '<div><strong style="color:#333;font-size:14px;">' . $h($f[1]) . '</strong><br><span style="color:#777;font-size:13px;">' . $h($f[2]) . '</span></div>';
-            $html .= '</div>';
-        }
-        $html .= '</div>';
-        $html .= '<div style="text-align:center;margin:32px 0 16px;">';
-        $html .= '<a href="https://bokonzi.com" style="display:inline-block;background:linear-gradient(135deg,#6c5ce7,#5541d0);color:#fff;text-decoration:none;padding:14px 40px;border-radius:8px;font-size:16px;font-weight:600;">Explorer Bokonzi</a>';
-        $html .= '</div></div>';
-        $html .= '<div style="padding:20px 40px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:12px;">';
-        $html .= '<p>Cet email a ete envoye automatiquement lors de la creation de votre compte.</p>';
-        $html .= '<p><a href="https://bokonzi.com" style="color:#6c5ce7;">bokonzi.com</a></p>';
-        $html .= '</div></div></body></html>';
+        $html = '<html><body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f4f4f4;">'
+            . '<div style="max-width:500px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;">'
+            . '<h1 style="color:#6c5ce7;text-align:center;">Bienvenue sur Bokonzi !</h1>'
+            . '<p>Bonjour <b>' . htmlspecialchars($prenom) . '</b>,</p>'
+            . '<p>Votre compte a ete cree avec succes. Vous pouvez maintenant :</p>'
+            . '<ul>'
+            . '<li>Rechercher parmi 330 000+ athletes</li>'
+            . '<li>Suivre vos athletes et clubs favoris</li>'
+            . '<li>Telecharger des fiches PDF</li>'
+            . '<li>Consulter les classements en temps reel</li>'
+            . '</ul>'
+            . '<p style="text-align:center;margin-top:20px;"><a href="https://bokonzi.com" style="background:#6c5ce7;color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;">Explorer Bokonzi</a></p>'
+            . '<p style="color:#999;font-size:11px;text-align:center;margin-top:20px;">bokonzi.com</p>'
+            . '</div></body></html>';
 
         $subject = 'Bienvenue sur Bokonzi, ' . $prenom . ' !';
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: Bokonzi <noreply@bokonzi.com>\r\n";
-        $headers .= "Reply-To: noreply@bokonzi.com\r\n";
+        $headers = "From: noreply@bokonzi.com\r\nContent-Type: text/html; charset=UTF-8\r\nMIME-Version: 1.0";
         $sent = mail($to, $subject, $html, $headers);
         $out['to'] = $to;
         $out['sent'] = $sent;
+        $out['html_length'] = strlen($html);
         $out['message'] = $sent ? 'Email bienvenue envoye' : 'Echec mail()';
         break;
 
