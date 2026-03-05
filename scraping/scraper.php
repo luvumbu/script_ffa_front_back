@@ -48,16 +48,126 @@ if (isset($_GET['reset_to'])) {
     echo "</body></html>";
     exit;
 }
+
+// =============================================
+// Test manuel d'une URL
+// =============================================
+if (isset($_GET['test_url'])) {
+    $testUrl = trim($_GET['test_url']);
+    // Accepter un ID nu ou une URL complete
+    if (preg_match('/^\d+$/', $testUrl)) {
+        $testAthId = (int)$testUrl;
+    } elseif (preg_match('#/athletes/(\d+)#', $testUrl, $tm)) {
+        $testAthId = (int)$tm[1];
+    } else {
+        echo "<p class='error'>URL invalide. Exemples : <b>123456</b> ou <b>https://athle.fr/athletes/123456/bilans</b></p>";
+        echo "<p><a href='?' style='color:cyan;'>Retour</a></p></body></html>";
+        exit;
+    }
+
+    echo "<h2 style='color:cyan;'>Test athlete #$testAthId</h2>";
+    $t0 = microtime(true);
+
+    // Scrape
+    $scraper = new AthleteScraper($testAthId);
+    $result = $scraper->scrapeAll();
+    $scrapeMs = round((microtime(true) - $t0) * 1000);
+
+    if (!$result['success']) {
+        echo "<p class='error'>Echec du scraping ({$scrapeMs}ms)</p>";
+        echo "<p><a href='https://athle.fr/athletes/$testAthId/bilans' target='_blank' style='color:yellow;'>Tester sur athle.fr</a></p>";
+        echo "<p><a href='?' style='color:cyan;'>Retour</a></p></body></html>";
+        exit;
+    }
+
+    $nom = htmlspecialchars($scraper->identite['nom_complet'] ?? '?');
+    echo "<p style='color:lime;font-size:16px;'>$nom</p>";
+    echo "<p class='timer'>Scrape en {$scrapeMs}ms</p>";
+
+    // Stats
+    echo "<table style='border-collapse:collapse;margin:8px 0;'>";
+    $stats = [
+        'Clubs' => count($scraper->clubs),
+        'Records' => count($scraper->records),
+        'Medailles' => count($scraper->medailles),
+        'Selections' => count($scraper->selections),
+        'Progressions' => count($scraper->progressions),
+        'Podiums' => count($scraper->podiums),
+        'Resultats' => count($scraper->resultats),
+        'Niveaux' => count($scraper->niveaux),
+    ];
+    foreach ($stats as $label => $count) {
+        $color = $count > 0 ? 'lime' : '#555';
+        echo "<tr><td style='padding:2px 12px 2px 0;color:#888;'>$label</td><td style='color:$color;font-weight:bold;'>$count</td></tr>";
+    }
+    echo "</table>";
+
+    // Identite
+    echo "<div style='margin:8px 0;padding:8px;background:#111;border:1px solid #333;border-radius:4px;font-size:13px;'>";
+    foreach ($scraper->identite as $k => $v) {
+        if ($v !== null && $v !== '') echo "<span style='color:#888;'>$k:</span> <span style='color:#fff;'>" . htmlspecialchars($v) . "</span> &nbsp; ";
+    }
+    echo "</div>";
+
+    // Bouton inserer en BDD
+    $skipBdd = isset($_GET['skip_bdd']);
+    if (!$skipBdd) {
+        $databaseHandler = new DatabaseHandler($dbname, $username, $password);
+        require_once dirname(__DIR__) . "/core/dbCheck_athle.php";
+        $conn = $databaseHandler->connection;
+        $cache = loadRefCache($conn);
+
+        // Verifier si deja en BDD
+        $chk = $conn->query("SELECT id_athlete FROM athletes WHERE athlete_id_externe = $testAthId");
+        $exists = $chk && $chk->num_rows > 0;
+
+        if ($exists && !isset($_GET['force'])) {
+            echo "<p style='color:orange;'>Deja en BDD. <a href='?test_url=$testAthId&force' style='color:yellow;'>Forcer re-insertion</a></p>";
+        } else {
+            $t1 = microtime(true);
+            insertAthleteData($scraper, $conn, $cache);
+            $insertMs = round((microtime(true) - $t1) * 1000);
+            echo "<p style='color:lime;'>Insere en BDD en {$insertMs}ms" . ($exists ? " (re-insertion forcee)" : "") . "</p>";
+
+            // Sauver JSON
+            $srcDir = dirname(__DIR__) . "/src";
+            if (!is_dir($srcDir)) mkdir($srcDir, 0755);
+            $data = $scraper->toArray();
+            $jsonPath = $srcDir . "/" . $testAthId . ".php";
+            $phpContent = "<?php\nheader(\"Access-Control-Allow-Origin: *\");\nheader(\"Content-Type: application/json; charset=utf-8\");\n?>\n" . json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            file_put_contents($jsonPath, $phpContent);
+            echo "<p style='color:cyan;'>JSON sauve → src/$testAthId.php</p>";
+        }
+        $databaseHandler->closeConnection();
+    } else {
+        echo "<p style='color:orange;'>Mode test (skip BDD)</p>";
+    }
+
+    echo "<p style='margin-top:12px;'><a href='?' style='color:cyan;'>Retour au scraping</a> | <a href='?test_url=' style='color:lime;'>Nouveau test</a></p>";
+    echo "</body></html>";
+    exit;
+}
 ?>
 
-<!-- Reset progression -->
-<div style="margin:10px 0;padding:10px;background:#111;border:1px solid #333;border-radius:6px;display:inline-flex;gap:8px;align-items:center;">
+<!-- Controles -->
+<div style="margin:10px 0;padding:10px;background:#111;border:1px solid #333;border-radius:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+    <!-- Reset progression -->
     <form method="GET" style="display:flex;gap:6px;align-items:center;">
         <label style="color:cyan;font-size:13px;">Reprendre a :</label>
         <input type="number" name="reset_to" value="0" min="0" style="width:100px;padding:4px 8px;background:#222;border:1px solid #555;color:#fff;border-radius:4px;font-family:monospace;">
         <button type="submit" style="padding:4px 12px;background:#333;border:1px solid orange;color:orange;border-radius:4px;cursor:pointer;font-family:monospace;">Reset</button>
     </form>
     <form method="GET" style="display:inline;"><input type="hidden" name="reset_to" value="0"><button type="submit" style="padding:4px 12px;background:#333;border:1px solid red;color:red;border-radius:4px;cursor:pointer;font-family:monospace;">Tout reprendre (0)</button></form>
+
+    <span style="color:#333;font-size:18px;">|</span>
+
+    <!-- Test URL manuel -->
+    <form method="GET" style="display:flex;gap:6px;align-items:center;">
+        <label style="color:lime;font-size:13px;">Tester :</label>
+        <input type="text" name="test_url" placeholder="ID ou URL athle.fr" style="width:260px;padding:4px 8px;background:#222;border:1px solid #555;color:#fff;border-radius:4px;font-family:monospace;font-size:12px;">
+        <button type="submit" style="padding:4px 12px;background:#333;border:1px solid lime;color:lime;border-radius:4px;cursor:pointer;font-family:monospace;">Tester</button>
+        <button type="submit" name="skip_bdd" value="1" style="padding:4px 12px;background:#333;border:1px solid #555;color:#888;border-radius:4px;cursor:pointer;font-family:monospace;" title="Scraper sans inserer en BDD">Test seul</button>
+    </form>
 </div>
 
 <?php
