@@ -199,11 +199,15 @@ class AthleteScraper
         $htmlClean = strip_tags($this->html);
 
         // Format 1 : "Né(e) le : 26/08/1978 à Nanterre" (date complète)
+        // Le lieu s'arrete au premier mot-cle suivant (Dernière, Taille, Catégorie, chiffre cm/kg, etc.)
         if (preg_match('/Né(?:e|\(e\))?\s*le\s*:?\s*(\d{2})\/(\d{2})\/(\d{4})(?:\s*[àa]\s+(.+))?/iu', $htmlClean, $m)) {
             $data['date_naissance'] = $m[3] . '-' . $m[2] . '-' . $m[1];
             $data['annee_naissance'] = (int)$m[3];
             if (isset($m[4]) && !empty(trim($m[4]))) {
-                $data['lieu_naissance'] = trim($m[4]);
+                $lieu = trim($m[4]);
+                // Couper au premier mot-cle parasite (Dernière, Taille, cm, kg, Catégorie, Licence, etc.)
+                $lieu = preg_replace('/\s*(Derni[èe]re|Taille|\d+\s*cm|Cat[ée]gorie|Licence|Saison|Club).*/iu', '', $lieu);
+                $data['lieu_naissance'] = trim($lieu);
             }
         }
         // Format 2 : "Né(e) en : 1991" (année seule)
