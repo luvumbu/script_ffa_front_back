@@ -1,84 +1,30 @@
 <?php
 /**
- * index2.php — Scraping PARALLÈLE + JSON + BDD (autonome)
- *
- * Scrape 5 athlètes en même temps (curl_multi) → JSON → BDD → Refresh
- * 300k athlètes : ~3.5 jours au lieu de 17
+ * scraper.php — Scraping PARALLÈLE + JSON + BDD (autonome)
+ * Dashboard temps réel avec flush progressif
  */
 
-ob_start();
 session_start();
 
 $TIME_LIMIT  = 25;  // secondes max par page
 $PARALLEL    = 7;   // athlètes scrapés en parallèle
 
 require_once dirname(__DIR__) . "/core/credentials.php";
-
 require_once dirname(__DIR__) . "/Class/DatabaseHandler.php";
 require_once dirname(__DIR__) . "/Class/AthleteScraper.php";
 require_once dirname(__DIR__) . "/core/insert_athle.php";
-
 require_once __DIR__ . "/scrape_functions.php";
 
-?>
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scraping Athle.fr</title>
-    <style>
-        body { background-color: #0a0a0a; color: #22c55e; font-family: 'Courier New', monospace; margin: 0; padding: 10px; }
-        .timer { color: cyan; }
-        .error { color: #ef4444; }
-        .skip { color: orange; }
-        .dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 12px 0; }
-        .dash-card { background: #111; border: 1px solid #333; border-radius: 8px; padding: 12px; text-align: center; }
-        .dash-card .val { font-size: 26px; font-weight: bold; line-height: 1.2; }
-        .dash-card .lbl { font-size: 11px; color: #888; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
-        .c-green { color: #22c55e; }
-        .c-cyan { color: #06b6d4; }
-        .c-red { color: #ef4444; }
-        .c-orange { color: #f97316; }
-        .c-purple { color: #a78bfa; }
-        .c-yellow { color: #eab308; }
-        .c-blue { color: #3b82f6; }
-        .c-white { color: #e5e7eb; }
-        .bar-wrap { background: #222; border-radius: 8px; overflow: hidden; height: 32px; margin: 8px 0; border: 1px solid #333; }
-        .bar-fill { height: 100%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; font-size: 13px; transition: width 0.3s; min-width: 50px; }
-        .log-box { max-height: 50vh; overflow-y: auto; background: #0d0d0d; border: 1px solid #222; border-radius: 6px; padding: 8px; margin-top: 10px; font-size: 12px; }
-        .log-box p { margin: 2px 0; }
-        .log-box hr { border-color: #222; margin: 6px 0; }
-        h3.section { color: #a78bfa; border-bottom: 1px solid #333; padding-bottom: 4px; margin: 16px 0 8px; font-size: 14px; }
-    </style>
-</head>
-<body>
-
-<?php
 // Reset progression si demande
 if (isset($_GET['reset_to'])) {
     $resetVal = max(0, (int)$_GET['reset_to']);
     $progressFile = dirname(__DIR__) . "/progress.txt";
     file_put_contents($progressFile, $resetVal);
     unset($_SESSION["url"]);
-    echo "<p style='color:lime;font-size:18px;'>Progression reinitialise a <b>$resetVal</b></p>";
-    echo "<script>setTimeout(function(){ window.location.href = window.location.pathname; }, 1000);</script>";
-    echo "</body></html>";
+    header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
     exit;
 }
-?>
 
-<!-- Reset progression -->
-<div style="margin:10px 0;padding:10px;background:#111;border:1px solid #333;border-radius:6px;display:inline-flex;gap:8px;align-items:center;">
-    <form method="GET" style="display:flex;gap:6px;align-items:center;">
-        <label style="color:cyan;font-size:13px;">Reprendre a :</label>
-        <input type="number" name="reset_to" value="0" min="0" style="width:100px;padding:4px 8px;background:#222;border:1px solid #555;color:#fff;border-radius:4px;font-family:monospace;">
-        <button type="submit" style="padding:4px 12px;background:#333;border:1px solid orange;color:orange;border-radius:4px;cursor:pointer;font-family:monospace;">Reset</button>
-    </form>
-    <form method="GET" style="display:inline;"><input type="hidden" name="reset_to" value="0"><button type="submit" style="padding:4px 12px;background:#333;border:1px solid red;color:red;border-radius:4px;cursor:pointer;font-family:monospace;">Tout reprendre (0)</button></form>
-</div>
-
-<?php
 // =============================================
 // 1. Charger les URLs (cache local)
 // =============================================
@@ -91,7 +37,7 @@ if (!file_exists($urlsCacheFile)) {
         file_put_contents($urlsCacheFile, json_encode($result['data'], JSON_UNESCAPED_UNICODE));
         $allUrlsRaw = $result['data'];
     } else {
-        die("<p class='error'>Erreur : " . $result['message'] . "</p>");
+        die("Erreur : " . $result['message']);
     }
     $dbRemote->closeConnection();
 } else {
@@ -116,7 +62,7 @@ require_once dirname(__DIR__) . "/core/dbCheck_athle.php";
 $conn = $databaseHandler->connection;
 $cache = loadRefCache($conn);
 
-// Charger tous les athlete_id_externe deja en BDD → skip sans scraper
+// Charger athlete_id_externe deja en BDD
 $existingAthletes = [];
 $rExist = $conn->query("SELECT athlete_id_externe FROM athletes");
 if ($rExist) while ($row = $rExist->fetch_assoc()) $existingAthletes[(int)$row['athlete_id_externe']] = true;
@@ -150,32 +96,98 @@ $pctBdd = $totalAthletes > 0 ? round(($nbExisting / $totalAthletes) * 100, 2) : 
 $remaining = $totalAthletes - $nbExisting;
 
 // =============================================
-// DASHBOARD
+// Envoyer le HTML du dashboard IMMEDIATEMENT
 // =============================================
-echo "<div class='dash'>";
-echo "<div class='dash-card'><div class='val c-white'>" . number_format($totalAthletes, 0, '', ' ') . "</div><div class='lbl'>Total URLs</div></div>";
-echo "<div class='dash-card'><div class='val c-green'>" . number_format($nbExisting, 0, '', ' ') . "</div><div class='lbl'>En BDD</div></div>";
-echo "<div class='dash-card'><div class='val c-orange'>" . number_format($remaining, 0, '', ' ') . "</div><div class='lbl'>Restants</div></div>";
-echo "<div class='dash-card'><div class='val c-red'>" . number_format($nbFailed, 0, '', ' ') . "</div><div class='lbl'>Echecs</div></div>";
-echo "<div class='dash-card'><div class='val c-cyan'>$PARALLEL</div><div class='lbl'>Parallele</div></div>";
-echo "<div class='dash-card'><div class='val c-purple'>" . number_format($id, 0, '', ' ') . "</div><div class='lbl'>Position ID</div></div>";
-echo "<div class='dash-card'><div class='val c-blue'>" . number_format($maxId, 0, '', ' ') . "</div><div class='lbl'>ID Max</div></div>";
-echo "</div>";
+?><!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraping Athle.fr</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #0a0a0a; color: #22c55e; font-family: 'Courier New', monospace; margin: 0; padding: 10px; }
+        .error { color: #ef4444; }
+        .skip { color: orange; }
+        .dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 10px 0; }
+        .dash-card { background: #111; border: 1px solid #333; border-radius: 8px; padding: 10px; text-align: center; }
+        .dash-card .val { font-size: 24px; font-weight: bold; line-height: 1.2; }
+        .dash-card .lbl { font-size: 10px; color: #888; margin-top: 3px; text-transform: uppercase; letter-spacing: 1px; }
+        .c-green { color: #22c55e; } .c-cyan { color: #06b6d4; } .c-red { color: #ef4444; }
+        .c-orange { color: #f97316; } .c-purple { color: #a78bfa; } .c-yellow { color: #eab308; }
+        .c-blue { color: #3b82f6; } .c-white { color: #e5e7eb; }
+        .bar-wrap { background: #222; border-radius: 8px; overflow: hidden; height: 28px; margin: 4px 0; border: 1px solid #333; }
+        .bar-fill { height: 100%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; font-size: 12px; transition: width 0.5s ease; min-width: 45px; }
+        .log-box { max-height: 45vh; overflow-y: auto; background: #0d0d0d; border: 1px solid #222; border-radius: 6px; padding: 8px; margin-top: 6px; font-size: 12px; }
+        .log-box p { margin: 2px 0; }
+        .log-box hr { border-color: #222; margin: 4px 0; }
+        h3.section { color: #a78bfa; border-bottom: 1px solid #333; padding-bottom: 4px; margin: 12px 0 6px; font-size: 13px; }
+        .ctrl { margin: 8px 0; padding: 8px; background: #111; border: 1px solid #333; border-radius: 6px; display: inline-flex; gap: 8px; align-items: center; }
+        .ctrl input { width: 100px; padding: 4px 8px; background: #222; border: 1px solid #555; color: #fff; border-radius: 4px; font-family: monospace; }
+        .ctrl button { padding: 4px 12px; background: #222; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 12px; }
+        .btn-orange { border: 1px solid orange; color: orange; }
+        .btn-red { border: 1px solid #ef4444; color: #ef4444; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
 
-// Barre de progression scan (parcours des URLs)
-echo "<h3 class='section'>Parcours des URLs ({$pctScan}%)</h3>";
-echo "<div class='bar-wrap'>";
-echo "<div class='bar-fill' style='width:{$pctScan}%;background:linear-gradient(90deg,#6c5ce7,#a78bfa);'>{$pctScan}%</div>";
-echo "</div>";
+<!-- Controles -->
+<div class="ctrl">
+    <form method="GET" style="display:flex;gap:6px;align-items:center;">
+        <label style="color:cyan;font-size:12px;">Reprendre a :</label>
+        <input type="number" name="reset_to" value="<?= $id ?>" min="0">
+        <button type="submit" class="btn-orange">Reset</button>
+    </form>
+    <form method="GET" style="display:inline;"><input type="hidden" name="reset_to" value="0"><button type="submit" class="btn-red">Tout reprendre (0)</button></form>
+</div>
 
-// Barre de progression BDD (athletes inseres)
-echo "<h3 class='section'>Athletes en BDD ({$pctBdd}%)</h3>";
-echo "<div class='bar-wrap'>";
-echo "<div class='bar-fill' style='width:{$pctBdd}%;background:linear-gradient(90deg,#22c55e,#4ade80);'>{$pctBdd}%</div>";
-echo "</div>";
+<!-- Dashboard cards -->
+<div class="dash">
+    <div class="dash-card"><div class="val c-white" id="dTotal"><?= number_format($totalAthletes, 0, '', ' ') ?></div><div class="lbl">Total URLs</div></div>
+    <div class="dash-card"><div class="val c-green" id="dBdd"><?= number_format($nbExisting, 0, '', ' ') ?></div><div class="lbl">En BDD</div></div>
+    <div class="dash-card"><div class="val c-orange" id="dRest"><?= number_format($remaining, 0, '', ' ') ?></div><div class="lbl">Restants</div></div>
+    <div class="dash-card"><div class="val c-red" id="dFail"><?= $nbFailed ?></div><div class="lbl">Echecs</div></div>
+    <div class="dash-card"><div class="val c-cyan"><?= $PARALLEL ?></div><div class="lbl">Parallele</div></div>
+    <div class="dash-card"><div class="val c-purple" id="dPos"><?= number_format($id, 0, '', ' ') ?></div><div class="lbl">Position ID</div></div>
+    <div class="dash-card"><div class="val c-yellow" id="dSpeed">-</div><div class="lbl">Vitesse /s</div></div>
+    <div class="dash-card"><div class="val c-blue" id="dEta">-</div><div class="lbl">ETA</div></div>
+</div>
 
-echo "<h3 class='section'>Log en direct</h3>";
-echo "<div class='log-box' id='logBox'>";
+<!-- Barres de progression -->
+<h3 class="section">Parcours des URLs</h3>
+<div class="bar-wrap">
+    <div class="bar-fill" id="barScan" style="width:<?= $pctScan ?>%;background:linear-gradient(90deg,#6c5ce7,#a78bfa);"><?= $pctScan ?>%</div>
+</div>
+<h3 class="section">Athletes en BDD</h3>
+<div class="bar-wrap">
+    <div class="bar-fill" id="barBdd" style="width:<?= $pctBdd ?>%;background:linear-gradient(90deg,#22c55e,#4ade80);"><?= $pctBdd ?>%</div>
+</div>
+
+<!-- Status -->
+<h3 class="section"><span class="status-dot" id="statusDot" style="background:#22c55e;"></span><span id="statusText">Demarrage...</span></h3>
+
+<!-- Log en direct -->
+<div class="log-box" id="logBox"></div>
+
+<!-- Resume (rempli a la fin) -->
+<div id="resume"></div>
+
+<script>
+function _u(id, v) { document.getElementById(id).textContent = v; }
+function _bar(id, pct) { var e = document.getElementById(id); e.style.width = pct + '%'; e.textContent = pct + '%'; }
+function _log(html) { var b = document.getElementById('logBox'); b.innerHTML += html; b.scrollTop = b.scrollHeight; }
+function _fmt(n) { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+var _startTime = Date.now(), _totalInserted = 0, _totalAth = <?= $totalAthletes ?>;
+</script>
+
+<?php
+// =============================================
+// FLUSH — envoyer le dashboard au navigateur
+// =============================================
+if (ob_get_level()) ob_end_flush();
+flush();
 
 // =============================================
 // 4. Boucle — par batch de $PARALLEL athlètes
@@ -185,6 +197,8 @@ if (!is_dir($srcDir)) mkdir($srcDir, 0755);
 
 $pageStart = microtime(true);
 $batchDone = 0;
+$batchNum = 0;
+$totalSkipped = 0;
 
 while ($id <= $maxId) {
 
@@ -197,9 +211,10 @@ while ($id <= $maxId) {
     }
 
     // Collecter les N prochains athlètes valides
-    $batch = []; // [id_nom_et_liens => athlete_id_from_url]
-    $batchUrls = []; // [id_nom_et_liens => full_url]
+    $batch = [];
+    $batchUrls = [];
     $tempId = $id;
+    $skippedThisBatch = 0;
 
     while (count($batch) < $PARALLEL && $tempId <= $maxId) {
         if (!isset($allUrls[$tempId])) {
@@ -208,15 +223,13 @@ while ($id <= $maxId) {
         }
         $url = $allUrls[$tempId]["url"] ?? null;
         if (empty($url)) {
-            echo "<p class='skip'>#$tempId : skip</p>";
             $tempId++;
             continue;
         }
-        // Extraire l'ID athlète depuis l'URL
         if (preg_match('#/athletes/(\d+)#', $url, $m)) {
             $athId = (int)$m[1];
-            // Skip si deja present en BDD
             if (isset($existingAthletes[$athId])) {
+                $skippedThisBatch++;
                 $tempId++;
                 continue;
             }
@@ -225,40 +238,53 @@ while ($id <= $maxId) {
         }
         $tempId++;
     }
+    $totalSkipped += $skippedThisBatch;
 
     if (empty($batch)) {
         $id = $tempId;
         $_SESSION["url"] = $id;
         file_put_contents($progressFile, $id);
+
+        // Mettre a jour la barre scan meme si batch vide (skip rapide)
+        $newDone = 0;
+        foreach ($allUrls as $rid => $r) { if ($rid < $id) $newDone++; }
+        $newPctScan = $totalAthletes > 0 ? round(($newDone / $totalAthletes) * 100, 2) : 0;
+        echo "<script>_bar('barScan',{$newPctScan});_u('dPos','" . number_format($id, 0, '', ' ') . "');_u('statusText','Scan rapide... (skip " . number_format($totalSkipped, 0, '', ' ') . " deja en BDD)');</script>\n";
+        flush();
         break;
     }
 
-    // --- Scraping parallèle (5 athlètes × 3 pages = 15 requêtes en même temps) ---
+    $batchNum++;
+
+    // Status : en cours
+    echo "<script>_u('statusText','Batch #$batchNum — scrape " . count($batch) . " athletes...');</script>\n";
+    flush();
+
+    // --- Scraping parallèle ---
     $t0 = microtime(true);
     $pagesResults = scrapeParallel(array_values($batch));
     $scrapeTime = round((microtime(true) - $t0) * 1000);
 
-    echo "<p class='timer'>Scrape " . count($batch) . " athletes en {$scrapeTime}ms</p>";
+    $batchInserted = 0;
+    $batchErrors = 0;
+    $names = [];
 
     // --- Traiter chaque athlète ---
     foreach ($batch as $idNom => $athleteIdExt) {
         $pages = $pagesResults[$athleteIdExt] ?? [];
 
         if (empty($pages['bilans'])) {
-            $debugUrl = "https://athle.fr/athletes/" . $athleteIdExt . "/bilans";
-            echo "<p class='error'>#$idNom (athlete $athleteIdExt) : page bilans vide → skip | <a href='$debugUrl' target='_blank' style='color:yellow'>tester</a></p>";
-
-            // Sauvegarder dans le JSON des échecs
+            $batchErrors++;
             $failFile = dirname(__DIR__) . "/failed.json";
             $fails = file_exists($failFile) ? json_decode(file_get_contents($failFile), true) : [];
             $fails[] = ['id_nom_et_liens' => $idNom, 'athlete_id' => $athleteIdExt, 'date' => date('Y-m-d H:i:s')];
             file_put_contents($failFile, json_encode($fails, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
+            echo "<script>_log('<p class=\"error\">#$idNom (athlete $athleteIdExt) : page bilans vide</p>');</script>\n";
+            flush();
             continue;
         }
 
         try {
-            // Créer le scraper et injecter les pages déjà téléchargées
             $scraper = new AthleteScraper($athleteIdExt);
             $scraper->html = $pages['bilans'];
             $scraper->extractIdentite();
@@ -291,16 +317,19 @@ while ($id <= $maxId) {
             insertAthleteData($scraper, $conn, $cache);
             $existingAthletes[$athleteIdExt] = true;
 
-            echo "<p>#$idNom $nom</p>";
+            $names[] = $nom;
+            $batchInserted++;
             $batchDone++;
 
         } catch (Exception $e) {
-            echo "<p class='error'>#$idNom erreur : " . htmlspecialchars($e->getMessage()) . "</p>";
-
+            $batchErrors++;
+            $errMsg = htmlspecialchars($e->getMessage());
             $failFile = dirname(__DIR__) . "/failed.json";
             $fails = file_exists($failFile) ? json_decode(file_get_contents($failFile), true) : [];
             $fails[] = ['id_nom_et_liens' => $idNom, 'athlete_id' => $athleteIdExt, 'erreur' => $e->getMessage(), 'date' => date('Y-m-d H:i:s')];
             file_put_contents($failFile, json_encode($fails, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            echo "<script>_log('<p class=\"error\">#$idNom erreur : $errMsg</p>');</script>\n";
+            flush();
         }
     }
 
@@ -309,46 +338,92 @@ while ($id <= $maxId) {
     $_SESSION["url"] = $id;
     file_put_contents($progressFile, $id);
 
-    echo "<hr/>";
+    // Calculer les nouvelles stats
+    $newDone = 0;
+    foreach ($allUrls as $rid => $r) { if ($rid < $id) $newDone++; }
+    $newPctScan = $totalAthletes > 0 ? round(($newDone / $totalAthletes) * 100, 2) : 0;
+    $newBdd = $nbExisting + $batchDone;
+    $newPctBdd = $totalAthletes > 0 ? round(($newBdd / $totalAthletes) * 100, 2) : 0;
+    $newRemaining = $totalAthletes - $newBdd;
+    $elapsed = round(microtime(true) - $pageStart, 1);
+    $speed = $elapsed > 0 ? round($batchDone / $elapsed, 1) : 0;
 
-    // Pause 1s entre chaque batch pour ne pas surcharger athle.fr
+    // ETA
+    $etaText = '-';
+    if ($batchDone > 0) {
+        $etaSec = round(($newRemaining * $elapsed) / $batchDone);
+        $etaH = floor($etaSec / 3600);
+        $etaM = floor(($etaSec % 3600) / 60);
+        $etaText = $etaH . 'h ' . $etaM . 'm';
+    }
+
+    // Log du batch
+    $namesStr = implode(', ', $names);
+    $logHtml = "<p style='color:cyan;'>Batch #$batchNum : $batchInserted inseres, $batchErrors erreurs, {$scrapeTime}ms";
+    if ($skippedThisBatch > 0) $logHtml .= ", $skippedThisBatch skips";
+    $logHtml .= "</p>";
+    if (!empty($namesStr)) {
+        $logHtml .= "<p style='color:#4ade80;'>$namesStr</p>";
+    }
+    $logHtml .= "<hr/>";
+
+    // Envoyer le script de mise a jour
+    $jsNewBdd = number_format($newBdd, 0, '', ' ');
+    $jsNewRem = number_format($newRemaining, 0, '', ' ');
+    $jsPos = number_format($id, 0, '', ' ');
+    $nbFailedNow = $nbFailed + $batchErrors;
+    echo "<script>"
+        . "_log('" . addslashes($logHtml) . "');"
+        . "_bar('barScan',{$newPctScan});"
+        . "_bar('barBdd',{$newPctBdd});"
+        . "_u('dBdd','$jsNewBdd');"
+        . "_u('dRest','$jsNewRem');"
+        . "_u('dPos','$jsPos');"
+        . "_u('dFail','$nbFailedNow');"
+        . "_u('dSpeed','$speed/s');"
+        . "_u('dEta','$etaText');"
+        . "_u('statusText','Batch #$batchNum termine — pause 1s...');"
+        . "_totalInserted=$batchDone;"
+        . "</script>\n";
+    flush();
+
+    // Pause 1s entre chaque batch
     sleep(1);
 }
 
 // =============================================
-// 5. Résumé + refresh
+// 5. Résumé final + auto-refresh
 // =============================================
-echo "</div>"; // ferme log-box
-
 $databaseHandler->closeConnection();
 
 $pageTime = round(microtime(true) - $pageStart, 1);
-$newBdd = $nbExisting + $batchDone;
-$newRemaining = $totalAthletes - $newBdd;
-$speed = $pageTime > 0 ? round($batchDone / $pageTime, 1) : 0;
-
-// Résumé de cette page
-echo "<h3 class='section'>Résumé de ce cycle</h3>";
-echo "<div class='dash'>";
-echo "<div class='dash-card'><div class='val c-green'>$batchDone</div><div class='lbl'>Insérés ce cycle</div></div>";
-echo "<div class='dash-card'><div class='val c-cyan'>{$pageTime}s</div><div class='lbl'>Durée cycle</div></div>";
-echo "<div class='dash-card'><div class='val c-yellow'>{$speed}/s</div><div class='lbl'>Vitesse</div></div>";
-
-if ($id <= $maxId && $batchDone > 0) {
-    $etaSec = round(($newRemaining * $pageTime) / $batchDone);
-    $etaH = floor($etaSec / 3600);
-    $etaMin = floor(($etaSec % 3600) / 60);
-    echo "<div class='dash-card'><div class='val c-purple'>~{$etaH}h {$etaMin}m</div><div class='lbl'>ETA restant</div></div>";
-}
-echo "</div>";
+$finalBdd = $nbExisting + $batchDone;
+$finalRemaining = $totalAthletes - $finalBdd;
+$finalSpeed = $pageTime > 0 ? round($batchDone / $pageTime, 1) : 0;
 
 if ($id <= $maxId) {
-    echo "<p style='color:#666;font-size:11px;margin-top:8px;'>Refresh auto dans 1s...</p>";
-    header("Refresh: 1");
+    // Encore du travail → refresh auto
+    $etaText = '-';
+    if ($batchDone > 0) {
+        $etaSec = round(($finalRemaining * $pageTime) / $batchDone);
+        $etaH = floor($etaSec / 3600);
+        $etaM = floor(($etaSec % 3600) / 60);
+        $etaText = $etaH . 'h ' . $etaM . 'm';
+    }
+    echo "<script>"
+        . "_u('statusText','Cycle termine — refresh dans 2s...');"
+        . "document.getElementById('statusDot').style.background='#eab308';"
+        . "_u('dEta','$etaText');"
+        . "setTimeout(function(){ window.location.reload(); }, 2000);"
+        . "</script>\n";
 } else {
-    echo "<h2 style='color:#22c55e;text-align:center;margin-top:20px;'>✅ TERMINE ! " . number_format($totalAthletes, 0, '', ' ') . " athletes traites.</h2>";
+    echo "<script>"
+        . "_u('statusText','TERMINE ! " . number_format($totalAthletes, 0, '', ' ') . " athletes traites.');"
+        . "document.getElementById('statusDot').style.background='#22c55e';"
+        . "document.getElementById('resume').innerHTML='<h2 style=\"color:#22c55e;text-align:center;margin:20px 0;\">TERMINE !</h2>';"
+        . "</script>\n";
 }
+flush();
 ?>
-
 </body>
 </html>
