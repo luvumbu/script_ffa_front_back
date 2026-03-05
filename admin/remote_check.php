@@ -137,6 +137,23 @@ switch ($action) {
         }
         break;
 
+    case 'delete_user':
+        $delEmail = trim($_GET['email'] ?? '');
+        if (empty($delEmail)) { $out['error'] = 'Parametre email requis'; break; }
+        $stmt = $conn->prepare("SELECT id_user FROM users WHERE email = ?");
+        $stmt->bind_param('s', $delEmail);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if (!$row) { $out['error'] = 'User introuvable'; break; }
+        $uid = (int)$row['id_user'];
+        $conn->query("DELETE FROM user_sessions WHERE id_user = $uid");
+        $conn->query("DELETE FROM users WHERE id_user = $uid");
+        $out['message'] = 'User supprime';
+        $out['email'] = $delEmail;
+        $out['id_user'] = $uid;
+        break;
+
     case 'delete_test_user':
         $testEmail = 'claude.test@bokonzi.com';
         $conn->query("DELETE FROM user_sessions WHERE id_user IN (SELECT id_user FROM users WHERE email = '" . $conn->real_escape_string($testEmail) . "')");
