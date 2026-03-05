@@ -79,14 +79,22 @@ if ($httpCode !== 200 || !$profileResponse) {
 }
 
 $profile = json_decode($profileResponse, true);
-$googleId    = $profile['id'] ?? '';
-$email       = $profile['email'] ?? '';
-$givenName   = $profile['given_name'] ?? '';
-$familyName  = $profile['family_name'] ?? '';
+$googleId      = $profile['id'] ?? '';
+$email         = $profile['email'] ?? '';
+$givenName     = $profile['given_name'] ?? '';
+$familyName    = $profile['family_name'] ?? '';
+$picture       = $profile['picture'] ?? null;
+$emailVerified = isset($profile['verified_email']) ? ($profile['verified_email'] ? 1 : 0) : null;
+$locale        = $profile['locale'] ?? null;
 
 if (empty($googleId) || empty($email)) {
     header('Location: ' . $loginUrl . '?error=google&msg=noemail');
     exit;
+}
+
+// --- 4b. Nettoyer l'URL photo Google (forcer taille 200px) ---
+if (!empty($picture)) {
+    $picture = preg_replace('/=s\d+-c/', '=s200-c', $picture);
 }
 
 // --- 5. Trouver ou creer le user ---
@@ -102,6 +110,11 @@ $stmt->close();
 if ($row) {
     // User deja lie a ce google_id → login direct
     $userId = (int)$row['id_user'];
+    // Mettre a jour les infos Google (photo, locale, etc.) a chaque login
+    $stmt = $conn->prepare("UPDATE users SET picture = ?, email_verified = ?, locale = ?, last_login = NOW() WHERE id_user = ?");
+    $stmt->bind_param("sisi", $picture, $emailVerified, $locale, $userId);
+    $stmt->execute();
+    $stmt->close();
 } else {
     // 5b. Chercher par email (compte classique existant)
     $stmt = $conn->prepare("SELECT id_user FROM users WHERE email = ?");
@@ -111,18 +124,18 @@ if ($row) {
     $stmt->close();
 
     if ($row) {
-        // Lier le google_id au compte existant
+        // Lier le google_id au compte existant + infos profil
         $userId = (int)$row['id_user'];
-        $stmt = $conn->prepare("UPDATE users SET google_id = ?, oauth_provider = 'google' WHERE id_user = ?");
-        $stmt->bind_param("si", $googleId, $userId);
+        $stmt = $conn->prepare("UPDATE users SET google_id = ?, oauth_provider = 'google', picture = ?, email_verified = ?, locale = ?, last_login = NOW() WHERE id_user = ?");
+        $stmt->bind_param("ssisi", $googleId, $picture, $emailVerified, $locale, $userId);
         $stmt->execute();
         $stmt->close();
     } else {
-        // 5c. Creer un nouveau user
+        // 5c. Creer un nouveau user avec toutes les infos Google
         $stmt = $conn->prepare(
-            "INSERT INTO users (email, password_hash, nom, prenom, role, google_id, oauth_provider) VALUES (?, '', ?, ?, 'athlete', ?, 'google')"
+            "INSERT INTO users (email, password_hash, nom, prenom, role, google_id, oauth_provider, picture, email_verified, locale, last_login) VALUES (?, '', ?, ?, 'athlete', ?, 'google', ?, ?, ?, NOW())"
         );
-        $stmt->bind_param("ssss", $email, $familyName, $givenName, $googleId);
+        $stmt->bind_param("sssssss", $email, $familyName, $givenName, $googleId, $picture, $emailVerified, $locale);
         $stmt->execute();
         $userId = (int)$stmt->insert_id;
         $stmt->close();

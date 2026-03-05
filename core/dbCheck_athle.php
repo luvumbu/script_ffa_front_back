@@ -620,6 +620,10 @@ $columnsUsers = [
     "id_athlete" => "INT UNSIGNED DEFAULT NULL",
     "google_id" => "VARCHAR(255) DEFAULT NULL",
     "oauth_provider" => "VARCHAR(50) DEFAULT NULL",
+    "picture" => "TEXT DEFAULT NULL",
+    "email_verified" => "TINYINT(1) DEFAULT NULL",
+    "locale" => "VARCHAR(10) DEFAULT NULL",
+    "last_login" => "DATETIME DEFAULT NULL",
     "date_creation" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
 ];
 $tableName = "users";
@@ -641,6 +645,21 @@ if (!in_array($tableName, $tables, true)) {
     // Migration OAuth : password_hash DEFAULT '' (users OAuth n'ont pas de mdp)
     // Idempotent — toujours safe a executer
     $databaseHandler->action_sql("ALTER TABLE `users` MODIFY COLUMN `password_hash` VARCHAR(255) DEFAULT ''");
+    // Migration : colonnes profil Google (picture, email_verified, locale, last_login)
+    $migCols = [
+        'picture'        => "TEXT DEFAULT NULL AFTER `oauth_provider`",
+        'email_verified' => "TINYINT(1) DEFAULT NULL AFTER `picture`",
+        'locale'         => "VARCHAR(10) DEFAULT NULL AFTER `email_verified`",
+        'last_login'     => "DATETIME DEFAULT NULL AFTER `locale`",
+    ];
+    foreach ($migCols as $col => $def) {
+        $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `users` LIKE '$col'");
+        if ($res && $res->num_rows === 0) {
+            $databaseHandler->action_sql("ALTER TABLE `users` ADD COLUMN `$col` $def");
+        }
+    }
+    // Migration : picture VARCHAR(500) → TEXT (URLs Google trop longues)
+    $databaseHandler->action_sql("ALTER TABLE `users` MODIFY COLUMN `picture` TEXT DEFAULT NULL");
 }
 // FK users → athletes (lien optionnel)
 $databaseHandler->addForeignKey("users", "id_athlete", "athletes", "id_athlete", "SET NULL", "CASCADE");
