@@ -124,8 +124,66 @@ switch ($action) {
         $out['message'] = $action === 'search_reset' ? 'Reset OK' : "Compteur mis a $val/50";
         break;
 
+    case 'create_test_user':
+        $testEmail = 'claude.test@bokonzi.com';
+        $r = $conn->query("SELECT id_user FROM users WHERE email = '" . $conn->real_escape_string($testEmail) . "'");
+        if ($r && $r->num_rows > 0) {
+            $out['message'] = 'User test existe deja';
+            $out['user'] = $r->fetch_assoc();
+        } else {
+            $conn->query("INSERT INTO users (email, password_hash, nom, prenom, role, oauth_provider) VALUES ('$testEmail', '', 'Test', 'Claude', 'athlete', 'test')");
+            $out['message'] = 'User test cree';
+            $out['user'] = ['id_user' => $conn->insert_id, 'email' => $testEmail];
+        }
+        break;
+
+    case 'delete_test_user':
+        $testEmail = 'claude.test@bokonzi.com';
+        $conn->query("DELETE FROM user_sessions WHERE id_user IN (SELECT id_user FROM users WHERE email = '" . $conn->real_escape_string($testEmail) . "')");
+        $conn->query("DELETE FROM users WHERE email = '" . $conn->real_escape_string($testEmail) . "'");
+        $out['message'] = 'User test supprime';
+        break;
+
+    case 'test_search':
+        // Simule une recherche comme un user connecte (compte dans le rate limit)
+        $q = trim($_GET['q'] ?? 'dupont');
+        $ip = trim($_GET['ip'] ?? '');
+        if (empty($ip)) {
+            $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        }
+        $limFile = __DIR__ . '/../logs/.search_limits.php';
+        $today = date('Y-m-d');
+        $limData = [];
+        if (file_exists($limFile)) {
+            $raw = file_get_contents($limFile);
+            $limData = @json_decode(substr($raw, strpos($raw, "\n") + 1), true) ?: [];
+        }
+        if (($limData['_date'] ?? '') !== $today) $limData = ['_date' => $today];
+        $cnt = (int)($limData[$ip] ?? 0);
+        $out['ip'] = $ip;
+        $out['count_before'] = $cnt;
+        $out['limit'] = 50;
+        $out['blocked'] = $cnt >= 50;
+        if ($cnt >= 50) {
+            $out['message'] = 'BLOQUE — limite atteinte (' . $cnt . '/50)';
+        } else {
+            $limData[$ip] = $cnt + 1;
+            file_put_contents($limFile, "<?php die(); ?>\n" . json_encode($limData, JSON_UNESCAPED_UNICODE));
+            $out['count_after'] = $cnt + 1;
+            $out['remaining'] = 50 - ($cnt + 1);
+            $out['message'] = 'Recherche OK (' . ($cnt + 1) . '/50)';
+        }
+        break;
+
+    case 'my_ip':
+        $out['remote_addr'] = $_SERVER['REMOTE_ADDR'] ?? null;
+        $out['cf_ip'] = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null;
+        $out['forwarded'] = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null;
+        $out['detected'] = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        break;
+
     default:
-        $out['error'] = 'Action inconnue. Actions: ping, users, sessions, columns, count, logs, query, search_limit, search_fill, search_max, search_reset';
+        $out['error'] = 'Action inconnue. Actions: ping, users, sessions, columns, count, logs, query, search_limit, search_fill, search_max, search_reset, create_test_user, delete_test_user, test_search, my_ip';
 }
 
 $conn->close();

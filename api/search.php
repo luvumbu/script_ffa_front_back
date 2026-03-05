@@ -28,11 +28,11 @@ $SEARCH_LIMIT = 50;
 $_searchIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 if (strpos($_searchIp, ',') !== false) $_searchIp = trim(explode(',', $_searchIp)[0]);
 
-// Whitelist : Google, Hostinger, localhost, users connectes
+// Whitelist : Google, Hostinger, localhost, super admin uniquement
 $_searchWhitelisted = false;
 $_wlPrefixes = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
 foreach ($_wlPrefixes as $p) { if (strpos($_searchIp, $p) === 0) { $_searchWhitelisted = true; break; } }
-if (!$_searchWhitelisted && (!empty($_COOKIE['bk_token']) || !empty($_COOKIE['bk_sa_token']))) $_searchWhitelisted = true;
+if (!$_searchWhitelisted && !empty($_COOKIE['bk_sa_token'])) $_searchWhitelisted = true;
 
 if (!$_searchWhitelisted) {
     $limFile = __DIR__ . '/../logs/.search_limits.php';
