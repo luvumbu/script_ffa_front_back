@@ -803,59 +803,7 @@ if (!in_array($tableName, $tables, true)) {
     $databaseHandler->action_sql("ALTER TABLE `club_follows` ADD INDEX `idx_cfollows_email` (`email`)");
 }
 
-// ======================================================
-// ✅ RÉSUMÉ
-echo "<h2>Schema BDD Athlétisme créé</h2>";
-echo "<pre>";
-echo "═══════════════════════════════════════════════════════════════\n";
-echo " MAPPING COMPLET : ancien nom → table.colonne\n";
-echo "═══════════════════════════════════════════════════════════════\n\n";
-
-echo "get_result_users_nom_1_array_2         → athletes.nom_1_athlete\n";
-echo "get_result_users_nom_2_array_2         → athletes.nom_2_athlete\n";
-echo "get_result_users_nom_3_array_2         → athletes.nom_3_athlete\n";
-echo "get_result_users_nom_4_array_2         → athletes.nom_4_athlete\n";
-echo "get_users_nom_complet_array            → athletes.nom_complet_athlete\n";
-echo "get_users_naissance_array_2            → athletes.date_naissance_athlete\n";
-echo "get_users_nationality_array_2          → athletes.nationalite_athlete\n";
-echo "get_cat_array_2                        → athletes.categorie_athlete\n";
-echo "info_all_array_id                      → athletes.athlete_id_externe\n\n";
-
-echo "get_club_nom_complet_array_2           → clubs.nom_club\n";
-echo "get_club_departement_array_2           → clubs.departement_club\n";
-echo "get_club_region_array_2                → clubs.region_club\n\n";
-
-echo "get_epreuve_nom_complet                → epreuves.nom_epreuve\n";
-echo "epreuve_sex_array_2                    → epreuves.sexe_epreuve\n\n";
-
-echo "get_result_villes_nom_array_2          → villes.nom_ville\n";
-echo "get_emplacement                        → villes.departement_ville + villes.region_ville\n\n";
-
-echo "get_result_users_perf_array_2          → athlete_progressions.performance_progression\n";
-echo "get_result_users_perf_array            → (même donnée)\n";
-echo "get_result_date_perf_array_2           → athlete_progressions.date_progression\n";
-echo "get_vent_array_2                       → athlete_progressions.vent_progression\n";
-echo "get_rp_array_2                         → athlete_progressions.rang_perf_progression\n";
-echo "info_all_array_date                    → athlete_progressions.date_progression\n\n";
-
-echo "id_get_result_users_nom_1_array_2      → athletes.id_athlete (FK)\n";
-echo "id_get_result_users_nom_4_array_2      → athletes.id_athlete (FK)\n";
-echo "id_get_users_nationality_array_2       → athletes.id_athlete (FK)\n";
-echo "id_get_users_nom_complet_array         → athletes.id_athlete (FK)\n";
-echo "id_get_cat_array_2                     → athletes.id_athlete (FK)\n";
-echo "id_get_users_naissance_array_2         → athletes.id_athlete (FK)\n";
-echo "id_get_club_nom_complet_array_2        → clubs.id_club (FK)\n";
-echo "id_get_club_departement_array_2        → clubs.id_club (FK)\n";
-echo "id_get_club_region_array_2             → clubs.id_club (FK)\n";
-echo "id_get_epreuve_nom_complet             → epreuves.id_epreuve (FK)\n";
-echo "id_epreuve_sex_array_2                 → epreuves.id_epreuve (FK)\n";
-echo "id_get_result_villes_nom_array_2       → villes.id_ville (FK)\n";
-echo "id_get_result_date_perf_array_2        → athlete_progressions.id_progression (FK)\n\n";
-
-echo "═══════════════════════════════════════════════════════════════\n";
-echo " 22 tables | 38 clés étrangères | 34 anciens noms → mappés\n";
-echo "═══════════════════════════════════════════════════════════════\n";
-echo "</pre>";
+// Schema BDD verifie (pas d'affichage si tout existe deja)
 
 // ======================================================
 // 2️⃣3️⃣ TABLE password_resets (reinitialisation mot de passe)
