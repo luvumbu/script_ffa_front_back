@@ -9841,5 +9841,17 @@ function _footerContact(){
     }).catch(function(){document.getElementById('fcStatus').innerHTML='<span style="color:#ef4444">Erreur de connexion.</span>';btn.disabled=false;btn.textContent='Envoyer';});
 }
 </script>
+<?php if (isset($_GET['welcome']) && $_GET['welcome'] === '1'): ?>
+<div id="welcomeToast" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:99999;background:linear-gradient(135deg,#6c5ce7,#5541d0);color:#fff;padding:20px 32px;border-radius:16px;box-shadow:0 8px 32px rgba(108,92,231,.4);font-family:Arial,sans-serif;text-align:center;max-width:420px;width:90%;animation:welcomeSlide .5s ease-out;">
+    <div style="font-size:32px;margin-bottom:8px;">&#127881;</div>
+    <div style="font-size:18px;font-weight:700;margin-bottom:6px;">Bienvenue sur Bokonzi !</div>
+    <div style="font-size:14px;color:#e0d8ff;line-height:1.5;">Votre compte a ete cree avec succes. Explorez les athletes, clubs et records de l'athletisme francais.</div>
+    <button onclick="this.parentElement.remove()" style="margin-top:14px;background:#fff3;border:1px solid #fff5;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">C'est parti !</button>
+</div>
+<style>
+@keyframes welcomeSlide { from { opacity:0; transform:translateX(-50%) translateY(-30px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+</style>
+<script>setTimeout(function(){ var t=document.getElementById('welcomeToast'); if(t) t.style.transition='opacity .5s', t.style.opacity='0', setTimeout(function(){t.remove()},500); }, 8000);</script>
+<?php endif; ?>
 </body>
 </html>

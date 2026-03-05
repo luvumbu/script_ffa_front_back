@@ -99,6 +99,7 @@ if (!empty($picture)) {
 
 // --- 5. Trouver ou creer le user ---
 $userId = null;
+$isNewUser = false;
 
 // 5a. Chercher par google_id
 $stmt = $conn->prepare("SELECT id_user FROM users WHERE google_id = ?");
@@ -132,6 +133,7 @@ if ($row) {
         $stmt->close();
     } else {
         // 5c. Creer un nouveau user avec toutes les infos Google
+        $isNewUser = true;
         $stmt = $conn->prepare(
             "INSERT INTO users (email, password_hash, nom, prenom, role, google_id, oauth_provider, picture, email_verified, locale, last_login) VALUES (?, '', ?, ?, 'athlete', ?, 'google', ?, ?, ?, NOW())"
         );
@@ -147,5 +149,6 @@ createSession($conn, $userId);
 
 // --- 7. Rediriger vers l'accueil ---
 $conn->close();
-header('Location: ' . $homeUrl);
+$redirect = $homeUrl . ($isNewUser ? '?welcome=1' : '');
+header('Location: ' . $redirect);
 exit;
