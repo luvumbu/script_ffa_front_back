@@ -175,6 +175,26 @@ switch ($action) {
         }
         break;
 
+    case 'test_mail':
+        $to = trim($_GET['to'] ?? '');
+        if (empty($to) || !filter_var($to, FILTER_VALIDATE_EMAIL)) { $out['error'] = 'Parametre to requis (email valide)'; break; }
+        $subject = 'Test email Bokonzi';
+        $body = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:Arial,sans-serif;padding:40px;text-align:center;">';
+        $body .= '<h1 style="color:#6c5ce7;">Test email Bokonzi</h1>';
+        $body .= '<p>Si vous recevez cet email, la fonction mail() fonctionne correctement.</p>';
+        $body .= '<p style="color:#999;font-size:12px;">Envoye le ' . date('Y-m-d H:i:s') . '</p>';
+        $body .= '</body></html>';
+        $headers  = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= "From: Bokonzi <noreply@bokonzi.com>\r\n";
+        $headers .= "Reply-To: noreply@bokonzi.com\r\n";
+        $sent = mail($to, $subject, $body, $headers);
+        $out['to'] = $to;
+        $out['sent'] = $sent;
+        $out['message'] = $sent ? 'Email envoye (verifie spam/inbox)' : 'Echec mail() — verifier config SMTP Hostinger';
+        $out['mail_error'] = error_get_last();
+        break;
+
     case 'my_ip':
         $out['remote_addr'] = $_SERVER['REMOTE_ADDR'] ?? null;
         $out['cf_ip'] = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null;
