@@ -9453,78 +9453,56 @@ function buildClubComparisonSummary(clubs) {
     <button class="nl-close" onclick="closeNewsletter()">&times;</button>
 </div>
 
-<!-- Modal Email PDF -->
-<div class="follow-overlay" id="pdfOverlay">
-    <div class="follow-modal" style="position:relative;">
-        <button class="btn-close" onclick="closePdfModal()">&times;</button>
-        <h3>&#128196; Telecharger la fiche PDF</h3>
-        <p>Entrez votre email pour telecharger la fiche complete de cet athlete en PDF.</p>
-        <input type="email" id="pdfEmail" placeholder="votre@email.com" autocomplete="email">
-        <button class="btn-confirm" onclick="confirmPdf()">Telecharger le PDF</button>
-    </div>
-</div>
-
-<!-- Modal Suivre Athlete -->
-<div class="follow-overlay" id="followOverlay">
-    <div class="follow-modal" style="position:relative;">
-        <button class="btn-close" onclick="closeFollowModal()">&times;</button>
-        <h3 id="followModalTitle">&#9825; Suivre cet athlete</h3>
-        <p id="followModalDesc">Entrez votre email pour etre notifie des nouveaux resultats.</p>
-        <input type="email" id="followEmail" placeholder="votre@email.com" autocomplete="email">
-        <button class="btn-confirm" id="followConfirmBtn" onclick="confirmFollow()">Suivre</button>
-        <p style="font-size:11px;color:#484f58;margin-top:12px;margin-bottom:0;">Aucun spam. Vous pouvez vous desabonner a tout moment.</p>
+<!-- Modal Connexion requise (Follow + PDF) -->
+<div class="follow-overlay" id="loginRequiredOverlay">
+    <div class="follow-modal" style="position:relative;text-align:center;">
+        <button class="btn-close" onclick="closeLoginRequired()">&times;</button>
+        <div style="font-size:40px;margin-bottom:12px;" id="loginReqIcon">&#9825;</div>
+        <h3 id="loginReqTitle">Connexion requise</h3>
+        <p id="loginReqDesc" style="color:#8b949e;margin-bottom:20px;">Connectez-vous avec Google pour utiliser cette fonctionnalite.</p>
+        <a href="login.php" class="btn-google-modal" style="display:inline-flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:background .2s,box-shadow .2s;">
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.08 24.08 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Se connecter avec Google
+        </a>
+        <p style="font-size:11px;color:#484f58;margin-top:16px;margin-bottom:0;">Gratuit et rapide. Aucun spam.</p>
     </div>
 </div>
 
 <script>
 (function() {
     var _followAthleteId = null;
+    var _bkUser = null;
+
+    // Verifier si l'utilisateur est connecte
+    fetch(BASE_API + '/auth/me.php', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) { if (data.authenticated) _bkUser = data.user; })
+        .catch(function() {});
+
+    window._showLoginRequired = function(icon, title, desc) {
+        document.getElementById('loginReqIcon').innerHTML = icon || '\u2661';
+        document.getElementById('loginReqTitle').textContent = title || 'Connexion requise';
+        document.getElementById('loginReqDesc').textContent = desc || 'Connectez-vous avec Google pour utiliser cette fonctionnalite.';
+        document.getElementById('loginRequiredOverlay').classList.add('active');
+    };
+    window.closeLoginRequired = function() {
+        document.getElementById('loginRequiredOverlay').classList.remove('active');
+    };
+    document.getElementById('loginRequiredOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeLoginRequired();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeLoginRequired();
+    });
 
     window.toggleFollow = function(athleteId) {
         _followAthleteId = athleteId;
-        var email = localStorage.getItem('bk_follow_email') || '';
-        if (!email) {
-            document.getElementById('followModalTitle').innerHTML = '\u2661 Suivre cet athlete';
-            document.getElementById('followModalDesc').textContent = 'Entrez votre email pour etre notifie des nouveaux resultats.';
-            document.getElementById('followOverlay').removeAttribute('data-mode');
-            document.getElementById('followOverlay').classList.add('active');
-            var inp = document.getElementById('followEmail');
-            inp.value = '';
-            inp.focus();
+        if (!_bkUser) {
+            _showLoginRequired('\u2661', 'Suivre cet athlete', 'Connectez-vous avec Google pour suivre cet athlete et etre notifie de ses nouveaux resultats.');
             return;
         }
-        _doFollow(athleteId, email);
+        _doFollow(athleteId, _bkUser.email);
     };
-
-    window.confirmFollow = function() {
-        var email = document.getElementById('followEmail').value.trim();
-        if (!email || email.indexOf('@') === -1 || email.indexOf('.') === -1) {
-            document.getElementById('followEmail').style.borderColor = '#f85149';
-            return;
-        }
-        localStorage.setItem('bk_follow_email', email);
-        closeFollowModal();
-        if (_followAthleteId) _doFollow(_followAthleteId, email);
-    };
-
-    window.closeFollowModal = function() {
-        var overlay = document.getElementById('followOverlay');
-        overlay.classList.remove('active');
-        overlay.removeAttribute('data-mode');
-    };
-
-    // Fermer modal avec Escape
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeFollowModal();
-    });
-    // Fermer modal click exterieur
-    document.getElementById('followOverlay').addEventListener('click', function(e) {
-        if (e.target === this) closeFollowModal();
-    });
-    // Enter dans le champ email
-    document.getElementById('followEmail').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') confirmFollow();
-    });
 
     function _doFollow(athleteId, email) {
         var btn = document.getElementById('btnFollow');
@@ -9558,15 +9536,13 @@ function buildClubComparisonSummary(clubs) {
     // Init : verifier etat au chargement du profil
     function _checkFollowStatus() {
         var btn = document.getElementById('btnFollow');
-        if (!btn) return;
+        if (!btn || !_bkUser) return;
         var athleteId = btn.getAttribute('onclick');
         if (!athleteId) return;
         var m = athleteId.match(/toggleFollow\((\d+)\)/);
         if (!m) return;
         var id = m[1];
-        var email = localStorage.getItem('bk_follow_email') || '';
-        var url = BASE_API + '/follow.php?athlete_id=' + id;
-        if (email) url += '&email=' + encodeURIComponent(email);
+        var url = BASE_API + '/follow.php?athlete_id=' + id + '&email=' + encodeURIComponent(_bkUser.email);
         fetch(url, { credentials: 'same-origin' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -9574,7 +9550,8 @@ function buildClubComparisonSummary(clubs) {
         })
         .catch(function() {});
     }
-    _checkFollowStatus();
+    // Attendre que _bkUser soit charge
+    setTimeout(_checkFollowStatus, 500);
 })();
 </script>
 
@@ -9585,38 +9562,11 @@ function buildClubComparisonSummary(clubs) {
 
     window.toggleFollowClub = function(clubId, suffix) {
         _clubFollowPending = { clubId: clubId, suffix: suffix || '' };
-        var email = localStorage.getItem('bk_follow_email') || '';
-        if (!email) {
-            document.getElementById('followModalTitle').innerHTML = '\u2661 Suivre ce club';
-            document.getElementById('followModalDesc').textContent = 'Entrez votre email pour etre notifie des nouveaux resultats du club.';
-            document.getElementById('followOverlay').classList.add('active');
-            document.getElementById('followOverlay').setAttribute('data-mode', 'club');
-            var inp = document.getElementById('followEmail');
-            inp.value = '';
-            inp.focus();
+        if (!window._bkUser) {
+            _showLoginRequired('\u2661', 'Suivre ce club', 'Connectez-vous avec Google pour suivre ce club et etre notifie de ses nouveaux resultats.');
             return;
         }
-        _doFollowClub(clubId, email, suffix || '');
-    };
-
-    // Hook into existing confirmFollow to support club mode
-    var _origConfirmFollow = window.confirmFollow;
-    window.confirmFollow = function() {
-        var overlay = document.getElementById('followOverlay');
-        if (overlay.getAttribute('data-mode') === 'club' && _clubFollowPending) {
-            var email = document.getElementById('followEmail').value.trim();
-            if (!email || email.indexOf('@') === -1 || email.indexOf('.') === -1) {
-                document.getElementById('followEmail').style.borderColor = '#f85149';
-                return;
-            }
-            localStorage.setItem('bk_follow_email', email);
-            closeFollowModal();
-            overlay.removeAttribute('data-mode');
-            _doFollowClub(_clubFollowPending.clubId, email, _clubFollowPending.suffix);
-            _clubFollowPending = null;
-            return;
-        }
-        _origConfirmFollow();
+        _doFollowClub(clubId, window._bkUser.email, suffix || '');
     };
 
     function _doFollowClub(clubId, email, suffix) {
@@ -9652,9 +9602,8 @@ function buildClubComparisonSummary(clubs) {
 
     window._checkClubFollowStatus = function(clubId, suffix) {
         var s = suffix || '';
-        var email = localStorage.getItem('bk_follow_email') || '';
-        var url = BASE_API + '/follow.php?club_id=' + clubId;
-        if (email) url += '&email=' + encodeURIComponent(email);
+        if (!window._bkUser) return;
+        var url = BASE_API + '/follow.php?club_id=' + clubId + '&email=' + encodeURIComponent(window._bkUser.email);
         fetch(url, { credentials: 'same-origin' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -9675,34 +9624,12 @@ function buildClubComparisonSummary(clubs) {
     window.downloadPdf = function(athleteId, athleteName) {
         _pdfAthleteId = athleteId;
         _pdfAthleteName = athleteName;
-        document.getElementById('pdfOverlay').classList.add('active');
-        var inp = document.getElementById('pdfEmail');
-        inp.value = localStorage.getItem('bk_follow_email') || localStorage.getItem('bk_pdf_email') || '';
-        inp.focus();
-    };
-
-    window.confirmPdf = function() {
-        var email = document.getElementById('pdfEmail').value.trim();
-        if (!email || email.indexOf('@') === -1 || email.indexOf('.') === -1) {
-            document.getElementById('pdfEmail').style.borderColor = '#f85149';
+        if (!window._bkUser) {
+            _showLoginRequired('\ud83d\udcc4', 'Telecharger le PDF', 'Connectez-vous avec Google pour telecharger la fiche complete de cet athlete en PDF.');
             return;
         }
-        localStorage.setItem('bk_pdf_email', email);
-        localStorage.setItem('bk_follow_email', email);
-        closePdfModal();
-        if (_pdfAthleteId) _generatePdf(_pdfAthleteId, _pdfAthleteName, email);
+        _generatePdf(athleteId, athleteName, window._bkUser.email);
     };
-
-    window.closePdfModal = function() {
-        document.getElementById('pdfOverlay').classList.remove('active');
-    };
-
-    document.getElementById('pdfOverlay').addEventListener('click', function(e) {
-        if (e.target === this) closePdfModal();
-    });
-    document.getElementById('pdfEmail').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') confirmPdf();
-    });
 
     function _generatePdf(athleteId, athleteName, email) {
         // Enregistrer l'email
