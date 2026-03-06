@@ -12,6 +12,23 @@ session_start();
 $TIME_LIMIT  = 25;  // secondes max par page
 $PARALLEL    = 7;   // athlètes scrapés en parallèle
 
+// Fichier flag : si present = scraping en cours
+$RUNNING_FLAG = dirname(__DIR__) . "/scraping_running.flag";
+
+// Actions start/stop
+if (isset($_GET['start_scraping'])) {
+    file_put_contents($RUNNING_FLAG, json_encode(['started' => date('Y-m-d H:i:s'), 'by' => $_SERVER['REMOTE_ADDR'] ?? 'cli']));
+    header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+if (isset($_GET['stop_scraping'])) {
+    if (file_exists($RUNNING_FLAG)) unlink($RUNNING_FLAG);
+    header("Location: " . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+
+$isRunning = file_exists($RUNNING_FLAG);
+
 require_once dirname(__DIR__) . "/core/credentials.php";
 
 require_once dirname(__DIR__) . "/Class/DatabaseHandler.php";
@@ -151,6 +168,17 @@ if (isset($_GET['test_url'])) {
 
 <!-- Controles -->
 <div style="margin:10px 0;padding:10px;background:#111;border:1px solid #333;border-radius:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+
+    <!-- START / STOP -->
+    <?php if (!$isRunning): ?>
+        <a href="?start_scraping" style="padding:8px 20px;background:#1a472a;border:2px solid lime;color:lime;border-radius:6px;cursor:pointer;font-family:monospace;font-size:15px;font-weight:bold;text-decoration:none;" onclick="return confirm('Lancer le scraping complet ?');">DEMARRER</a>
+    <?php else: ?>
+        <a href="?stop_scraping" style="padding:8px 20px;background:#4a1a1a;border:2px solid red;color:red;border-radius:6px;cursor:pointer;font-family:monospace;font-size:15px;font-weight:bold;text-decoration:none;" onclick="return confirm('Arreter le scraping ?');">ARRETER</a>
+        <span style="color:lime;font-size:13px;">En cours depuis <?php $fl = json_decode(file_get_contents($RUNNING_FLAG), true); echo $fl['started'] ?? '?'; ?></span>
+    <?php endif; ?>
+
+    <span style="color:#333;font-size:18px;">|</span>
+
     <!-- Reset progression -->
     <form method="GET" style="display:flex;gap:6px;align-items:center;">
         <label style="color:cyan;font-size:13px;">Reprendre a :</label>
@@ -171,6 +199,17 @@ if (isset($_GET['test_url'])) {
 </div>
 
 <?php
+// Si pas en cours, afficher le statut et stopper
+if (!$isRunning) {
+    $progressFile = dirname(__DIR__) . "/progress.txt";
+    $currentProgress = file_exists($progressFile) ? (int)file_get_contents($progressFile) : 0;
+    echo "<p style='color:orange;font-size:16px;'>Scraping en pause. Cliquez sur <b>DEMARRER</b> pour lancer.</p>";
+    echo "<p style='color:#888;'>Progression sauvegardee : position <b>$currentProgress</b></p>";
+    echo "</body></html>";
+    $databaseHandler = null;
+    exit;
+}
+
 // =============================================
 // 1. Charger les URLs (cache local)
 // =============================================
@@ -386,12 +425,19 @@ $remaining = $totalAthletes - $totalDone;
 echo "<p class='timer'>$batchDone athletes en {$pageTime}s | Total : $totalDone / $totalAthletes | Restant : $remaining</p>";
 
 if ($id <= $maxId) {
-    $etaSec = $batchDone > 0 ? round(($remaining * $pageTime) / $batchDone) : 0;
-    $etaH = floor($etaSec / 3600);
-    $etaMin = floor(($etaSec % 3600) / 60);
-    echo "<p class='timer'>ETA : ~{$etaH}h {$etaMin}min</p>";
-    header("Refresh: 1");
+    // Verifier que le flag existe toujours (arret propre si quelqu'un clique STOP)
+    if (file_exists($RUNNING_FLAG)) {
+        $etaSec = $batchDone > 0 ? round(($remaining * $pageTime) / $batchDone) : 0;
+        $etaH = floor($etaSec / 3600);
+        $etaMin = floor(($etaSec % 3600) / 60);
+        echo "<p class='timer'>ETA : ~{$etaH}h {$etaMin}min</p>";
+        header("Refresh: 1");
+    } else {
+        echo "<p style='color:orange;font-size:16px;'>Scraping arrete. Progression sauvegardee a la position <b>$id</b>.</p>";
+    }
 } else {
+    // Termine : supprimer le flag
+    if (file_exists($RUNNING_FLAG)) unlink($RUNNING_FLAG);
     echo "<h2>TERMINE ! $totalAthletes athletes traites.</h2>";
 }
 ?>
