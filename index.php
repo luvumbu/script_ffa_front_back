@@ -5573,6 +5573,16 @@ function escapeHtml(str) {
     d.textContent = str;
     return d.innerHTML;
 }
+function _buildLimitMsg(data) {
+    var sub = data.logged
+        ? 'Vous avez atteint votre limite de <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches par jour</b>.<br><span style="color:#8b949e;font-size:16px;">La limite se reinitialise chaque jour a minuit.</span>'
+        : 'Vous avez utilise vos <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches</b> du jour.<br><a href="login.php" style="color:#6c5ce7;text-decoration:underline;font-size:18px;font-weight:700;">Connectez-vous</a> pour passer a <b style="color:#55efc4;font-size:22px;">100 recherches/jour</b> !';
+    return '<div style="text-align:center;padding:50px 30px;color:#c9d1d9;background:#0d1117;border:2px solid #ff7675;border-radius:16px;margin:20px 0;">'
+        + '<div style="font-size:70px;margin-bottom:16px;">&#9203;</div>'
+        + '<div style="font-size:28px;font-weight:800;color:#ff7675;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;">Limite de recherches atteinte</div>'
+        + '<div style="font-size:18px;line-height:2;">' + sub + '</div>'
+        + '</div>';
+}
 function dateFR(d) {
     if (!d || d === '-') return '-';
     if (d.indexOf('0000') === 0) return '-';
@@ -5844,13 +5854,7 @@ function _clubSearchExec(suffix) {
                 inp.style.borderColor = '#1e2a3a';
                 if (!data.success) {
                     if (data.limit_reached) {
-                        var lmsg = data.logged
-                            ? 'Vous avez atteint la limite de <b style="color:#a29bfe;">' + data.limit + ' recherches</b> par jour.<br>Revenez demain !'
-                            : 'Vous avez utilisé vos <b style="color:#a29bfe;">' + data.limit + ' recherches</b> du jour.<br>Revenez demain ou <a href="login.php" style="color:#6c5ce7;text-decoration:underline;">connectez-vous</a> pour passer à 100 recherches/jour !';
-                        content.innerHTML = '<div style="text-align:center;padding:30px 20px;color:#c9d1d9;">'
-                            + '<div style="font-size:40px;margin-bottom:12px;">&#9203;</div>'
-                            + '<div style="font-size:16px;font-weight:600;color:#ff7675;margin-bottom:8px;">Limite de recherches atteinte</div>'
-                            + '<div style="color:#8b949e;font-size:14px;line-height:1.6;">' + lmsg + '</div></div>';
+                        content.innerHTML = _buildLimitMsg(data);
                         return;
                     }
                     content.innerHTML = '<div class="loading-msg">' + escapeHtml(data.error || 'Erreur') + '</div>';
@@ -8315,13 +8319,7 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                 if (!data.success) {
                     if (data.limit_reached) {
                         status.innerHTML = '';
-                        var lmsg = data.logged
-                            ? 'Vous avez atteint la limite de <b style="color:#a29bfe;">' + data.limit + ' recherches</b> par jour.<br>Revenez demain !'
-                            : 'Vous avez utilisé vos <b style="color:#a29bfe;">' + data.limit + ' recherches</b> du jour.<br>Revenez demain ou <a href="login.php" style="color:#6c5ce7;text-decoration:underline;">connectez-vous</a> pour passer à 100 recherches/jour !';
-                        results.innerHTML = '<div style="text-align:center;padding:30px 20px;color:#c9d1d9;">'
-                            + '<div style="font-size:40px;margin-bottom:12px;">&#9203;</div>'
-                            + '<div style="font-size:16px;font-weight:600;color:#ff7675;margin-bottom:8px;">Limite de recherches atteinte</div>'
-                            + '<div style="color:#8b949e;font-size:14px;line-height:1.6;">' + lmsg + '</div></div>';
+                        results.innerHTML = _buildLimitMsg(data);
                         results.style.display = 'block';
                         paginated.style.display = 'none';
                         input.style.borderColor = '#ff7675';
