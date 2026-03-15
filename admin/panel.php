@@ -152,7 +152,8 @@ $rAll = $conn->query("SELECT u.id_user, u.email, u.nom, u.prenom, u.role, u.pict
     u.google_id, u.oauth_provider, u.locale,
     (SELECT COUNT(*) FROM athlete_follows af WHERE af.email = u.email) as nb_follows_ath,
     (SELECT COUNT(*) FROM club_follows cf WHERE cf.email = u.email) as nb_follows_club,
-    (SELECT COUNT(*) FROM user_sessions us WHERE us.id_user = u.id_user AND us.expire_at > NOW()) as sessions_active
+    (SELECT COUNT(*) FROM user_sessions us WHERE us.id_user = u.id_user AND us.expire_at > NOW()) as sessions_active,
+    (SELECT COUNT(*) FROM logs l WHERE l.uid = u.id_user AND DATE(l.ts) = CURDATE()) as req_today
     FROM users u ORDER BY u.last_login DESC, u.id_user DESC");
 if ($rAll) while ($row = $rAll->fetch_assoc()) $allUsers[] = $row;
 
@@ -1123,7 +1124,7 @@ $actionColors = [
 
     <?php $panelAccessList = getPanelAccessList(); ?>
     <table>
-        <thead><tr><th>#</th><th>User</th><th>Role</th><th>Derniere connexion</th><th>Athletes suivis</th><th>Clubs suivis</th><th>Session</th><th>Panel</th><th>Details</th></tr></thead>
+        <thead><tr><th>#</th><th>User</th><th>Role</th><th>Derniere connexion</th><th>Req/jour</th><th>Athletes suivis</th><th>Clubs suivis</th><th>Session</th><th>Panel</th><th>Details</th></tr></thead>
         <tbody id="userListBody">
         <?php foreach ($allUsers as $idx => $u): ?>
         <tr class="user-row" data-filter="<?= htmlspecialchars(strtolower(($u['email'] ?? '') . ' ' . ($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? ''))) ?>">
@@ -1135,6 +1136,7 @@ $actionColors = [
             </td>
             <td><span class="badge badge-<?= $u['role'] ?>"><?= $u['role'] ?></span></td>
             <td style="font-size:12px;color:#8b949e;"><?= $u['last_login'] ? date('d/m/Y H:i', strtotime($u['last_login'])) : '-' ?></td>
+            <td style="text-align:center;"><?= $u['req_today'] > 0 ? '<span style="color:#f59e0b;font-weight:700;">' . $u['req_today'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
             <td style="text-align:center;"><?= $u['nb_follows_ath'] > 0 ? '<span style="color:#a29bfe;font-weight:700;">' . $u['nb_follows_ath'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
             <td style="text-align:center;"><?= $u['nb_follows_club'] > 0 ? '<span style="color:#34d399;font-weight:700;">' . $u['nb_follows_club'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
             <td style="text-align:center;"><?= $u['sessions_active'] > 0 ? '<span style="color:#55efc4;">Active</span>' : '<span style="color:#484f58;">-</span>' ?></td>
@@ -1154,7 +1156,7 @@ $actionColors = [
         </tr>
         <!-- Drawer detail cache -->
         <tr id="userDetail_<?= $u['id_user'] ?>" style="display:none;">
-            <td colspan="9" style="padding:16px;background:#0d1117;">
+            <td colspan="10" style="padding:16px;background:#0d1117;">
                 <div style="display:flex;gap:24px;flex-wrap:wrap;">
                     <!-- Infos -->
                     <div style="flex:1;min-width:200px;">
