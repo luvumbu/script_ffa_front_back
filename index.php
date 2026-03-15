@@ -722,11 +722,35 @@ document.addEventListener('DOMContentLoaded', updateAllCmpButtons);
 </script>
 <?php include 'nav.php'; ?>
 
+<?php
+// Compteur recherches du jour pour cet utilisateur
+$_slUsed = 0;
+$_slLimit = 0;
+$_slIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+$_slIp = trim(explode(',', $_slIp)[0]);
+if ($_slIp !== '' && empty($_COOKIE['bk_sa_token'])) {
+    $_slFile = __DIR__ . '/logs/.search_limits.php';
+    $_slIsLogged = !empty($_COOKIE['bk_token']);
+    $_slLimit = $_slIsLogged ? 100 : 10;
+    if (file_exists($_slFile)) {
+        $_slRaw = file_get_contents($_slFile);
+        $_slPos = strpos($_slRaw, "\n");
+        if ($_slPos !== false) {
+            $_slArr = json_decode(substr($_slRaw, $_slPos + 1), true) ?: [];
+            if (($_slArr['_date'] ?? '') === date('Y-m-d')) {
+                $_slKey = $_slIsLogged ? 'u_' . $_slIp : $_slIp;
+                $_slUsed = (int)($_slArr[$_slKey] ?? 0);
+            }
+        }
+    }
+}
+?>
+
 <nav aria-label="Navigation principale">
     <a href="<?= $_canonBase ?>/" class="logo">Bokonzi</a>
     <a href="<?= $_canonBase ?>/?page=accueil" class="<?= $page === 'accueil' ? 'active' : '' ?>">Accueil</a>
     <a href="<?= $_canonBase ?>/?page=athletes" class="<?= $page === 'athletes' ? 'active' : '' ?>">Athlètes</a>
-    <a href="<?= $_canonBase ?>/?page=recherche" class="<?= $page === 'recherche' ? 'active' : '' ?>">Recherche</a>
+    <a href="<?= $_canonBase ?>/?page=recherche" class="<?= $page === 'recherche' ? 'active' : '' ?>">Recherche</a><?php if ($_slLimit > 0): ?><span id="searchQuota" title="Recherches utilisees aujourd'hui" style="font-size:11px;padding:2px 7px;border-radius:10px;margin-left:-6px;font-weight:700;cursor:default;<?= $_slUsed > $_slLimit * 0.8 ? 'background:#ef444430;color:#ff7675;border:1px solid #ef4444;' : 'background:#6c5ce720;color:#a29bfe;border:1px solid #6c5ce740;' ?>"><?= $_slUsed ?>/<?= $_slLimit ?></span><?php endif; ?>
     <a href="<?= $_canonBase ?>/?page=clubs" class="<?= $page === 'clubs' ? 'active' : '' ?>">Clubs</a>
     <a href="<?= $_canonBase ?>/?page=epreuves" class="<?= $page === 'epreuves' ? 'active' : '' ?>">Épreuves</a>
     <a href="<?= $_canonBase ?>/?page=villes" class="<?= $page === 'villes' ? 'active' : '' ?>">Villes</a>
@@ -5583,6 +5607,17 @@ function _buildLimitMsg(data) {
         + '<div style="font-size:18px;line-height:2;">' + sub + '</div>'
         + '</div>';
 }
+function _updateSearchQuota(data) {
+    var el = document.getElementById('searchQuota');
+    if (!el || !data.search_limit) return;
+    var u = data.search_used || 0, l = data.search_limit;
+    el.textContent = u + '/' + l;
+    if (u > l * 0.8) {
+        el.style.background = '#ef444430'; el.style.color = '#ff7675'; el.style.borderColor = '#ef4444';
+    } else {
+        el.style.background = '#6c5ce720'; el.style.color = '#a29bfe'; el.style.borderColor = '#6c5ce740';
+    }
+}
 function dateFR(d) {
     if (!d || d === '-') return '-';
     if (d.indexOf('0000') === 0) return '-';
@@ -5852,6 +5887,7 @@ function _clubSearchExec(suffix) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 inp.style.borderColor = '#1e2a3a';
+                _updateSearchQuota(data);
                 if (!data.success) {
                     if (data.limit_reached) {
                         content.innerHTML = _buildLimitMsg(data);
@@ -8315,6 +8351,7 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
 
                 input.style.borderColor = '#1a2540';
                 input.classList.remove('ls-loading');
+                _updateSearchQuota(data);
 
                 if (!data.success) {
                     if (data.limit_reached) {

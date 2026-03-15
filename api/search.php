@@ -29,6 +29,10 @@ $ip = trim(explode(',', $ip)[0]);
 $_isLogged = !empty($_COOKIE['bk_token']);
 $_isSA = !empty($_COOKIE['bk_sa_token']);
 
+// Compteurs globaux pour la reponse
+$_searchUsed = 0;
+$_searchLimit = 0;
+
 // Super admin : illimite
 if (!$_isSA) {
     // Whitelist Google + Hostinger + localhost + bots
@@ -53,6 +57,8 @@ if (!$_isSA) {
         $slCount = ($slData[$slKey] ?? 0) + 1;
         $slData[$slKey] = $slCount;
         @file_put_contents($slFile, "<?php die('Acces interdit'); ?>\n" . json_encode($slData), LOCK_EX);
+        $_searchUsed = $slCount;
+        $_searchLimit = $slLimit;
         if ($slCount > $slLimit) {
             jsonResponse([
                 'success' => false,
@@ -358,6 +364,8 @@ $resp = [
     'limit'      => $limit,
     'total_pages' => $totalPages,
     'athletes'   => $athletes,
+    'search_used'  => $_searchUsed,
+    'search_limit' => $_searchLimit,
 ];
 $json = json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 @file_put_contents($cacheFile, $json, LOCK_EX);
