@@ -27,6 +27,7 @@ define('BK_API_KEY', 'bk_s3cr3t_2026_xK9mP');
 
 // Connexion BDD (partagee avec core/db.php)
 require_once __DIR__ . '/../core/db.php';
+require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/ip_logger.php';
 logIp();
 

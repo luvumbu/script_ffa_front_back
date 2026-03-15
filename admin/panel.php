@@ -169,13 +169,13 @@ foreach ($allUsers as $u) {
     $userFollowsDetail[$uid] = ['athletes' => $fa, 'clubs' => $fc];
 }
 
-// Historique recherche par user (via logs table — par IP de la derniere session)
+// Historique recherche par user (via logs.uid pour trouver les IPs)
 $userSearchHistory = [];
 foreach ($allUsers as $u) {
     $uid = (int)$u['id_user'];
-    // Trouver les IPs utilisees par ce user via logs
+    // Trouver les IPs utilisees par ce user via uid dans logs
     $ips = [];
-    $r = $conn->query("SELECT DISTINCT ip FROM logs WHERE sid IN (SELECT token FROM user_sessions WHERE id_user = $uid) AND ip != '' LIMIT 10");
+    $r = $conn->query("SELECT DISTINCT ip FROM logs WHERE uid = $uid AND ip != '' LIMIT 10");
     if ($r) while ($row = $r->fetch_assoc()) $ips[] = "'" . $conn->real_escape_string($row['ip']) . "'";
     if (empty($ips)) { $userSearchHistory[$uid] = []; continue; }
     $ipList = implode(',', $ips);
