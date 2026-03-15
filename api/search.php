@@ -23,6 +23,48 @@
 
 require_once __DIR__ . '/config.php';
 
+// Rate limiting recherches
+$ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+$ip = trim(explode(',', $ip)[0]);
+$_isLogged = !empty($_COOKIE['bk_token']);
+$_isSA = !empty($_COOKIE['bk_sa_token']);
+
+// Super admin : illimite
+if (!$_isSA) {
+    // Whitelist Google + Hostinger + localhost + bots
+    $wl = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
+    $_skip = false;
+    foreach ($wl as $p) { if ($ip !== '' && strpos($ip, $p) === 0) { $_skip = true; break; } }
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    if ($ua === '' || strpos($ua, 'curl') !== false || strpos($ua, 'bot') !== false || strpos($ua, 'Bot') !== false) $_skip = true;
+
+    if (!$_skip && $ip !== '') {
+        $slFile = __DIR__ . '/../logs/.search_limits.php';
+        $slData = [];
+        $today = date('Y-m-d');
+        if (file_exists($slFile)) {
+            $raw = file_get_contents($slFile);
+            $pos = strpos($raw, "\n");
+            if ($pos !== false) $slData = json_decode(substr($raw, $pos + 1), true) ?: [];
+        }
+        if (($slData['_date'] ?? '') !== $today) $slData = ['_date' => $today];
+        $slKey = $_isLogged ? 'u_' . $ip : $ip;
+        $slLimit = $_isLogged ? 100 : 10;
+        $slCount = ($slData[$slKey] ?? 0) + 1;
+        $slData[$slKey] = $slCount;
+        @file_put_contents($slFile, "<?php die('Acces interdit'); ?>\n" . json_encode($slData), LOCK_EX);
+        if ($slCount > $slLimit) {
+            jsonResponse([
+                'success' => false,
+                'limit_reached' => true,
+                'limit' => $slLimit,
+                'logged' => $_isLogged,
+                'remaining' => 0,
+                'error' => 'Limite de recherches atteinte'
+            ], 429);
+        }
+    }
+}
 
 function highestNiveau($niveaux) {
     $order = ['IE'=>100,'IR'=>99];
@@ -69,8 +111,13 @@ $where = [];
 $joins = [];
 
 if ($nom !== '') {
-    $nomEsc = $conn->real_escape_string($nom);
-    $where[] = "a.nom_complet_athlete LIKE '%$nomEsc%'";
+    $nomWords = preg_split('/\s+/', $nom);
+    $nomConds = [];
+    foreach ($nomWords as $w) {
+        $wEsc = $conn->real_escape_string($w);
+        $nomConds[] = "a.nom_complet_athlete LIKE '%$wEsc%'";
+    }
+    $where[] = '(' . implode(' AND ', $nomConds) . ')';
 }
 
 if ($nom1 !== '') {

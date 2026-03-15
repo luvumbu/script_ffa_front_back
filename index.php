@@ -42,7 +42,7 @@ logIp();
     $data[$ip] = $count;
     @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data));
 
-    if ($count > 20) {
+    if ($count > 10) {
         // Rediriger vers login Google
         header('Location: ' . (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false ? '/BK' : '') . '/login.php?limit=1');
         exit;
@@ -276,6 +276,7 @@ if ($page === 'accueil') {
     <!-- Google AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7899923856846249"
      crossorigin="anonymous"></script>
+    <meta name="google-adsense-account" content="ca-pub-7899923856846249">
     <title><?= $seoTitle ?></title>
     <meta name="description" content="<?= htmlspecialchars($seoDesc) ?>">
 <?php if (!empty($seoNoIndex)): ?>
@@ -296,6 +297,7 @@ if ($page === 'accueil') {
     <meta name="twitter:description" content="<?= htmlspecialchars($seoDesc) ?>">
     <meta name="twitter:image" content="<?= $_canonBase ?>/og-image.png">
     <meta name="theme-color" content="#0d1117">
+    <link rel="icon" type="image/svg+xml" href="<?= $_canonBase ?>/favicon.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= $_canonBase ?>/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="<?= $_canonBase ?>/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="<?= $_canonBase ?>/apple-touch-icon.png">
@@ -836,6 +838,12 @@ if ($page === 'accueil'):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTabAccueil('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabAccueil('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabAccueil('resume')">Resume</button>
+    </div>
+    <div class="club-search-bar" id="clubSearchBarAccueil" style="display:none;padding:8px 16px;">
+        <div style="position:relative;">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#5a6580;font-size:14px;">&#128269;</span>
+            <input type="text" id="clubSearchInputAccueil" placeholder="Rechercher un athlète dans ce club..." autocomplete="off" style="width:100%;padding:8px 12px 8px 32px;border-radius:8px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;outline:none;transition:border-color .2s;">
+        </div>
     </div>
     <div id="clubDetailContentAccueil" class="club-detail-content"></div>
     <div id="clubQRAccueil"></div>
@@ -1882,6 +1890,12 @@ if ($clubFilter !== ''):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
+    </div>
+    <div class="club-search-bar" id="clubSearchBar" style="display:none;padding:8px 16px;">
+        <div style="position:relative;">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#5a6580;font-size:14px;">&#128269;</span>
+            <input type="text" id="clubSearchInput" placeholder="Rechercher un athlète dans ce club..." autocomplete="off" style="width:100%;padding:8px 12px 8px 32px;border-radius:8px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;outline:none;transition:border-color .2s;">
+        </div>
     </div>
     <div id="clubDetailContent" class="club-detail-content">
         <div class="loading-msg">Chargement...</div>
@@ -3008,6 +3022,12 @@ elseif ($page === 'clubs'):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
+    </div>
+    <div class="club-search-bar" id="clubSearchBar" style="display:none;padding:8px 16px;">
+        <div style="position:relative;">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#5a6580;font-size:14px;">&#128269;</span>
+            <input type="text" id="clubSearchInput" placeholder="Rechercher un athlète dans ce club..." autocomplete="off" style="width:100%;padding:8px 12px 8px 32px;border-radius:8px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;outline:none;transition:border-color .2s;">
+        </div>
     </div>
     <div id="clubDetailContent" class="club-detail-content">
         <div class="loading-msg">Cliquez sur un club pour voir ses details</div>
@@ -4619,6 +4639,7 @@ elseif ($page === 'comparer'):
         </div>
     </div>
     <div id="cmpSelected" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;"></div>
+    <p id="cmpDescription" style="color:#8b949e;font-size:13px;line-height:1.6;margin:12px 0 16px;display:none;"></p>
     <div style="margin-top:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;">
             <label style="display:block;color:#8b949e;font-size:12px;font-weight:600;text-transform:uppercase;margin-bottom:6px;">Épreuve à comparer</label>
@@ -4626,8 +4647,9 @@ elseif ($page === 'comparer'):
                 <option value="">-- Ajoutez des athletes d'abord --</option>
             </select>
         </div>
-        <div>
+        <div style="display:flex;gap:8px;">
             <button onclick="compareNow()" style="padding:10px 28px;background:linear-gradient(135deg,#f59e0b,#ec4899);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Comparer</button>
+            <button id="btnCmpShare" onclick="copyCmpLink()" style="padding:10px 16px;background:#161b22;border:1px solid #1e2a3a;border-radius:8px;color:#8b949e;font-size:13px;cursor:pointer;">&#128279; Copier le lien</button>
         </div>
     </div>
 </div>
@@ -4671,8 +4693,9 @@ elseif ($page === 'comparer'):
         </div>
     </div>
     <div id="cmpClubSelected" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;"></div>
-    <div style="margin-top:16px;">
+    <div style="margin-top:16px;display:flex;gap:8px;">
         <button onclick="compareClubsNow()" style="padding:10px 28px;background:linear-gradient(135deg,#8b5cf6,#06b6d4);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Comparer les clubs</button>
+        <button id="btnCmpShare" onclick="copyCmpLink()" style="padding:10px 16px;background:#161b22;border:1px solid #1e2a3a;border-radius:8px;color:#8b949e;font-size:13px;cursor:pointer;">&#128279; Copier le lien</button>
     </div>
 </div>
 
@@ -5732,6 +5755,7 @@ function _fillClubPanel(data, suffix) {
         btnFC.onclick = function() { toggleFollowClub(data.club.id_club, s); };
         _checkClubFollowStatus(data.club.id_club, s);
     }
+    _clubSearchInit(s);
     _renderClubTab('epreuves', s);
 }
 function _openClubPanel(fetchUrl, suffix) {
@@ -5764,6 +5788,8 @@ function _closeClubPanel(suffix) {
     var s = suffix || '';
     var panel = document.getElementById('clubDetailPanel' + s);
     if (panel) panel.classList.remove('active');
+    var bar = document.getElementById('clubSearchBar' + s);
+    if (bar) bar.style.display = 'none';
     window['_clubDetailData' + s] = null;
     window['_clubYearDataCache' + s] = {};
     if (window['_clubCompareChart' + s]) {
@@ -5771,12 +5797,120 @@ function _closeClubPanel(suffix) {
         window['_clubCompareChart' + s] = null;
     }
 }
+// --- Club athlete search ---
+function _clubSearchInit(suffix) {
+    var s = suffix || '';
+    var bar = document.getElementById('clubSearchBar' + s);
+    var inp = document.getElementById('clubSearchInput' + s);
+    if (!bar || !inp) return;
+    bar.style.display = 'block';
+    inp.value = '';
+    window['_clubSearchTimer' + s] = null;
+    window['_clubSearchCtrl' + s] = null;
+    inp.removeEventListener('input', inp._clubSearchHandler);
+    inp._clubSearchHandler = function() { _clubSearchExec(s); };
+    inp.addEventListener('input', inp._clubSearchHandler);
+}
+function _clubSearchExec(suffix) {
+    var s = suffix || '';
+    var inp = document.getElementById('clubSearchInput' + s);
+    var content = document.getElementById('clubDetailContent' + s);
+    var d = window['_clubDetailData' + s];
+    if (!inp || !content || !d) return;
+    var q = inp.value.trim();
+    clearTimeout(window['_clubSearchTimer' + s]);
+    if (q.length < 2) {
+        inp.style.borderColor = '#1e2a3a';
+        if (q.length === 0) {
+            // Restore active tab
+            var panel = document.getElementById('clubDetailPanel' + s);
+            var activeTab = panel ? panel.querySelector('.club-detail-tab.active') : null;
+            var tab = activeTab ? activeTab.getAttribute('data-tab') : 'epreuves';
+            _renderClubTab(tab, s);
+        }
+        return;
+    }
+    inp.style.borderColor = '#a29bfe';
+    content.innerHTML = '<div class="loading-msg"><span class="ls-spinner"></span> Recherche...</div>';
+    window['_clubSearchTimer' + s] = setTimeout(function() {
+        if (window['_clubSearchCtrl' + s]) window['_clubSearchCtrl' + s].abort();
+        var ctrl = new AbortController();
+        window['_clubSearchCtrl' + s] = ctrl;
+        var clubName = d.club ? d.club.nom_club : '';
+        var url = BASE_API + '/search.php?club=' + encodeURIComponent(clubName) + '&nom=' + encodeURIComponent(q) + '&limit=50';
+        fetch(url, { signal: ctrl.signal })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                inp.style.borderColor = '#1e2a3a';
+                if (!data.success) {
+                    if (data.limit_reached) {
+                        var lmsg = data.logged
+                            ? 'Vous avez atteint la limite de <b style="color:#a29bfe;">' + data.limit + ' recherches</b> par jour.<br>Revenez demain !'
+                            : 'Vous avez utilisé vos <b style="color:#a29bfe;">' + data.limit + ' recherches</b> du jour.<br>Revenez demain ou <a href="login.php" style="color:#6c5ce7;text-decoration:underline;">connectez-vous</a> pour passer à 100 recherches/jour !';
+                        content.innerHTML = '<div style="text-align:center;padding:30px 20px;color:#c9d1d9;">'
+                            + '<div style="font-size:40px;margin-bottom:12px;">&#9203;</div>'
+                            + '<div style="font-size:16px;font-weight:600;color:#ff7675;margin-bottom:8px;">Limite de recherches atteinte</div>'
+                            + '<div style="color:#8b949e;font-size:14px;line-height:1.6;">' + lmsg + '</div></div>';
+                        return;
+                    }
+                    content.innerHTML = '<div class="loading-msg">' + escapeHtml(data.error || 'Erreur') + '</div>';
+                    return;
+                }
+                var items = data.athletes || [];
+                var total = data.total || 0;
+                if (items.length === 0) {
+                    content.innerHTML = '<div style="text-align:center;padding:30px;color:#5a6580;">Aucun athlète trouvé pour "<b>' + escapeHtml(q) + '</b>"</div>';
+                    return;
+                }
+                var thRow = '<tr><th>#</th><th>Athlète</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Records</th></tr>';
+                var html = '<div style="padding:8px 0 4px;color:#5a6580;font-size:12px;">' + total + ' résultat' + (total > 1 ? 's' : '') + ' pour "<b>' + escapeHtml(q) + '</b>"</div>';
+                html += '<div class="table-wrap">';
+                html += '<table class="bk-table">' + thRow + '</table>';
+                html += '<table class="bk-table">';
+                items.forEach(function(a, i) {
+                    var topRecs = a.top_records || [];
+                    var recHtml = '';
+                    if (topRecs.length > 0) {
+                        topRecs.forEach(function(tr) {
+                            recHtml += '<div style="font-size:11px;line-height:1.6;"><a href="?page=recherche&epreuve=' + encodeURIComponent(tr.epreuve) + '" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(tr.epreuve) + '</a> <span class="perf-val" style="font-size:11px;">' + escapeHtml(tr.performance) + '</span> ' + _nivBadge(tr.top_niveau || _highestNiveau(tr.niveaux || [])) + '</div>';
+                        });
+                    } else {
+                        var nbRec = a.nb_records || 0;
+                        recHtml = nbRec > 0 ? '<span class="badge badge-perf">' + nbRec + '</span>' : '-';
+                    }
+                    html += '<tr>'
+                        + '<td>' + (i + 1) + '</td>'
+                        + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + highlight(a.nom_complet, q) + '</a></b>'
+                        + (a.date_naissance ? '<br><span style="font-size:11px;color:#5a6580;">' + a.date_naissance.substring(0, 4) + '</span>' : '')
+                        + '</td>'
+                        + '<td><span class="badge badge-cat">' + escapeHtml(a.categorie) + '</span></td>'
+                        + '<td><span class="badge badge-' + (a.sexe || '').toLowerCase() + '">' + escapeHtml(a.sexe) + '</span></td>'
+                        + '<td>' + escapeHtml(a.nationalite) + '</td>'
+                        + '<td>' + _nivBadge(_highestNiveau(a.niveaux || [])) + '</td>'
+                        + '<td>' + recHtml + '</td>'
+                        + '</tr>';
+                });
+                html += '</table>';
+                html += '<table class="bk-table">' + thRow + '</table>';
+                html += '</div>';
+                content.innerHTML = html;
+            })
+            .catch(function(e) {
+                if (e.name === 'AbortError') return;
+                inp.style.borderColor = '#ff7675';
+                content.innerHTML = '<div class="loading-msg">Erreur de connexion</div>';
+            });
+    }, 350);
+}
 function _switchClubTab(tab, suffix) {
     var s = suffix || '';
     var panel = document.getElementById('clubDetailPanel' + s);
     if (panel) panel.querySelectorAll('.club-detail-tab').forEach(function(t) {
         t.classList.toggle('active', t.getAttribute('data-tab') === tab);
     });
+    // Clear search input when switching tabs
+    var inp = document.getElementById('clubSearchInput' + s);
+    if (inp) { inp.value = ''; inp.style.borderColor = '#1e2a3a'; }
     _renderClubTab(tab, s);
 }
 function _nivBadge(code) {
@@ -8181,13 +8315,13 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                 if (!data.success) {
                     if (data.limit_reached) {
                         status.innerHTML = '';
+                        var lmsg = data.logged
+                            ? 'Vous avez atteint la limite de <b style="color:#a29bfe;">' + data.limit + ' recherches</b> par jour.<br>Revenez demain !'
+                            : 'Vous avez utilisé vos <b style="color:#a29bfe;">' + data.limit + ' recherches</b> du jour.<br>Revenez demain ou <a href="login.php" style="color:#6c5ce7;text-decoration:underline;">connectez-vous</a> pour passer à 100 recherches/jour !';
                         results.innerHTML = '<div style="text-align:center;padding:30px 20px;color:#c9d1d9;">'
                             + '<div style="font-size:40px;margin-bottom:12px;">&#9203;</div>'
                             + '<div style="font-size:16px;font-weight:600;color:#ff7675;margin-bottom:8px;">Limite de recherches atteinte</div>'
-                            + '<div style="color:#8b949e;font-size:14px;line-height:1.6;">'
-                            + 'Vous avez utilisé vos <b style="color:#a29bfe;">' + data.limit + ' recherches</b> du jour.<br>'
-                            + 'Revenez demain ou <a href="login.php" style="color:#6c5ce7;text-decoration:underline;">connectez-vous</a> pour des recherches illimitées !'
-                            + '</div></div>';
+                            + '<div style="color:#8b949e;font-size:14px;line-height:1.6;">' + lmsg + '</div></div>';
                         results.style.display = 'block';
                         paginated.style.display = 'none';
                         input.style.borderColor = '#ff7675';
@@ -8509,6 +8643,27 @@ function addAthleteToCompare(id, name) {
             var ath = cmpAthletes.find(function(x) { return x.id === id; });
             if (ath) ath.data = data;
             updateEpreuveList();
+            renderSelectedAthletes();
+            // Auto-compare si chargement depuis URL
+            if (window._cmpAutoExpected && window._cmpAutoExpected > 0) {
+                var ready = cmpAthletes.filter(function(a) { return a.data; });
+                if (ready.length >= window._cmpAutoExpected && ready.length >= 2) {
+                    window._cmpAutoExpected = 0;
+                    setTimeout(function() {
+                        // Description SEO
+                        var descEl = document.getElementById('cmpDescription');
+                        var names = cmpAthletes.map(function(a) { return a.name; });
+                        if (descEl && names.length >= 2) {
+                            descEl.style.display = 'block';
+                            descEl.textContent = 'Comparaison entre ' + names.slice(0, -1).join(', ') + ' et ' + names[names.length - 1] + ' — records personnels, progressions, médailles et statistiques.';
+                        }
+                        // Pre-selectionner la 1ere epreuve commune
+                        var sel = document.getElementById('cmpEpreuve');
+                        if (sel && sel.options.length > 1) sel.selectedIndex = 1;
+                        compareNow();
+                    }, 300);
+                }
+            }
         });
 }
 
@@ -8529,7 +8684,7 @@ function renderSelectedAthletes() {
     cmpAthletes.forEach(function(a) {
         var chip = document.createElement('span');
         chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:' + a.color + '22;border:1px solid ' + a.color + '60;border-radius:8px;color:' + a.color + ';font-size:13px;font-weight:600;';
-        chip.innerHTML = escapeHtml(a.name) + (a.data ? '' : ' <span style="color:#5a6580;font-size:11px;">chargement...</span>') + ' <span onclick="removeFromCompare(' + a.id + ')" style="cursor:pointer;margin-left:4px;color:#ff6b6b;font-size:16px;">&times;</span>';
+        chip.innerHTML = '<a href="?page=profil&id=' + a.id + '" style="color:inherit;text-decoration:none;border-bottom:1px dashed ' + a.color + '60;" title="Voir le profil">' + escapeHtml(a.name) + '</a>' + (a.data ? '' : ' <span style="color:#5a6580;font-size:11px;">chargement...</span>') + ' <span onclick="removeFromCompare(' + a.id + ')" style="cursor:pointer;margin-left:4px;color:#ff6b6b;font-size:16px;">&times;</span>';
         container.appendChild(chip);
     });
 }
@@ -9085,6 +9240,14 @@ function addClubToCompare(id, name) {
             var club = cmpClubs.find(function(x) { return x.id === id; });
             if (club) club.data = data;
             renderSelectedClubs();
+            // Auto-compare clubs si chargement depuis URL
+            if (window._cmpAutoExpectedClubs && window._cmpAutoExpectedClubs > 0) {
+                var ready = cmpClubs.filter(function(c) { return c.data; });
+                if (ready.length >= window._cmpAutoExpectedClubs && ready.length >= 2) {
+                    window._cmpAutoExpectedClubs = 0;
+                    setTimeout(function() { compareClubsNow(); }, 200);
+                }
+            }
         });
 }
 
@@ -9104,7 +9267,7 @@ function renderSelectedClubs() {
     cmpClubs.forEach(function(c) {
         var chip = document.createElement('span');
         chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:' + c.color + '22;border:1px solid ' + c.color + '60;border-radius:8px;color:' + c.color + ';font-size:13px;font-weight:600;';
-        chip.innerHTML = escapeHtml(c.name) + (c.data ? ' <span style="color:#5a6580;font-size:11px;">(' + c.data.total_athletes + ' ath.)</span>' : ' <span style="color:#5a6580;font-size:11px;">chargement...</span>') + ' <span onclick="removeClubFromCompare(' + c.id + ')" style="cursor:pointer;margin-left:4px;color:#ff6b6b;font-size:16px;">&times;</span>';
+        chip.innerHTML = '<a href="?page=recherche&club=' + encodeURIComponent(c.name) + '" style="color:inherit;text-decoration:none;border-bottom:1px dashed ' + c.color + '60;" title="Voir le club">' + escapeHtml(c.name) + '</a>' + (c.data ? ' <span style="color:#5a6580;font-size:11px;">(' + c.data.total_athletes + ' ath.)</span>' : ' <span style="color:#5a6580;font-size:11px;">chargement...</span>') + ' <span onclick="removeClubFromCompare(' + c.id + ')" style="cursor:pointer;margin-left:4px;color:#ff6b6b;font-size:16px;">&times;</span>';
         container.appendChild(chip);
     });
 }
@@ -9472,22 +9635,103 @@ function buildClubComparisonSummary(clubs) {
     document.getElementById('cmpClubSummaryText').innerHTML = '<p>' + txt.join(' ') + '</p>';
 }
 
-// ════════════ AUTO-LOAD from localStorage basket ════════════
+// ════════════ AUTO-LOAD from URL params or localStorage basket ════════════
 (function() {
     var params = new URLSearchParams(window.location.search);
     if (params.get('page') !== 'comparer') return;
 
-    var basketAth = getBasketAthletes();
-    var basketClb = getBasketClubs();
+    var urlIds = params.get('ids');
+    var urlLicences = params.get('licences');
+    var urlClubs = params.get('clubs');
+    var loadedFromUrl = false;
 
-    if (basketAth.length > 0) {
-        basketAth.forEach(function(a) { addAthleteToCompare(a.id, a.name); });
+    // Compter le total d'athletes attendus pour auto-compare
+    var expectedCount = 0;
+    if (urlIds) expectedCount += urlIds.split(',').filter(function(x) { return parseInt(x.trim()); }).length;
+    if (urlLicences) expectedCount += urlLicences.split(',').filter(function(x) { return x.trim(); }).length;
+    if (expectedCount >= 2) window._cmpAutoExpected = expectedCount;
+
+    // Load athletes from URL ?ids=123,456,789 (par ID externe)
+    if (urlIds) {
+        loadedFromUrl = true;
+        urlIds.split(',').forEach(function(rawId) {
+            var id = parseInt(rawId.trim());
+            if (!id) return;
+            fetch(BASE_API + '/athlete.php?id=' + id)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.success || !data.identite) return;
+                    addAthleteToCompare(data.identite.athlete_id || id, data.identite.nom_complet || 'Athlete #' + id);
+                });
+        });
     }
-    if (basketClb.length > 0) {
-        if (basketAth.length === 0) switchCmpTab('clubs');
-        basketClb.forEach(function(c) { addClubToCompare(c.id, c.name); });
+
+    // Load athletes from URL ?licences=1234567,7654321 (par licence)
+    if (urlLicences) {
+        loadedFromUrl = true;
+        urlLicences.split(',').forEach(function(lic) {
+            lic = lic.trim();
+            if (!lic) return;
+            fetch(BASE_API + '/athlete.php?licence=' + encodeURIComponent(lic))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.success || !data.identite) return;
+                    addAthleteToCompare(data.identite.athlete_id, data.identite.nom_complet || 'Licence ' + lic);
+                });
+        });
+    }
+
+    // Load clubs from URL ?clubs=Nom1,Nom2
+    if (urlClubs) {
+        loadedFromUrl = true;
+        var clubCount = urlClubs.split(',').filter(function(x) { return x.trim(); }).length;
+        if (clubCount >= 2) window._cmpAutoExpectedClubs = clubCount;
+        if (!urlIds && !urlLicences) switchCmpTab('clubs');
+        urlClubs.split(',').forEach(function(name) {
+            name = name.trim();
+            if (!name) return;
+            // Fetch club id then add
+            fetch(BASE_API + '/club_stats.php?nom=' + encodeURIComponent(name))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.success || !data.club) return;
+                    addClubToCompare(data.club.id_club, data.club.nom_club);
+                });
+        });
+    }
+
+    // Fallback: load from localStorage if no URL params
+    if (!loadedFromUrl) {
+        var basketAth = getBasketAthletes();
+        var basketClb = getBasketClubs();
+        if (basketAth.length > 0) {
+            basketAth.forEach(function(a) { addAthleteToCompare(a.id, a.name); });
+        }
+        if (basketClb.length > 0) {
+            if (basketAth.length === 0) switchCmpTab('clubs');
+            basketClb.forEach(function(c) { addClubToCompare(c.id, c.name); });
+        }
     }
 })();
+
+// ════════════ Share comparison link ════════════
+function getCmpShareLink() {
+    var base = location.origin + location.pathname + '?page=comparer';
+    if (cmpAthletes.length > 0) {
+        base += '&ids=' + cmpAthletes.map(function(a) { return a.id; }).join(',');
+    }
+    if (cmpClubs.length > 0) {
+        base += '&clubs=' + cmpClubs.map(function(c) { return encodeURIComponent(c.name); }).join(',');
+    }
+    return base;
+}
+function copyCmpLink() {
+    var link = getCmpShareLink();
+    navigator.clipboard.writeText(link).then(function() {
+        var btn = document.getElementById('btnCmpShare');
+        if (btn) { btn.textContent = '\u2713 Lien copié !'; setTimeout(function() { btn.innerHTML = '&#128279; Copier le lien'; }, 2000); }
+    });
+}
 </script>
 
 <!-- ====== TRACKING / LOGGING ====== -->
