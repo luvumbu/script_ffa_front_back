@@ -52,7 +52,7 @@ if (!$_isSA) {
             if ($pos !== false) $slData = json_decode(substr($raw, $pos + 1), true) ?: [];
         }
         if (($slData['_date'] ?? '') !== $today) $slData = ['_date' => $today];
-        $slKey = $_isLogged ? 'u_' . $ip : $ip;
+        $slKey = $ip;
         $slLimit = $_isLogged ? 100 : 10;
         $slCount = ($slData[$slKey] ?? 0) + 1;
         $slData[$slKey] = $slCount;

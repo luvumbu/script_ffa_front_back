@@ -738,7 +738,7 @@ if ($_slIp !== '' && empty($_COOKIE['bk_sa_token'])) {
         if ($_slPos !== false) {
             $_slArr = json_decode(substr($_slRaw, $_slPos + 1), true) ?: [];
             if (($_slArr['_date'] ?? '') === date('Y-m-d')) {
-                $_slKey = $_slIsLogged ? 'u_' . $_slIp : $_slIp;
+                $_slKey = $_slIp;
                 $_slUsed = (int)($_slArr[$_slKey] ?? 0);
             }
         }
