@@ -62,21 +62,21 @@ foreach ($tables as $table => $label) {
 
 // Repartition par sexe
 $parSexe = [];
-$res = $conn->query("SELECT sexe_athlete, COUNT(*) as c FROM athletes GROUP BY sexe_athlete ORDER BY c DESC");
+$res = $conn->query("SELECT sexe_athlete, COUNT(*) as c FROM athletes WHERE visible = 1 GROUP BY sexe_athlete ORDER BY c DESC");
 if ($res) while ($row = $res->fetch_assoc()) {
     $parSexe[$row['sexe_athlete'] ?: 'inconnu'] = (int)$row['c'];
 }
 
 // Repartition par categorie
 $parCategorie = [];
-$res = $conn->query("SELECT categorie_athlete, COUNT(*) as c FROM athletes WHERE categorie_athlete != '' GROUP BY categorie_athlete ORDER BY c DESC");
+$res = $conn->query("SELECT categorie_athlete, COUNT(*) as c FROM athletes WHERE visible = 1 AND categorie_athlete != '' GROUP BY categorie_athlete ORDER BY c DESC");
 if ($res) while ($row = $res->fetch_assoc()) {
     $parCategorie[$row['categorie_athlete']] = (int)$row['c'];
 }
 
 // Repartition par nationalite (top 10)
 $parNationalite = [];
-$res = $conn->query("SELECT nationalite_athlete, COUNT(*) as c FROM athletes WHERE nationalite_athlete != '' GROUP BY nationalite_athlete ORDER BY c DESC LIMIT 10");
+$res = $conn->query("SELECT nationalite_athlete, COUNT(*) as c FROM athletes WHERE visible = 1 AND nationalite_athlete != '' GROUP BY nationalite_athlete ORDER BY c DESC LIMIT 10");
 if ($res) while ($row = $res->fetch_assoc()) {
     $parNationalite[$row['nationalite_athlete']] = (int)$row['c'];
 }
@@ -181,6 +181,7 @@ if ($detail) {
                (SELECT COUNT(*) FROM athlete_resultats ares WHERE ares.id_athlete = a.id_athlete) as nb_resultats,
                (SELECT c2.nom_club FROM athlete_clubs ac2 JOIN clubs c2 ON c2.id_club = ac2.id_club WHERE ac2.id_athlete = a.id_athlete ORDER BY COALESCE(ac2.annee_fin, 9999) DESC LIMIT 1) as club
         FROM athletes a
+        WHERE a.visible = 1
         HAVING (nb_medailles + nb_podiums + nb_records + nb_selections) > 0
         ORDER BY (nb_medailles * 5 + nb_podiums * 3 + nb_selections * 4 + nb_records) DESC
         LIMIT $topLimit

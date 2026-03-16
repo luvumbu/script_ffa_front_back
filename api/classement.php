@@ -95,7 +95,8 @@ $sql = "SELECT ranked.* FROM (
     LEFT JOIN clubs c ON c.id_club = ac.id_club
     WHERE p.id_epreuve = ?
     AND p.performance_progression IS NOT NULL
-    AND p.performance_progression > 0";
+    AND p.performance_progression > 0
+    AND a.visible = 1";
 
 // Reconstruire les params
 $params = [$idEpreuve];
@@ -142,7 +143,8 @@ $countSql = "SELECT COUNT(DISTINCT a.id_athlete) as total
     JOIN athletes a ON a.id_athlete = p.id_athlete
     WHERE p.id_epreuve = ?
     AND p.performance_progression IS NOT NULL
-    AND p.performance_progression > 0";
+    AND p.performance_progression > 0
+    AND a.visible = 1";
 
 $countParams = [$idEpreuve];
 $countTypes  = "i";

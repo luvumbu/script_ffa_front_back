@@ -53,7 +53,7 @@ if (!$_isSA) {
         }
         if (($slData['_date'] ?? '') !== $today) $slData = ['_date' => $today];
         $slKey = $ip;
-        $slLimit = $_isLogged ? 100 : 10;
+        $slLimit = $_isLogged ? 100 : 5;
         $slCount = ($slData[$slKey] ?? 0) + 1;
         $slData[$slKey] = $slCount;
         @file_put_contents($slFile, "<?php die('Acces interdit'); ?>\n" . json_encode($slData), LOCK_EX);
@@ -224,8 +224,9 @@ if (empty($where) && empty($joins)) {
     ], 400);
 }
 
+$where[] = "a.visible = 1";
 $joinSql = implode("\n", $joins);
-$whereSql = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
+$whereSql = "WHERE " . implode(" AND ", $where);
 
 // Colonnes supplementaires selon le filtre
 $extraCols = "";

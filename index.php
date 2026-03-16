@@ -42,7 +42,7 @@ logIp();
     $data[$ip] = $count;
     @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data));
 
-    if ($count > 10) {
+    if ($count > 5) {
         // Rediriger vers login Google
         header('Location: ' . (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false ? '/BK' : '') . '/login.php?limit=1');
         exit;
@@ -448,6 +448,46 @@ if (count($_bcItems) > 1):
         box-shadow: 0 2px 8px #3b82f640;
     }
     .btn-pdf:hover { transform: scale(1.08); box-shadow: 0 4px 16px #3b82f660; }
+    /* Bouton Signaler profil */
+    .btn-report {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 6px 14px; border-radius: 8px;
+        background: #30363d; border: 1px solid #484f58; color: #8b949e;
+        font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        text-decoration: none; line-height: 1.4; vertical-align: middle;
+    }
+    .btn-report:hover { background: #da363640; border-color: #da3636; color: #f85149; transform: scale(1.05); }
+    /* Modal Signaler */
+    .report-overlay {
+        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center;
+    }
+    .report-overlay.active { display: flex; }
+    .report-modal {
+        background: #161b22; border: 1px solid #30363d; border-radius: 16px;
+        padding: 32px; max-width: 480px; width: 90%; position: relative;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    }
+    .report-modal h3 { color: #f0f6fc; margin: 0 0 8px; font-size: 20px; }
+    .report-modal p { color: #8b949e; margin: 0 0 20px; font-size: 14px; line-height: 1.5; }
+    .report-modal label { display: block; color: #c9d1d9; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .report-modal select, .report-modal textarea, .report-modal input[type="email"] {
+        width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d;
+        border-radius: 8px; color: #c9d1d9; font-size: 14px; font-family: inherit;
+        margin-bottom: 16px; box-sizing: border-box; transition: border-color 0.2s;
+    }
+    .report-modal select:focus, .report-modal textarea:focus, .report-modal input:focus {
+        outline: none; border-color: #da3636;
+    }
+    .report-modal textarea { resize: vertical; min-height: 80px; }
+    .report-modal .btn-submit-report {
+        width: 100%; padding: 12px; background: #da3636; border: none; border-radius: 8px;
+        color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    }
+    .report-modal .btn-submit-report:hover { background: #f85149; }
+    .report-modal .btn-submit-report:disabled { opacity: 0.5; cursor: not-allowed; }
+    .report-modal .report-success { color: #3fb950; font-size: 14px; text-align: center; margin-top: 12px; }
+    .report-modal .report-error { color: #f85149; font-size: 14px; text-align: center; margin-top: 12px; }
     /* Banniere newsletter */
     .newsletter-bar {
         display: none; position: fixed; bottom: 0; left: 0; width: 100%; z-index: 9998;
@@ -731,7 +771,7 @@ $_slIp = trim(explode(',', $_slIp)[0]);
 if ($_slIp !== '' && empty($_COOKIE['bk_sa_token'])) {
     $_slFile = __DIR__ . '/logs/.search_limits.php';
     $_slIsLogged = !empty($_COOKIE['bk_token']);
-    $_slLimit = $_slIsLogged ? 100 : 10;
+    $_slLimit = $_slIsLogged ? 100 : 5;
     if (file_exists($_slFile)) {
         $_slRaw = file_get_contents($_slFile);
         $_slPos = strpos($_slRaw, "\n");
@@ -1572,7 +1612,7 @@ elseif ($page === 'recherche'):
         <select name="nationalite" style="width:auto;">
             <option value="">Nationalité</option>
             <?php
-            $natRes = $conn->query("SELECT nationalite_athlete, COUNT(*) as c FROM athletes WHERE nationalite_athlete IS NOT NULL AND nationalite_athlete != '' GROUP BY nationalite_athlete ORDER BY c DESC");
+            $natRes = $conn->query("SELECT nationalite_athlete, COUNT(*) as c FROM athletes WHERE visible = 1 AND nationalite_athlete IS NOT NULL AND nationalite_athlete != '' GROUP BY nationalite_athlete ORDER BY c DESC");
             if ($natRes) while ($nr = $natRes->fetch_assoc()):
             ?>
             <option value="<?= htmlspecialchars($nr['nationalite_athlete']) ?>" <?= ($_GET['nationalite'] ?? '') === $nr['nationalite_athlete'] ? 'selected' : '' ?>><?= htmlspecialchars($nr['nationalite_athlete']) ?> (<?= number_format($nr['c'], 0, ',', ' ') ?>)</option>
@@ -2049,7 +2089,18 @@ elseif ($page === 'profil' && $id):
     $data = apiCall("$BASE_API/athlete.php?id=$id");
     $section = $_GET['s'] ?? 'all';
 
-    if ($data && ($data['success'] ?? false)):
+    if ($data && isset($data['visible']) && $data['visible'] === false):
+?>
+<div class="chart-card" style="margin:24px 0;border-left:3px solid #f59e0b;text-align:center;padding:40px 24px;">
+    <div style="font-size:48px;margin-bottom:16px;">&#128274;</div>
+    <h3 style="margin:0 0 12px;color:#f59e0b;font-size:20px;">Profil non disponible</h3>
+    <p style="color:#8b949e;font-size:15px;line-height:1.6;max-width:500px;margin:0 auto;">
+        Ce profil a ete retire a la demande de l'interesse(e).<br>
+        <span style="font-size:13px;color:#5a6580;">Si vous pensez qu'il s'agit d'une erreur, vous pouvez nous contacter.</span>
+    </p>
+</div>
+
+<?php elseif ($data && ($data['success'] ?? false)):
         $i = $data['identite'];
 ?>
 
@@ -2065,6 +2116,7 @@ elseif ($page === 'profil' && $id):
             <button class="btn-cmp-add" data-cmp-ath="<?= $id ?>" data-name="<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)" style="margin-left:10px;vertical-align:middle;">+</button>
             <button class="btn-follow" id="btnFollow" onclick="toggleFollow(<?= $id ?>)" style="margin-left:8px;vertical-align:middle;">&#9825; Suivre</button>
             <button class="btn-pdf" id="btnPdf" onclick="downloadPdf(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" style="margin-left:8px;vertical-align:middle;">&#128196; PDF</button>
+            <button class="btn-report" id="btnReport" onclick="openReportModal(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" style="margin-left:8px;vertical-align:middle;" title="Signaler ce profil">&#9888; Signaler</button>
         </div>
         <div class="meta">
             <a href="?page=recherche&sexe=<?= urlencode($i['sexe']) ?>" style="text-decoration:none;"><span class="badge badge-<?= strtolower($i['sexe']) ?>"><?= $i['sexe'] === 'M' ? 'Homme' : 'Femme' ?></span></a>
@@ -9937,6 +9989,90 @@ function copyCmpLink() {
     <button class="nl-btn" id="nlBtn" onclick="subscribeNewsletter()">S'inscrire</button>
     <button class="nl-close" onclick="closeNewsletter()">&times;</button>
 </div>
+
+<!-- Modal Signaler profil -->
+<div class="report-overlay" id="reportOverlay">
+    <div class="report-modal">
+        <button class="btn-close" onclick="closeReportModal()" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#8b949e;font-size:24px;cursor:pointer;">&times;</button>
+        <h3>&#9888; Signaler ce profil</h3>
+        <p id="reportAthleteName" style="color:#c9d1d9;font-weight:600;margin-bottom:4px;"></p>
+        <p style="margin-bottom:16px;">Si vous souhaitez que ce profil soit retire de Bokonzi, veuillez indiquer le motif ci-dessous. Nous traiterons votre demande dans les plus brefs delais.</p>
+        <input type="hidden" id="reportAthleteId" value="">
+        <input type="hidden" id="reportAthleteNameVal" value="">
+        <label for="reportReason">Motif du signalement</label>
+        <select id="reportReason">
+            <option value="">-- Choisir un motif --</option>
+            <option value="retrait">Je souhaite retirer mon profil</option>
+            <option value="donnees_incorrectes">Donnees incorrectes</option>
+            <option value="usurpation">Usurpation d'identite</option>
+            <option value="vie_privee">Atteinte a la vie privee</option>
+            <option value="autre">Autre</option>
+        </select>
+        <label for="reportMessage">Details (facultatif)</label>
+        <textarea id="reportMessage" placeholder="Precisez votre demande..." maxlength="2000"></textarea>
+        <label for="reportEmail">Email de contact (facultatif)</label>
+        <input type="email" id="reportEmail" placeholder="votre@email.com">
+        <button class="btn-submit-report" id="btnSubmitReport" onclick="submitReport()">Envoyer le signalement</button>
+        <div id="reportFeedback"></div>
+    </div>
+</div>
+<script>
+window.openReportModal = function(athleteId, athleteName) {
+    document.getElementById('reportAthleteId').value = athleteId;
+    document.getElementById('reportAthleteNameVal').value = athleteName;
+    document.getElementById('reportAthleteName').textContent = athleteName;
+    document.getElementById('reportReason').value = '';
+    document.getElementById('reportMessage').value = '';
+    document.getElementById('reportEmail').value = '';
+    document.getElementById('reportFeedback').innerHTML = '';
+    document.getElementById('btnSubmitReport').disabled = false;
+    document.getElementById('btnSubmitReport').textContent = 'Envoyer le signalement';
+    document.getElementById('reportOverlay').classList.add('active');
+};
+window.closeReportModal = function() {
+    document.getElementById('reportOverlay').classList.remove('active');
+};
+document.getElementById('reportOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeReportModal();
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('reportOverlay').classList.contains('active')) closeReportModal();
+});
+window.submitReport = function() {
+    var reason = document.getElementById('reportReason').value;
+    var message = document.getElementById('reportMessage').value.trim();
+    var email = document.getElementById('reportEmail').value.trim();
+    var athleteId = parseInt(document.getElementById('reportAthleteId').value);
+    var athleteName = document.getElementById('reportAthleteNameVal').value;
+    var fb = document.getElementById('reportFeedback');
+    var btn = document.getElementById('btnSubmitReport');
+    if (!reason) { fb.innerHTML = '<div class="report-error">Veuillez choisir un motif.</div>'; return; }
+    btn.disabled = true;
+    btn.textContent = 'Envoi en cours...';
+    fetch(BASE_API + '/report.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: athleteId, athlete_name: athleteName, reason: reason, message: message, email: email })
+    })
+    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+    .then(function(res) {
+        if (res.ok && res.data.success) {
+            fb.innerHTML = '<div class="report-success">&#10003; ' + (res.data.message || 'Signalement envoye.') + '</div>';
+            btn.textContent = 'Envoye';
+            setTimeout(closeReportModal, 2500);
+        } else {
+            fb.innerHTML = '<div class="report-error">' + (res.data.error || 'Erreur inconnue') + '</div>';
+            btn.disabled = false;
+            btn.textContent = 'Envoyer le signalement';
+        }
+    })
+    .catch(function() {
+        fb.innerHTML = '<div class="report-error">Erreur reseau, reessayez.</div>';
+        btn.disabled = false;
+        btn.textContent = 'Envoyer le signalement';
+    });
+};
+</script>
 
 <!-- Modal Connexion requise (Follow + PDF) -->
 <div class="follow-overlay" id="loginRequiredOverlay">

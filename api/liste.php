@@ -64,7 +64,7 @@ switch ($ordre) {
 }
 
 // Total
-$res = $conn->query("SELECT COUNT(*) as c FROM athletes");
+$res = $conn->query("SELECT COUNT(*) as c FROM athletes WHERE visible = 1");
 $total = $res ? (int)$res->fetch_assoc()['c'] : 0;
 $totalPages = ceil($total / $limit);
 
@@ -80,6 +80,7 @@ $sql = "SELECT a.id_athlete, a.athlete_id_externe, a.nom_complet_athlete,
                (SELECT COUNT(*) FROM athlete_progressions aprog WHERE aprog.id_athlete = a.id_athlete) as nb_progressions
         FROM athletes a
         LEFT JOIN athlete_records ar ON ar.id_athlete = a.id_athlete
+        WHERE a.visible = 1
         GROUP BY a.id_athlete
         ORDER BY $orderBy
         LIMIT $limit OFFSET $offset";

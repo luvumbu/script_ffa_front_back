@@ -55,9 +55,10 @@ $tab = ($_GET['tab'] ?? '') === 'admin' ? 'admin' : 'user';
         <?php if (isset($_GET['limit'])): ?>
         <div style="background:#f59e0b15;border:1px solid #f59e0b40;color:#f59e0b;padding:14px;border-radius:8px;font-size:13px;text-align:center;margin-bottom:16px;line-height:1.5;">
             <strong>Limite atteinte</strong><br>
-            Vous avez atteint la limite de 20 pages par jour.<br>
+            Vous avez atteint la limite de 5 pages par jour.<br>
             Connectez-vous avec Google pour continuer a naviguer sans limite.
         </div>
+
         <?php endif; ?>
 
         <div class="msg-error" id="msgError"></div>
@@ -88,6 +89,18 @@ $tab = ($_GET['tab'] ?? '') === 'admin' ? 'admin' : 'user';
                 <button type="submit" class="btn-submit" id="btnAdminSubmit">Connexion Admin</button>
             </form>
             <div id="attemptsLeft" style="text-align:center;margin-top:12px;font-size:12px;color:#5a6580;"></div>
+        </div>
+
+        <!-- Lien contact -->
+        <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid #30363d;">
+            <a href="#" onclick="document.getElementById('contactFormWrap').style.display=document.getElementById('contactFormWrap').style.display==='none'?'block':'none';return false;" style="color:#8b949e;font-size:13px;text-decoration:none;">&#9993; Nous contacter</a>
+        </div>
+        <div id="contactFormWrap" style="display:none;margin-top:12px;">
+            <input type="text" id="ctNom" placeholder="Votre nom (facultatif)" style="width:100%;padding:10px 12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#c9d1d9;font-size:13px;margin-bottom:8px;box-sizing:border-box;">
+            <input type="email" id="ctEmail" placeholder="Votre email (facultatif)" style="width:100%;padding:10px 12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#c9d1d9;font-size:13px;margin-bottom:8px;box-sizing:border-box;">
+            <textarea id="ctMsg" placeholder="Votre message..." maxlength="2000" style="width:100%;padding:10px 12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#c9d1d9;font-size:13px;margin-bottom:10px;box-sizing:border-box;resize:vertical;min-height:70px;font-family:inherit;"></textarea>
+            <button onclick="_sendContact()" id="ctBtn" style="width:100%;padding:10px;background:#6c5ce7;border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">Envoyer</button>
+            <div id="ctFb" style="margin-top:8px;font-size:13px;text-align:center;"></div>
         </div>
     </div>
 
@@ -146,6 +159,40 @@ $tab = ($_GET['tab'] ?? '') === 'admin' ? 'admin' : 'user';
                 btn.disabled = false;
                 btn.textContent = 'Connexion Admin';
             }
+        });
+    }
+    </script>
+
+    <script>
+    function _sendContact() {
+        var msg = document.getElementById('ctMsg').value.trim();
+        var fb = document.getElementById('ctFb');
+        var btn = document.getElementById('ctBtn');
+        if (!msg) { fb.innerHTML = '<span style="color:#f85149;">Veuillez ecrire un message.</span>'; return; }
+        btn.disabled = true; btn.textContent = 'Envoi...';
+        fetch('api/contact.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nom: document.getElementById('ctNom').value.trim() || 'Visiteur (page login)',
+                email: document.getElementById('ctEmail').value.trim(),
+                message: msg
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) {
+                fb.innerHTML = '<span style="color:#3fb950;">&#10003; Message envoye !</span>';
+                btn.textContent = 'Envoye';
+                document.getElementById('ctMsg').value = '';
+            } else {
+                fb.innerHTML = '<span style="color:#f85149;">' + (d.error || 'Erreur') + '</span>';
+                btn.disabled = false; btn.textContent = 'Envoyer';
+            }
+        })
+        .catch(function() {
+            fb.innerHTML = '<span style="color:#f85149;">Erreur reseau.</span>';
+            btn.disabled = false; btn.textContent = 'Envoyer';
         });
     }
     </script>

@@ -78,7 +78,7 @@ if ($type === 'athletes') {
                 $aRes = $conn->query("SELECT a.sexe_athlete, a.categorie_athlete, a.nationalite_athlete,
                     (SELECT c.nom_club FROM clubs c JOIN athlete_clubs ac ON ac.id_club = c.id_club
                      WHERE ac.id_athlete = a.id_athlete ORDER BY ac.annee_debut DESC LIMIT 1) as club
-                    FROM athletes a WHERE a.athlete_id_externe = {$item['id']} LIMIT 1");
+                    FROM athletes a WHERE a.athlete_id_externe = {$item['id']} AND a.visible = 1 LIMIT 1");
                 if ($aRes && ($aRow = $aRes->fetch_assoc())) {
                     $item['sexe'] = $aRow['sexe_athlete'];
                     $item['categorie'] = $aRow['categorie_athlete'];
@@ -119,12 +119,14 @@ if ($type === 'athletes') {
 
 } elseif ($type === 'clubs') {
     // Recherches + consultations de clubs depuis search_tracking
+    // Exclure les entrées parasites (dates "XX Mois XXXX", nb_athletes=0)
     $sql = "SELECT st.entity_name as nom, st.entity_id,
                    COUNT(DISTINCT st.ip) as vues
             FROM search_tracking st
             WHERE st.search_type = 'club'
               AND st.created_at >= DATE_SUB(NOW(), INTERVAL $days DAY)
               AND (st.entity_name IS NOT NULL AND st.entity_name != '')
+              AND st.entity_name NOT REGEXP '^[0-9]{1,2} [A-Za-zéûôàî]{3,5}\\.? [0-9]{4}$'
             GROUP BY st.entity_name
             ORDER BY vues DESC
             LIMIT $limit";
@@ -143,6 +145,8 @@ if ($type === 'athletes') {
                 if ($cRes && ($cRow = $cRes->fetch_assoc())) {
                     $item['nb_athletes'] = (int)$cRow['nb'];
                 }
+                // Exclure les faux clubs (0 athlètes = probablement une date ou entrée parasite)
+                if (($item['nb_athletes'] ?? 0) === 0) continue;
             }
             $items[] = $item;
         }

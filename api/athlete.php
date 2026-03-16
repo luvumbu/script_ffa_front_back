@@ -5,21 +5,23 @@
  * Usage :
  *   api/athlete.php?id=26134          (par athlete_id_externe = ID athle.fr)
  *   api/athlete.php?id_athlete=5      (par id_athlete interne)
+ *   api/athlete.php?licence=1234567   (par numero de licence)
  */
 
 require_once __DIR__ . '/config.php';
 
 $idExterne = $_GET['id'] ?? null;
 $idInterne = $_GET['id_athlete'] ?? null;
+$licence   = $_GET['licence'] ?? null;
 
-if (!$idExterne && !$idInterne) {
-    jsonResponse(['success' => false, 'error' => 'Parametre ?id= ou ?id_athlete= requis'], 400);
+if (!$idExterne && !$idInterne && !$licence) {
+    jsonResponse(['success' => false, 'error' => 'Parametre ?id=, ?id_athlete= ou ?licence= requis'], 400);
 }
 
 // ---- Cache fichier (24h) ----
 $cacheDir = __DIR__ . '/../cache';
 if (!is_dir($cacheDir)) @mkdir($cacheDir, 0755, true);
-$cacheKey = 'athlete_' . md5(($idExterne ?? '') . '_' . ($idInterne ?? ''));
+$cacheKey = 'athlete_' . md5(($idExterne ?? '') . '_' . ($idInterne ?? '') . '_' . ($licence ?? ''));
 $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
 if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
     $cached = @file_get_contents($cacheFile);
@@ -30,9 +32,12 @@ if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
 if ($idExterne) {
     $idEsc = $conn->real_escape_string($idExterne);
     $res = $conn->query("SELECT * FROM athletes WHERE athlete_id_externe = '$idEsc' LIMIT 1");
-} else {
+} elseif ($idInterne) {
     $idEsc = (int)$idInterne;
     $res = $conn->query("SELECT * FROM athletes WHERE id_athlete = '$idEsc' LIMIT 1");
+} else {
+    $licEsc = $conn->real_escape_string($licence);
+    $res = $conn->query("SELECT * FROM athletes WHERE licence_athlete = '$licEsc' LIMIT 1");
 }
 
 if (!$res || $res->num_rows === 0) {
@@ -41,6 +46,11 @@ if (!$res || $res->num_rows === 0) {
 
 $athlete = $res->fetch_assoc();
 $id = (int)$athlete['id_athlete'];
+
+// Profil masque : aucune info
+if (isset($athlete['visible']) && (int)$athlete['visible'] === 0) {
+    jsonResponse(['success' => false, 'visible' => false, 'error' => 'Profil non disponible'], 404);
+}
 
 // 2. Ville de naissance
 $villeNaissance = '';

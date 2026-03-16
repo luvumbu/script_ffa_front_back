@@ -1,0 +1,228 @@
+/* ═══════════════════════════════════════════════════════════
+   COMPONENTS.CSS — Styles extraits d'index.php (lignes 378-583)
+   ═══════════════════════════════════════════════════════════ */
+
+/* PANIER COMPARAISON FLOTTANT */
+.cmp-basket {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9998;
+    background: linear-gradient(135deg, #1a2035, #12182a);
+    border: 1px solid #f59e0b60; border-radius: 14px;
+    padding: 12px 18px; display: none; align-items: center; gap: 12px;
+    box-shadow: 0 8px 32px #00000080; backdrop-filter: blur(12px);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    animation: basketSlideIn 0.3s ease;
+}
+@keyframes basketSlideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.cmp-basket .basket-counts { display: flex; gap: 10px; }
+.cmp-basket .basket-count {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 13px; font-weight: 600; color: #c9d1d9;
+}
+.cmp-basket .basket-count .num {
+    background: #f59e0b; color: #000; font-size: 12px; font-weight: 800;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+}
+.cmp-basket .basket-go {
+    padding: 8px 16px; background: linear-gradient(135deg, #f59e0b, #ec4899);
+    border: none; border-radius: 8px; color: #fff; font-size: 12px;
+    font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+.cmp-basket .basket-go:hover { opacity: 0.9; }
+.cmp-basket .basket-clear {
+    background: none; border: none; color: #ff6b6b; font-size: 18px;
+    cursor: pointer; padding: 0 4px; line-height: 1;
+}
+
+/* Bouton + comparaison */
+.btn-cmp-add {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 6px;
+    background: #f59e0b18; border: 1px solid #f59e0b40; color: #f59e0b;
+    font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.15s;
+    text-decoration: none; line-height: 1; vertical-align: middle;
+}
+.btn-cmp-add:hover { background: #f59e0b33; border-color: #f59e0b; transform: scale(1.15); }
+.btn-cmp-add.added { background: #34d39920; border-color: #34d39960; color: #34d399; cursor: default; }
+
+/* Bouton Suivre athlete */
+.btn-follow {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 16px; border-radius: 8px;
+    background: linear-gradient(135deg, #ec4899, #8b5cf6); border: none; color: #fff;
+    font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    text-decoration: none; line-height: 1.4; vertical-align: middle;
+    box-shadow: 0 2px 8px #ec489940;
+}
+.btn-follow:hover { transform: scale(1.08); box-shadow: 0 4px 16px #ec489960; }
+.btn-follow.following { background: linear-gradient(135deg, #34d399, #059669); box-shadow: 0 2px 8px #34d39940; }
+.btn-follow .follow-count { font-size: 11px; color: #8b949e; margin-left: 2px; }
+
+/* Bouton PDF */
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 16px; border-radius: 8px;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8); border: none; color: #fff;
+    font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    text-decoration: none; line-height: 1.4; vertical-align: middle;
+    box-shadow: 0 2px 8px #3b82f640;
+}
+.btn-pdf:hover { transform: scale(1.08); box-shadow: 0 4px 16px #3b82f660; }
+
+/* Bouton Signaler profil */
+.btn-report {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 14px; border-radius: 8px;
+    background: #30363d; border: 1px solid #484f58; color: #8b949e;
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    text-decoration: none; line-height: 1.4; vertical-align: middle;
+}
+.btn-report:hover { background: #da363640; border-color: #da3636; color: #f85149; transform: scale(1.05); }
+
+/* Banniere newsletter */
+.newsletter-bar {
+    display: none; position: fixed; bottom: 0; left: 0; width: 100%; z-index: 9998;
+    background: linear-gradient(135deg, #161b22 0%, #1c2333 100%);
+    border-top: 1px solid #30363d; padding: 16px 24px;
+    animation: slideUpBar 0.4s ease;
+}
+.newsletter-bar.active { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.newsletter-bar .nl-text { color: #c9d1d9; font-size: 14px; font-weight: 600; }
+.newsletter-bar .nl-sub { color: #8b949e; font-size: 12px; }
+.newsletter-bar input {
+    padding: 10px 16px; background: #0d1117; border: 1px solid #1e2a3a; border-radius: 8px;
+    color: #c9d1d9; font-size: 14px; width: 260px; max-width: 40vw;
+}
+.newsletter-bar input:focus { outline: none; border-color: #f59e0b; }
+.newsletter-bar .nl-btn {
+    padding: 10px 20px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none;
+    border-radius: 8px; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.newsletter-bar .nl-btn:hover { transform: scale(1.05); }
+.newsletter-bar .nl-close {
+    background: none; border: none; color: #484f58; font-size: 20px; cursor: pointer; margin-left: 8px;
+}
+.newsletter-bar .nl-close:hover { color: #f0f6fc; }
+.newsletter-bar .nl-ok { color: #34d399; font-weight: 700; font-size: 14px; }
+@keyframes slideUpBar { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* Modal follow */
+.follow-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center;
+}
+.follow-overlay.active { display: flex; }
+.follow-modal {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 32px; max-width: 400px; width: 90%; text-align: center;
+    animation: fadeInPanel 0.25s ease;
+}
+.follow-modal h3 { color: #f0f6fc; font-size: 18px; margin-bottom: 8px; }
+.follow-modal p { color: #8b949e; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+.follow-modal input {
+    width: 100%; padding: 12px 16px; background: #0d1117; border: 1px solid #1e2a3a;
+    border-radius: 8px; color: #c9d1d9; font-size: 15px; margin-bottom: 12px;
+    transition: border-color 0.2s;
+}
+.follow-modal input:focus { outline: none; border-color: #a29bfe; box-shadow: 0 0 0 3px #a29bfe22; }
+.follow-modal .btn-confirm {
+    width: 100%; padding: 12px; background: #a29bfe; color: #0d1117; border: none;
+    border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+}
+.follow-modal .btn-confirm:hover { background: #8b7cf6; }
+.follow-modal .btn-close {
+    position: absolute; top: 12px; right: 16px; background: none; border: none;
+    color: #8b949e; font-size: 20px; cursor: pointer;
+}
+.follow-modal .btn-close:hover { color: #f0f6fc; }
+
+/* Bouton + comparaison club */
+.btn-cmp-add-club {
+    background: #8b5cf618; border-color: #8b5cf640; color: #8b5cf6;
+}
+.btn-cmp-add-club:hover { background: #8b5cf633; border-color: #8b5cf6; }
+.btn-cmp-add-club.added { background: #34d39920; border-color: #34d39960; color: #34d399; }
+
+/* Bouton ignorer club */
+.btn-cmp-ignore {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 6px;
+    background: #ef444418; border: 1px solid #ef444440; color: #ef4444;
+    font-size: 14px; cursor: pointer; transition: all 0.15s;
+    line-height: 1; vertical-align: middle;
+}
+.btn-cmp-ignore:hover { background: #ef444433; border-color: #ef4444; transform: scale(1.15); }
+.btn-cmp-ignore.ignored { background: #34d39920; border-color: #34d39960; color: #34d399; }
+.ignored-panel {
+    background: linear-gradient(135deg, #1a1015 0%, #1a1520 100%);
+    border: 1px solid #ef444430; border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 16px;
+}
+.ignored-panel h3 { color: #ef4444; font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+.ignored-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; background: #ef444412; border: 1px solid #ef444425;
+    border-radius: 8px; color: #fca5a5; font-size: 12px; font-weight: 600; margin: 3px;
+}
+.ignored-chip .restore {
+    cursor: pointer; color: #34d399; font-weight: 700; margin-left: 4px;
+    font-size: 11px; text-decoration: underline;
+}
+.ignored-chip .restore:hover { color: #6ee7b7; }
+
+/* Panneau detail club */
+.club-detail-panel {
+    display: none; background: linear-gradient(135deg, #0d1520 0%, #141c2e 100%);
+    border: 1px solid #6c5ce730; border-radius: 12px; padding: 24px; margin-bottom: 20px;
+    animation: fadeInPanel 0.25s ease;
+}
+@keyframes fadeInPanel { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+.club-detail-panel.active { display: block; }
+.club-detail-header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.club-detail-header h2 { color: #a29bfe; font-size: 22px; margin: 0; flex: 1; }
+.club-detail-header .meta-info { color: #5a6580; font-size: 13px; }
+.club-detail-header .btn-close-detail {
+    padding: 6px 16px; border-radius: 8px; border: 1px solid #1e2a3a;
+    background: #0d1117; color: #c9d1d9; font-size: 13px; cursor: pointer;
+}
+.club-detail-header .btn-close-detail:hover { border-color: #ef4444; color: #ef4444; }
+.club-detail-tabs {
+    display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #1e2a3a; padding-bottom: 8px;
+}
+.club-detail-tab {
+    padding: 8px 18px; border-radius: 8px 8px 0 0; border: 1px solid transparent;
+    background: transparent; color: #5a6580; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all 0.2s;
+}
+.club-detail-tab:hover { color: #c9d1d9; }
+.club-detail-tab.active { background: #1a2540; color: #a29bfe; border-color: #1a2540; }
+.club-detail-content { min-height: 100px; }
+.club-detail-content .loading-msg { color: #5a6580; text-align: center; padding: 30px; }
+.club-detail-grid {
+    display: flex; flex-wrap: wrap; gap: 8px;
+}
+.club-detail-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; background: #1e2a3a; border: 1px solid #2d3a4a;
+    border-radius: 20px; color: #c9d1d9; font-size: 13px; font-weight: 500;
+}
+.club-detail-chip .chip-count {
+    background: #6c5ce722; color: #a29bfe; font-size: 11px; font-weight: 700;
+    padding: 2px 7px; border-radius: 10px;
+}
+.club-detail-content table { width: 100%; border-collapse: collapse; }
+.club-detail-content th {
+    text-align: left; padding: 8px 12px; color: #8b949e; font-size: 12px;
+    text-transform: uppercase; border-bottom: 1px solid #1e2a3a;
+}
+.club-detail-content td {
+    padding: 10px 12px; border-bottom: 1px solid #1e2a3a08; font-size: 14px;
+}
+.club-detail-content tr:hover { background: #ffffff06; }
+.club-detail-content .perf-val { color: #55efc4; font-weight: 600; font-family: 'Courier New', monospace; }
+@media (max-width: 768px) {
+    .hide-mobile { display: none !important; }
+}

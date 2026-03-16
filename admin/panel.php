@@ -483,6 +483,32 @@ if ($resContact) {
 $unreadCount = 0;
 foreach ($contactMessages as $cm) { if (!$cm['lu']) $unreadCount++; }
 
+// === SIGNALEMENTS PROFIL ===
+$profileReports = [];
+$conn->query("CREATE TABLE IF NOT EXISTS `profile_reports` (
+    `id_report` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `ip` VARCHAR(45) NOT NULL DEFAULT '',
+    `athlete_id_ext` INT UNSIGNED NOT NULL,
+    `athlete_name` VARCHAR(200) NOT NULL DEFAULT '',
+    `reason` VARCHAR(100) NOT NULL DEFAULT '',
+    `message` TEXT NOT NULL,
+    `email` VARCHAR(200) NOT NULL DEFAULT '',
+    `status` ENUM('new','read','resolved') NOT NULL DEFAULT 'new',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// Ajouter colonne visible si elle n'existe pas
+$_vc = $conn->query("SHOW COLUMNS FROM `athletes` LIKE 'visible'");
+if ($_vc && $_vc->num_rows === 0) {
+    $conn->query("ALTER TABLE `athletes` ADD COLUMN `visible` TINYINT(1) UNSIGNED NOT NULL DEFAULT 1");
+}
+$resReports = $conn->query("SELECT pr.*, COALESCE(a.visible, 1) as athlete_visible FROM profile_reports pr LEFT JOIN athletes a ON a.athlete_id_externe = pr.athlete_id_ext ORDER BY pr.created_at DESC");
+if ($resReports) {
+    while ($row = $resReports->fetch_assoc()) $profileReports[] = $row;
+    $resReports->free();
+}
+$newReportsCount = 0;
+foreach ($profileReports as $pr) { if ($pr['status'] === 'new') $newReportsCount++; }
+
 // === SEARCH TRACKING — FULL DATA ===
 // IPs ignorees
 $stIgnFile = __DIR__ . '/../logs/.st_ignored_ips.php';
@@ -2142,6 +2168,157 @@ function _markAllRead() {
             done++;
             if (done >= ids.length) location.reload();
         });
+    });
+}
+</script>
+
+<!-- ============================================================ -->
+<!-- SECTION 14B : SIGNALEMENTS PROFIL -->
+<!-- ============================================================ -->
+
+<div class="section"><h2 style="color:#da3636;font-size:16px;border-color:#da363640;">&#9888; Signalements profil<?php if ($newReportsCount): ?> <span style="background:#da3636;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;animation:pulse 2s infinite;"><?= $newReportsCount ?> nouveau<?= $newReportsCount > 1 ? 'x' : '' ?></span><?php endif; ?></h2></div>
+
+<div class="grid" style="grid-template-columns:repeat(4,1fr);">
+    <div class="card" style="border-color:#da363640;"><div class="num" style="color:#da3636;"><?= count($profileReports) ?></div><div class="label">Total signalements</div></div>
+    <div class="card" style="border-color:#ef444440;"><div class="num" style="color:#ef4444;"><?= $newReportsCount ?></div><div class="label">Nouveaux</div></div>
+    <div class="card" style="border-color:#f59e0b40;"><div class="num" style="color:#f59e0b;"><?= count(array_filter($profileReports, function($r) { return $r['status'] === 'read'; })) ?></div><div class="label">Lus</div></div>
+    <div class="card" style="border-color:#10b98140;"><div class="num" style="color:#10b981;"><?= count(array_filter($profileReports, function($r) { return $r['status'] === 'resolved'; })) ?></div><div class="label">Resolus</div></div>
+</div>
+
+<?php
+$reasonLabels = [
+    'retrait' => 'Retrait profil',
+    'donnees_incorrectes' => 'Donnees incorrectes',
+    'usurpation' => 'Usurpation identite',
+    'vie_privee' => 'Vie privee',
+    'autre' => 'Autre'
+];
+?>
+
+<div class="section">
+    <?php if (empty($profileReports)): ?>
+    <p style="text-align:center;color:#5a6580;padding:30px;font-size:14px;">Aucun signalement pour le moment.</p>
+    <?php else: ?>
+
+    <?php
+    $rNew = array_filter($profileReports, function($r) { return $r['status'] === 'new'; });
+    $rRead = array_filter($profileReports, function($r) { return $r['status'] === 'read'; });
+    $rResolved = array_filter($profileReports, function($r) { return $r['status'] === 'resolved'; });
+    ?>
+
+    <?php if (!empty($rNew)): ?>
+    <h4 style="color:#da3636;font-size:13px;margin-bottom:10px;">Nouveaux (<?= count($rNew) ?>)</h4>
+    <?php foreach ($rNew as $rp): ?>
+        <div class="report-card" data-id="<?= $rp['id_report'] ?>" style="background:#1a1f2e;border:1px solid #da363640;border-left:3px solid #da3636;border-radius:10px;padding:16px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div>
+                    <a href="/?page=profil&id=<?= $rp['athlete_id_ext'] ?>" target="_blank" style="color:#a29bfe;font-weight:700;font-size:14px;text-decoration:none;"><?= htmlspecialchars($rp['athlete_name']) ?></a>
+                    <span style="color:#8b949e;font-size:12px;margin-left:6px;">#<?= $rp['athlete_id_ext'] ?></span>
+                    <span style="background:#da363630;color:#f85149;font-size:10px;padding:2px 8px;border-radius:4px;margin-left:6px;font-weight:600;"><?= htmlspecialchars($reasonLabels[$rp['reason']] ?? $rp['reason']) ?></span>
+                    <span style="background:#da3636;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;">NOUVEAU</span>
+                </div>
+                <span style="color:#5a6580;font-size:11px;"><?= $rp['created_at'] ?></span>
+            </div>
+            <?php if ($rp['message']): ?>
+            <p style="color:#c9d1d9;font-size:13px;line-height:1.5;margin:0 0 8px;white-space:pre-wrap;"><?= htmlspecialchars($rp['message']) ?></p>
+            <?php endif; ?>
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <span class="mono" style="color:#5a6580;font-size:11px;"><?= htmlspecialchars($rp['ip']) ?></span>
+                <?php if ($rp['email']): ?><span style="color:#8b949e;font-size:11px;"><?= htmlspecialchars($rp['email']) ?></span><?php endif; ?>
+                <button onclick="_reportAction('mark_read',<?= $rp['id_report'] ?>,this)" style="background:#1e2a3a;border:1px solid #2d3a4a;color:#8b949e;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Marquer lu</button>
+                <button onclick="_reportAction('resolve',<?= $rp['id_report'] ?>,this)" style="background:#10b98120;border:1px solid #10b98140;color:#10b981;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Resolu</button>
+                <?php if ($rp['athlete_visible']): ?>
+                <button onclick="_toggleVisibility(<?= $rp['athlete_id_ext'] ?>,0,this)" style="background:#f59e0b20;border:1px solid #f59e0b40;color:#f59e0b;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Masquer le profil</button>
+                <?php else: ?>
+                <button onclick="_toggleVisibility(<?= $rp['athlete_id_ext'] ?>,1,this)" style="background:#3b82f620;border:1px solid #3b82f640;color:#3b82f6;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Rendre visible</button>
+                <?php endif; ?>
+                <button onclick="_reportDelete(<?= $rp['id_report'] ?>,this)" style="background:#ef444420;border:1px solid #ef444440;color:#ef4444;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Supprimer</button>
+            </div>
+        </div>
+    <?php endforeach; ?>
+    <?php endif; ?>
+
+    <?php if (!empty($rRead)): ?>
+    <h4 style="color:#f59e0b;font-size:13px;margin:20px 0 10px;">Lus (<?= count($rRead) ?>)</h4>
+    <?php foreach ($rRead as $rp): ?>
+        <div class="report-card" data-id="<?= $rp['id_report'] ?>" style="background:#161b22;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div>
+                    <a href="/?page=profil&id=<?= $rp['athlete_id_ext'] ?>" target="_blank" style="color:#a29bfe;font-weight:700;font-size:14px;text-decoration:none;"><?= htmlspecialchars($rp['athlete_name']) ?></a>
+                    <span style="color:#8b949e;font-size:12px;margin-left:6px;">#<?= $rp['athlete_id_ext'] ?></span>
+                    <span style="background:#da363630;color:#f85149;font-size:10px;padding:2px 8px;border-radius:4px;margin-left:6px;font-weight:600;"><?= htmlspecialchars($reasonLabels[$rp['reason']] ?? $rp['reason']) ?></span>
+                </div>
+                <span style="color:#5a6580;font-size:11px;"><?= $rp['created_at'] ?></span>
+            </div>
+            <?php if ($rp['message']): ?>
+            <p style="color:#c9d1d9;font-size:13px;line-height:1.5;margin:0 0 8px;white-space:pre-wrap;"><?= htmlspecialchars($rp['message']) ?></p>
+            <?php endif; ?>
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <span class="mono" style="color:#5a6580;font-size:11px;"><?= htmlspecialchars($rp['ip']) ?></span>
+                <?php if ($rp['email']): ?><span style="color:#8b949e;font-size:11px;"><?= htmlspecialchars($rp['email']) ?></span><?php endif; ?>
+                <button onclick="_reportAction('resolve',<?= $rp['id_report'] ?>,this)" style="background:#10b98120;border:1px solid #10b98140;color:#10b981;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Resolu</button>
+                <?php if ($rp['athlete_visible']): ?>
+                <button onclick="_toggleVisibility(<?= $rp['athlete_id_ext'] ?>,0,this)" style="background:#f59e0b20;border:1px solid #f59e0b40;color:#f59e0b;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Masquer le profil</button>
+                <?php else: ?>
+                <button onclick="_toggleVisibility(<?= $rp['athlete_id_ext'] ?>,1,this)" style="background:#3b82f620;border:1px solid #3b82f640;color:#3b82f6;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Rendre visible</button>
+                <?php endif; ?>
+                <button onclick="_reportDelete(<?= $rp['id_report'] ?>,this)" style="background:#ef444420;border:1px solid #ef444440;color:#ef4444;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Supprimer</button>
+            </div>
+        </div>
+    <?php endforeach; ?>
+    <?php endif; ?>
+
+    <?php if (!empty($rResolved)): ?>
+    <h4 style="color:#10b981;font-size:13px;margin:20px 0 10px;">Resolus (<?= count($rResolved) ?>)</h4>
+    <?php foreach ($rResolved as $rp): ?>
+        <div class="report-card" data-id="<?= $rp['id_report'] ?>" style="background:#161b22;border:1px solid #10b98120;border-radius:10px;padding:16px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div>
+                    <a href="/?page=profil&id=<?= $rp['athlete_id_ext'] ?>" target="_blank" style="color:#a29bfe;font-weight:700;font-size:14px;text-decoration:none;"><?= htmlspecialchars($rp['athlete_name']) ?></a>
+                    <span style="color:#8b949e;font-size:12px;margin-left:6px;">#<?= $rp['athlete_id_ext'] ?></span>
+                    <span style="background:#10b98130;color:#10b981;font-size:10px;padding:2px 8px;border-radius:4px;margin-left:6px;font-weight:600;">RESOLU</span>
+                </div>
+                <span style="color:#5a6580;font-size:11px;"><?= $rp['created_at'] ?></span>
+            </div>
+            <div style="margin-top:4px;display:flex;gap:8px;align-items:center;">
+                <span class="mono" style="color:#5a6580;font-size:11px;"><?= htmlspecialchars($rp['ip']) ?></span>
+                <?php if ($rp['athlete_visible']): ?>
+                <button onclick="_toggleVisibility(<?= $rp['athlete_id_ext'] ?>,0,this)" style="background:#f59e0b20;border:1px solid #f59e0b40;color:#f59e0b;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Masquer le profil</button>
+                <?php else: ?>
+                <button onclick="_toggleVisibility(<?= $rp['athlete_id_ext'] ?>,1,this)" style="background:#3b82f620;border:1px solid #3b82f640;color:#3b82f6;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Rendre visible</button>
+                <?php endif; ?>
+                <button onclick="_reportDelete(<?= $rp['id_report'] ?>,this)" style="background:#ef444420;border:1px solid #ef444440;color:#ef4444;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Supprimer</button>
+            </div>
+        </div>
+    <?php endforeach; ?>
+    <?php endif; ?>
+
+    <?php endif; ?>
+</div>
+
+<script>
+function _reportAction(action, id, btn) {
+    fetch('/api/report.php?' + action + '=' + id).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) location.reload();
+    });
+}
+function _reportDelete(id, btn) {
+    if (!confirm('Supprimer ce signalement ?')) return;
+    fetch('/api/report.php?delete=' + id).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) {
+            var card = btn.closest('.report-card');
+            card.style.transition = 'opacity 0.3s';
+            card.style.opacity = '0';
+            setTimeout(function() { card.remove(); }, 300);
+        }
+    });
+}
+function _toggleVisibility(athleteId, show, btn) {
+    var action = show ? 'show_athlete' : 'hide_athlete';
+    var msg = show ? 'Rendre ce profil visible ?' : 'Masquer ce profil du site ?';
+    if (!confirm(msg)) return;
+    fetch('/api/report.php?' + action + '=' + athleteId).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) location.reload();
     });
 }
 </script>

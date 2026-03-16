@@ -169,6 +169,7 @@ $columnsAthletes = [
     "licence_athlete" => "VARCHAR(20) DEFAULT ''",
     "date_creation_athlete" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     "vues" => "INT UNSIGNED DEFAULT 0",
+    "visible" => "TINYINT(1) UNSIGNED NOT NULL DEFAULT 1",
 ];
 $tableName = "athletes";
 if (!in_array($tableName, $tables, true)) {
@@ -186,6 +187,10 @@ if (!in_array($tableName, $tables, true)) {
     $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `athletes` LIKE 'vues'");
     if ($res && $res->num_rows === 0) {
         $databaseHandler->action_sql("ALTER TABLE `athletes` ADD COLUMN `vues` INT UNSIGNED DEFAULT 0");
+    }
+    $res = $databaseHandler->connection->query("SHOW COLUMNS FROM `athletes` LIKE 'visible'");
+    if ($res && $res->num_rows === 0) {
+        $databaseHandler->action_sql("ALTER TABLE `athletes` ADD COLUMN `visible` TINYINT(1) UNSIGNED NOT NULL DEFAULT 1");
     }
 }
 
