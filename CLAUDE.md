@@ -12,7 +12,7 @@
 ```
 BK/
 ├── api/                API REST JSON (20+ endpoints, cache fichier 24h)
-│   ├── config.php      Headers JSON + CORS + $conn + jsonResponse() + cle API
+│   ├── config.php      Headers JSON + CORS + $conn + auth.php + jsonResponse() + cle API
 │   ├── contact.php     Messages contact (POST=envoyer, GET=mark_read/delete/unban_ip)
 │   ├── athlete.php     Fiche complete athlete (?id= ou ?id_athlete=)
 │   ├── search.php      Recherche multi-criteres (12 filtres combinables)
@@ -34,7 +34,7 @@ BK/
 │   ├── epreuve_records.php Records paginés par épreuve
 │   ├── ville_epreuves.php Épreuves par ville
 │   ├── competitions.php Liste des compétitions
-│   └── auth/           login.php, register.php, logout.php, me.php, forgot_password.php, reset_password.php, google_login.php, google_callback.php
+│   └── auth/           login.php, register.php, logout.php, me.php, forgot_password.php, reset_password.php, google_login.php, google_callback.php, verify_email.php, confirm_hide.php, confirm_contact.php
 ├── cache/              Cache JSON fichier (24h, protege .htaccess)
 │   ├── stats_base.json           Cache stats sans detail
 │   ├── stats_detail_30.json      Cache stats avec detail (top 30)
@@ -83,7 +83,7 @@ BK/
 │   └── .sa_sessions.php     Sessions super admin (protege par die())
 ├── docs/               Documentation technique
 ├── generate_og_image.html Generateur image OG (canvas 1200x630)
-├── index.php           PAGE PRINCIPALE (~8500 lignes PHP+HTML+JS, anti-scraping 20 pages/jour)
+├── index.php           PAGE PRINCIPALE (~8500 lignes PHP+HTML+JS, anti-scraping 10 pages/jour)
 ├── dashboard.css       Styles du dashboard (~550 lignes)
 ├── common.css          Styles globaux
 ├── login.php / register.php / forgot_password.php / reset_password.php / nav.php / panel.php
@@ -104,7 +104,7 @@ BK/
 | Clubs | `?page=clubs` | Liste clubs, panneau detail club 5 onglets |
 | Epreuves | `?page=epreuves` | Liste epreuves, panneau detail epreuve 4 onglets |
 | Villes | `?page=villes` | Liste villes / Detail ville (`&open=NomVille`) + filtres niv/nat/ans |
-| Comparer | `?page=comparer` | Comparaison athletes/clubs (panier localStorage) |
+| Comparer | `?page=comparer` | Comparaison athletes/clubs (panier localStorage ou URL partageable) |
 | Tuto | `?page=tuto` | Tutoriel anime 8 sections (scroll unique, animations IntersectionObserver) |
 
 ## index.php — Structure du code (reperes de lignes approximatifs)
@@ -195,6 +195,31 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 - **Records/Progressions/Niveaux** : clubs, epreuves, villes tous cliquables
 - **Progression detail JS** : lieu cliquable vers page villes
 
+## Page Comparer — Liens partageables
+- **localStorage** : panier `bk_cmp_athletes` / `bk_cmp_clubs` (comportement par defaut)
+- **URL partageable athletes** : `?page=comparer&ids=548525,2643370` (IDs externes separes par virgules)
+- **URL par licence** : `?page=comparer&licences=131980,1586918` (numeros de licence)
+- **URL clubs** : `?page=comparer&clubs=ES%20MASSY,BORDEAUX%20ATHLE` (noms URL-encodes)
+- **Mix** : `?page=comparer&ids=548525&licences=1378169&clubs=ES%20MASSY`
+- **Auto-compare** : si URL contient `ids`/`licences`/`clubs`, les donnees sont chargees, la 1ere epreuve commune est pre-selectionnee, et la comparaison se lance automatiquement (comme si on avait clique "Comparer")
+- **Description SEO** : `<p id="cmpDescription">` genere automatiquement ("Comparaison entre X et Y — records, progressions, medailles...")
+- **Bouton "Copier le lien"** : genere l'URL avec les athletes/clubs selectionnes
+- **Priorite** : URL params > localStorage (si URL presente, localStorage ignore)
+- **API athlete.php** : accepte `?id=` (externe), `?id_athlete=` (interne), `?licence=` (numero de licence)
+
+## Panneau club — Barre de recherche athletes
+- **Input** dans chaque panneau club (Accueil, Recherche, Clubs) entre les tabs et le contenu
+- **ID** : `clubSearchInput{suffix}`, `clubSearchBar{suffix}`
+- **Init** : `_clubSearchInit(suffix)` appele dans `_fillClubPanel()`
+- **Recherche** : `_clubSearchExec(suffix)` — debounce 350ms, `search.php?club=NomClub&nom=Query&limit=50`
+- **Resultats** : tableau 3-tables (#, Athlete, Cat, Sexe, NAT, Niveaux, Records)
+- **Retour** : vider l'input restaure l'onglet actif, changer d'onglet efface la recherche
+
+## API search.php — Recherche multi-mots (ordre libre)
+- Le parametre `nom` est decoupe en mots (`preg_split('/\s+/')`)
+- Chaque mot genere un `LIKE '%mot%'` combine par `AND`
+- Permet de trouver "LECLERCQ Remi" en cherchant "Remi LECLERCQ" ou inversement
+
 ## Page Tuto — 8 sections animees
 - Toutes les sections visibles sur une seule page (scroll)
 - Animations declenchees par IntersectionObserver (threshold 0.25)
@@ -233,6 +258,8 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 ## API search.php — 12 filtres
 `nom`, `nom1`, `nom2`, `club`, `categorie`, `sexe`, `nationalite`, `epreuve`, `ville`, `competition`, `medaille`, `annee`, `licence`, `page`, `limit`
 - Au moins 1 filtre requis
+- **Rate limiting** : 100/jour anonymes, 500/jour connectes, illimite super admin (badge dore clignotant dans nav)
+- **Constantes** : `BK_SEARCH_LIMIT_ANON = 100`, `BK_SEARCH_LIMIT_LOGGED = 500` (definies en haut de search.php)
 - Exclut clubs >5000 athletes (sauf si filtre club actif)
 - Retourne : niveaux[] + top_records[5] avec top_niveau par athlete
 
@@ -354,6 +381,9 @@ html += '</div>';
 | `contact_messages` | id_msg PK, ip, nom, email, message, lu | Messages contact (lu=0/1) |
 | `password_resets` | id_reset PK, id_user FK, token UNIQUE, expire_at, used | Tokens reinitialisation mdp (1h TTL) |
 | `search_tracking` | id_search PK, ip, query_text, search_type ENUM, source ENUM | Tracking recherches/consultations (entity_id, entity_name, result_count, page, created_at) |
+| `profile_reports` | id_report PK, ip, athlete_id_ext, athlete_name, reason, email, status | Signalements profil (new/read/resolved) |
+| `profile_hide_tokens` | id PK, athlete_id_ext, athlete_name, email, token UNIQUE, used, expires_at | Tokens retrait self-service (48h TTL) |
+| `contact_confirm_tokens` | id PK, ip, nom, email, message, token UNIQUE, used, expires_at | Tokens confirmation contact (24h TTL) |
 
 ## Cache systeme
 - **Emplacement** : `cache/` (fichiers JSON, protege .htaccess)
@@ -371,7 +401,9 @@ html += '</div>';
 - **Stockage** : table `logs` en MySQL
 - **JS** : batch toutes les 2s + sendBeacon au depart de page
 - **Actions** : page_view, click_link, click_button, form_submit, input_change, copy, page_leave, js_error, navigation
-- **Donnees** : IP (auto CloudFlare/proxy), UA, session ID, page, action, detail, screen, langue, referrer, duree
+- **Donnees** : IP (auto CloudFlare/proxy), UA, session ID, **uid** (id_user si connecte), uname, page, action, detail, screen, langue, referrer, duree
+- **uid rempli** grace a `config.php` qui inclut `auth.php` → `getCurrentUser()` disponible dans log.php
+- **Panel historique** : Section 9B utilise `logs.uid` pour retrouver les IPs d'un user → croise avec `search_tracking`
 - **Visualisation** : `admin/logs.php` — acces restreint a `luvumbu.n@gmail.com`
 
 ### Log IP universel (PHP → fichier JSON)
@@ -384,7 +416,21 @@ html += '</div>';
 - **Pages avec logIp()** : index.php, api/config.php, pages/*.php, login.php, register.php
 
 ### Rate limiting
-- **API et pages** : rate limiting global desactive (pas de limite req/jour)
+- **API search.php** : limites de recherches par jour par IP
+  - **Anonymes** : **100 recherches/jour** (`BK_SEARCH_LIMIT_ANON`)
+  - **Connectes** (`bk_token`) : **500 recherches/jour** (`BK_SEARCH_LIMIT_LOGGED`)
+  - **Super admin** (`bk_sa_token`) : **illimite**
+  - Fichier : `logs/.search_limits.php` (JSON protege par die(), reset quotidien)
+  - Cle compteur = IP directement (meme cle pour connectes et anonymes, seule la limite change)
+  - Retourne `{ success: false, limit_reached: true, limit: N, logged: bool }` (HTTP 429)
+  - Chaque reponse reussie inclut `search_used` et `search_limit` pour mise a jour du badge
+  - **Badge nav** : `<span id="searchQuota">` a cote du lien Recherche, affiche `N/500` ou `N/100`
+    - **Dore clignotant** (`#ffd700`, animation `bkGoldBlink`) si < 80%, rouge clignotant rapide si > 80%
+    - Lien "Recherche" aussi en dore clignotant
+    - Mis a jour en temps reel via JS `_updateSearchQuota(data)` apres chaque recherche
+    - Compteur PHP initial lu depuis `logs/.search_limits.php` au chargement de index.php
+  - **Message limite atteinte** : fonction JS `_buildLimitMsg(data)` — bloc XXL (icone 70px, titre 28px rouge, bordure rouge)
+  - Whitelist : Google, Hostinger, localhost, bots/curl → illimite
 - **Admin login** (`api/auth/login.php`) : **5 tentatives/jour** par IP, blocage 24h apres 5 echecs
   - Fichier : `logs/.admin_attempts.php` (JSON protege par die())
   - **Whitelist illimitee** : Google (66.249.*, 66.102.*, 64.233.*, 72.14.*, 74.125.*, 209.85.*, 216.239.*, 35.*, 34.*), Hostinger (153.92.*, 31.170.*, 185.201.*), localhost (127.0.0.1, ::1)
@@ -393,9 +439,9 @@ html += '</div>';
 - **IPs whitelistees ne sont PAS loguees** (early return dans `logIp()`)
 
 ### Anti-scraping (protection pages)
-- **Limite** : 20 pages/jour max pour les visiteurs anonymes
+- **Limite** : 10 pages/jour max pour les visiteurs anonymes
 - **Compteur** : `logs/.page_limits.php` — compteurs journaliers par IP (JSON protege par die())
-- **Apres 20 pages** : redirection vers `login.php?limit=1` (message "Connectez-vous avec Google pour continuer")
+- **Apres 10 pages** : redirection vers `login.php?limit=1` (message "Connectez-vous avec Google pour continuer")
 - **Whitelist illimitee** : Google, Hostinger, localhost (meme prefixes que admin login)
 - **Utilisateurs connectes illimites** : cookie `bk_token` ou `bk_sa_token` → pas de limite
 - **Implementation** : IIFE anonyme dans index.php apres `logIp()`, avant le contenu
@@ -407,16 +453,63 @@ html += '</div>';
 - **Sert pour** : reset vues (`top_searched.php?reset=`), bypass cache
 - **PAS de restriction IP** : l'API est ouverte a toutes les IPs
 
-### Systeme de contact
+### Systeme de contact (avec confirmation email)
 - **API** : `api/contact.php` (PAS de config.php = accessible meme si IP bloquee)
-- **Table** : `contact_messages` (auto-created via CREATE TABLE IF NOT EXISTS)
-- **POST** : envoyer message `{ nom, email, message }` — rate limit 3/jour par IP
+- **Email obligatoire** : l'email n'est plus facultatif, il est requis pour envoyer un message
+- **Flux avec confirmation** :
+  1. L'utilisateur remplit le formulaire (nom, email obligatoire, message)
+  2. Un email de confirmation est envoye a l'adresse indiquee (bouton "Confirmer et envoyer mon message")
+  3. **Sans clic sur le lien** → le message n'est PAS transmis, l'admin ne recoit rien
+  4. **Au clic** → le message est enregistre en BDD (`contact_messages`) + notification admin par email
+- **Table tokens** : `contact_confirm_tokens` (auto-created, token 64 chars, expire 24h)
+- **Endpoint confirmation** : `api/auth/confirm_contact.php?token=XXX` — verifie token, insere en BDD, notifie admin
+- **Rate limit** : 3 demandes/jour par IP (sur `contact_confirm_tokens`)
 - **GET admin** (cookie `bk_sa_token` requis) :
   - `?mark_read=ID` : marquer message comme lu
   - `?delete=ID` : supprimer message
   - `?unban_ip=X` : debannir une IP
-- **Formulaire visible** : page de blocage (429) + footer index.php
+- **4 formulaires contact** : footer index.php (`fcEmail`), overlay index.php (`ovEmail`), pages/profil.php (`pubEmail`), page blocage
+- **Message rouge** dans chaque formulaire : "Un email de confirmation vous sera envoye. Votre message ne nous parviendra qu'apres validation du lien."
 - **Admin panel** : section 14, alerte violette pulsante si messages non lus
+
+### Signalement profil + Retrait self-service
+- **API** : `api/report.php` (POST = signalement, GET = actions admin)
+- **Table signalements** : `profile_reports` (ip, athlete_id_ext, athlete_name, reason, message, email, status)
+- **Colonne visibilite** : `athletes.visible` (TINYINT, default 1)
+- **5 motifs** : retrait, donnees_incorrectes, usurpation, vie_privee, autre
+
+#### Retrait self-service par email
+- **Declencheur** : motif "retrait" + email fourni dans le formulaire de signalement
+- **Flux** :
+  1. L'utilisateur choisit "Je souhaite retirer mon profil" + indique son email
+  2. Un email de confirmation est envoye (bouton "Oui, masquer mon profil")
+  3. **Au clic** → profil masque automatiquement (`visible=0`), cache vide, page de confirmation verte
+  4. **Sans clic** → le signalement est enregistre mais traite manuellement (delai 1-30 jours)
+- **Table tokens** : `profile_hide_tokens` (athlete_id_ext, athlete_name, email, token 64 chars, used, expires 48h)
+- **Endpoint confirmation** : `api/auth/confirm_hide.php?token=XXX` — verifie token, SET visible=0, vide cache, page succes
+- **Anti-abus (silencieux)** : une adresse email ne peut masquer qu'1 seul profil (tous temps confondus). Si deja utilisee → signalement enregistre normalement mais pas de lien envoye
+- **Rate limit** : 1 demande par email+athlete par 24h, 3 signalements/jour par IP
+
+#### Profil masque (visible=0)
+- **Non-connectes** : page "Ce profil n'est plus disponible" (icone + message + lien retour)
+- **Admin connecte** (`bk_sa_token`) : profil visible avec bandeau rouge "Profil masque — Inaccessible publiquement" + lien panel + texte en rouge
+- **API `athlete.php`** : retourne `visible: false` si masque. Admin peut forcer avec `?_all=1`
+- **2 pages profil** : `index.php?page=profil&id=X` (id externe) et `pages/profil.php?id=X` (id interne) — les deux respectent `visible`
+- **`pages/profil.php`** : verifie `visible` directement en BDD via `core/db.php`, appelle API avec `_all=1` si admin
+- **Cache** : vide automatiquement apres changement de visibilite (glob `athlete_*.json` + strpos sur contenu)
+
+#### Actions admin (GET report.php, cookie admin requis)
+- `?hide_athlete=ID` : masquer profil (visible=0 + vider cache)
+- `?show_athlete=ID` : remonter profil (visible=1 + vider cache)
+- `?mark_read=ID` : marquer signalement comme lu
+- `?resolve=ID` : marquer signalement comme resolu
+- `?delete=ID` : supprimer signalement
+
+#### Formulaire de signalement
+- **Present sur** : `index.php` (modal `#reportOverlay`) et `pages/profil.php` (modal)
+- **Message rouge permanent** : "Indiquez votre email : nous vous enverrons un lien de confirmation... Sans confirmation, delai 1 a 30 jours."
+- **Hint rouge dynamique** (quand motif = retrait) : "L'email est obligatoire pour ce motif. Un seul clic et votre profil sera masque immediatement."
+- **Message de retour** (apres envoi retrait) : bloc encadre violet "Verifiez votre boite mail !" avec instructions claires
 
 ### Search Tracking (systeme complet)
 Systeme de suivi de toutes les recherches et consultations sur le site.
@@ -597,7 +690,7 @@ $totalPages = ceil($total / $limit);
 - **H1** : "Base de Donnees Athletisme Francais — Athletes, Clubs, Records"
 - **noindex** : pages comparer, tuto, profil 404
 - **GTM** : Google Tag Manager (GTM-KPNTVXDF) dans `<head>` + noscript apres `<body>`
-- **AdSense** : Google AdSense (ca-pub-7899923856846249) dans `<head>`
+- **AdSense** : Google AdSense (ca-pub-7899923856846249) — script + meta `google-adsense-account` dans `<head>` + `ads.txt` a la racine
 - **Footer SEO** : liens internes vers toutes les pages principales
 
 ## Epreuves/Records club — UNION records + progressions
@@ -691,6 +784,11 @@ MySQL (9 tables enfants) + src/{id}.php (JSON)
 ### scraping/scraper.php — Orchestrateur principal
 - **URL** : `https://bokonzi.com/scraping/scraper.php`
 - **Constantes** : `$TIME_LIMIT = 25s`, `$PARALLEL = 7`
+- **Controle start/stop** : bouton DEMARRER/ARRETER avec fichier flag `scraping_running.flag`
+  - **DEMARRER** : cree le flag → la boucle auto-refresh tourne
+  - **ARRETER** : supprime le flag → arret propre au prochain cycle, progression sauvegardee
+  - **Persistant** : le flag survit a la fermeture du navigateur, le scraping reprend si on revient
+  - **Fin automatique** : le flag est supprime quand tous les athletes sont traites
 - **Workflow par cycle** (25s max, puis auto-refresh) :
   1. Charge toutes les URLs depuis `nom_et_liens` → cache `urls_cache.json`
   2. Charge tous les `athlete_id_externe` deja en BDD → `$existingAthletes[]`
@@ -699,7 +797,7 @@ MySQL (9 tables enfants) + src/{id}.php (JSON)
   5. Pour chaque athlete : `AthleteScraper` → extraction → JSON `src/{id}.php` → BDD `insertAthleteData()`
   6. Echecs → `failed.json`
   7. Progression → `progress.txt` + `$_SESSION["url"]`
-  8. `header("Refresh: 1")` → cycle suivant
+  8. Verifie que le flag existe toujours → `header("Refresh: 1")` → cycle suivant
 - **Bouton reset** : `?reset_to=N` pour reprendre a un numero choisi
 - **Test manuel** : `?test_url=ID` ou `?test_url=URL` — scrape 1 athlete, affiche stats, insere en BDD (independant du batch)
   - `&skip_bdd` : test sans insertion
@@ -754,6 +852,65 @@ MySQL (9 tables enfants) + src/{id}.php (JSON)
 - `?action=count` : compteurs de toutes les tables
 - `?action=columns&table=athletes` : schema d'une table
 
+## Page Accueil — Elements visuels (maj 2026-04-13)
+
+### Stade 3D CSS
+- Piste d'athletisme realiste (rectangle + 2 demi-cercles) avec terrain de foot rectangulaire au centre
+- 8 couloirs, tribunes violettes, 4 projecteurs, ligne d'arrivee
+- Rotation automatique lente (90s/tour) via `@keyframes stadeRotation`
+- Etoiles scintillantes, texte BOKONZI en bas
+- Pur CSS 3D (`perspective`, `transform-style: preserve-3d`, `translateZ`)
+
+### Podium 3D (Three.js)
+- Place apres la liste Top Clubs
+- 3 marches : Or (centre, haut), Argent (gauche), Bronze (droite) avec numeros 1/2/3
+- 3 medailles flottantes au-dessus (torus + disque + ruban violet)
+- Sol piste rouge, particules dorees, camera oscillante
+- Three.js charge via CDN (`three@0.160.0`)
+
+### Elements supprimes de l'accueil
+- Graphique repartition par sexe (doughnut)
+- Graphiques Top 10 Clubs et Top 10 Epreuves (bar charts)
+- Section Athletes aleatoires
+- Sections Top Villes et Top Epreuves (HTML + JS)
+- Cartes stats Resultats et Records
+- Colonne Niveaux dans tous les tableaux accueil
+- Lien Epreuves dans la nav
+
+### Elements modifies accueil
+- 4 stat cards restantes (Athletes, Clubs, Epreuves, Villes) : pleine largeur `grid-template-columns:repeat(4,1fr)` + texte centre
+- Lien "Recherche" dans nav : dore clignotant (`#ffd700`, animation `bkGoldBlink`)
+- Badge recherche : dore clignotant, rouge rapide si > 80%
+- Overlay inscription : **1 heure** (3600000ms) au lieu de 25s
+
+## Disclaimer / Avertissement legal
+
+### Bandeau accueil
+- Encadre orange (`#f59e0b`) sous le H1, avec lien "En savoir plus" vers `#footerDisclaimer`
+- Texte : "Plateforme independante a caractere informatif"
+
+### Popup page Athletes
+- Apparait apres **2 secondes** (1ere visite) ou **immediatement** (refresh sans clic "ne plus afficher")
+- 2 boutons : "J'ai lu" (ferme, revient) / "J'ai compris, ne plus afficher" (localStorage `bk_disclaimer_ok_v3`)
+- `sessionStorage` pour tracker si deja vu dans la session → 0 delai au refresh
+
+### Popup page Profil
+- Meme comportement que page Athletes
+- localStorage `bk_profil_disclaimer_ok_v3`, sessionStorage `bk_profil_disc_seen`
+
+### Footer
+- Texte legal complet (7 paragraphes) dans `#footerDisclaimer`
+- Couvre : independance, sources publiques, pas d'erreurs garanties, droit de suppression, signalement
+
+### Reset localStorage a distance
+- Changer le suffixe des cles (`_v3` → `_v4`, etc.) pour forcer tous les visiteurs a revoir les popups
+
+## Panel Admin — Courrier non confirme (maj 2026-04-13)
+- Section rouge avant les messages confirmes dans `admin/panel.php`
+- Affiche les tokens de `contact_confirm_tokens` avec `used = 0`
+- Badge "NON CONFIRME" rouge + badge "EXPIRE" orange si token expire
+- Nom, email, message complet, IP, date d'expiration
+
 ## Points d'attention CRITIQUES
 - `index.php` est ENORME (~8400 lignes) : PHP + HTML + JS tout-en-un. Lire par sections.
 - `index.php` inclut `core/db.php` → `$conn` disponible pour requetes directes (ex: select nationalites)
@@ -767,6 +924,8 @@ MySQL (9 tables enfants) + src/{id}.php (JSON)
 - Performances avec `performance_int = 0` ou `NULL` = conversions echouees → toujours filtrer `> 0`
 - FK vers epreuves/villes/clubs = ON DELETE SET NULL (pas CASCADE)
 - FK vers athletes = ON DELETE CASCADE (supprime toutes les donnees liees)
+- **Three.js** : charge 1 seule fois via CDN avant les sections 3D, utilise par le podium uniquement
+- **Disclaimer** : texte legal affiche sur accueil (bandeau), athletes (popup), profil (popup), footer (complet)
 
 
 

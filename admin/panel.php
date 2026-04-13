@@ -5,6 +5,8 @@
  * Acces : login avec identifiants BDD (username + password)
  * Cookie : bk_sa_token (7 jours)
  */
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/ip_logger.php';
 
@@ -126,80 +128,17 @@ foreach ($tables as $t) {
     $stats[$t] = $r ? (int)$r->fetch_assoc()['c'] : 0;
 }
 
-// Taille BDD par table
-$tableSizes = [];
-$rSizes = $conn->query("SELECT table_name, data_length + index_length as size, table_rows FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY size DESC");
-$dbSize = 0;
-if ($rSizes) while ($row = $rSizes->fetch_assoc()) { $tableSizes[] = $row; $dbSize += (float)$row['size']; }
-
-// === USERS ===
-$lastUsers = [];
-$rUsers = $conn->query("SELECT id_user, email, nom, prenom, role, id_athlete FROM users ORDER BY id_user DESC LIMIT 20");
-if ($rUsers) while ($row = $rUsers->fetch_assoc()) $lastUsers[] = $row;
-
-$usersByRole = [];
-$rRoles = $conn->query("SELECT role, COUNT(*) as c FROM users GROUP BY role ORDER BY c DESC");
-if ($rRoles) while ($row = $rRoles->fetch_assoc()) $usersByRole[$row['role']] = (int)$row['c'];
+// Taille BDD (juste le total pour le cache)
+$cacheFiles = glob(__DIR__ . '/../cache/*.json') ?: [];
+$cacheSize = 0;
+foreach ($cacheFiles as $f) { $cacheSize += filesize($f); }
 
 // Sessions actives
 $activeSessions = 0;
 $rSess = $conn->query("SELECT COUNT(*) as c FROM user_sessions WHERE expire_at > NOW()");
 if ($rSess) $activeSessions = (int)$rSess->fetch_assoc()['c'];
 
-// === ACTIVITE PAR UTILISATEUR ===
-$allUsers = [];
-$rAll = $conn->query("SELECT u.id_user, u.email, u.nom, u.prenom, u.role, u.picture, u.last_login, u.date_creation,
-    u.google_id, u.oauth_provider, u.locale,
-    (SELECT COUNT(*) FROM athlete_follows af WHERE af.email = u.email) as nb_follows_ath,
-    (SELECT COUNT(*) FROM club_follows cf WHERE cf.email = u.email) as nb_follows_club,
-    (SELECT COUNT(*) FROM user_sessions us WHERE us.id_user = u.id_user AND us.expire_at > NOW()) as sessions_active,
-    (SELECT COUNT(*) FROM logs l WHERE l.uid = u.id_user AND DATE(l.ts) = CURDATE()) as req_today
-    FROM users u ORDER BY u.last_login DESC, u.id_user DESC");
-if ($rAll) while ($row = $rAll->fetch_assoc()) $allUsers[] = $row;
-
-// Suivis details par user (athletes + clubs)
-$userFollowsDetail = [];
-foreach ($allUsers as $u) {
-    $uid = (int)$u['id_user'];
-    $eml = $conn->real_escape_string($u['email']);
-    $fa = []; $fc = [];
-    $r = $conn->query("SELECT af.athlete_id_ext, a.nom_complet_athlete, af.created_at FROM athlete_follows af LEFT JOIN athletes a ON a.athlete_id_externe = af.athlete_id_ext WHERE af.email = '$eml' ORDER BY af.created_at DESC");
-    if ($r) while ($row = $r->fetch_assoc()) $fa[] = $row;
-    $r = $conn->query("SELECT cf.club_id, c.nom_club, cf.created_at FROM club_follows cf LEFT JOIN clubs c ON c.id_club = cf.club_id WHERE cf.email = '$eml' ORDER BY cf.created_at DESC");
-    if ($r) while ($row = $r->fetch_assoc()) $fc[] = $row;
-    $userFollowsDetail[$uid] = ['athletes' => $fa, 'clubs' => $fc];
-}
-
-// Historique recherche par user (via logs.uid pour trouver les IPs)
-$userSearchHistory = [];
-foreach ($allUsers as $u) {
-    $uid = (int)$u['id_user'];
-    // Trouver les IPs utilisees par ce user via uid dans logs
-    $ips = [];
-    $r = $conn->query("SELECT DISTINCT ip FROM logs WHERE uid = $uid AND ip != '' LIMIT 10");
-    if ($r) while ($row = $r->fetch_assoc()) $ips[] = "'" . $conn->real_escape_string($row['ip']) . "'";
-    if (empty($ips)) { $userSearchHistory[$uid] = []; continue; }
-    $ipList = implode(',', $ips);
-    $hist = [];
-    $r = $conn->query("SELECT query_text, search_type, source, entity_name, entity_id, created_at FROM search_tracking WHERE ip IN ($ipList) ORDER BY created_at DESC LIMIT 30");
-    if ($r) while ($row = $r->fetch_assoc()) $hist[] = $row;
-    $userSearchHistory[$uid] = $hist;
-}
-
-// === FOLLOWS & SUBSCRIBERS ===
-$lastFollowsAth = [];
-$r = $conn->query("SELECT email, athlete_id_ext, created_at FROM athlete_follows ORDER BY id_follow DESC LIMIT 15");
-if ($r) while ($row = $r->fetch_assoc()) $lastFollowsAth[] = $row;
-
-$lastFollowsClub = [];
-$r = $conn->query("SELECT email, club_id, created_at FROM club_follows ORDER BY id_follow DESC LIMIT 15");
-if ($r) while ($row = $r->fetch_assoc()) $lastFollowsClub[] = $row;
-
-$lastSubs = [];
-$r = $conn->query("SELECT email, source, detail, created_at FROM email_subscribers ORDER BY id_sub DESC LIMIT 15");
-if ($r) while ($row = $r->fetch_assoc()) $lastSubs[] = $row;
-
-// === LOGS BDD ===
+// === LOGS BDD (juste les compteurs pour les cards) ===
 $todayLogs = 0;
 $rToday = $conn->query("SELECT COUNT(*) as c FROM logs WHERE DATE(ts) = CURDATE()");
 if ($rToday) $todayLogs = (int)$rToday->fetch_assoc()['c'];
@@ -208,114 +147,263 @@ $yesterdayLogs = 0;
 $r = $conn->query("SELECT COUNT(*) as c FROM logs WHERE DATE(ts) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)");
 if ($r) $yesterdayLogs = (int)$r->fetch_assoc()['c'];
 
-// Top IPs aujourd'hui (avec UA)
-$topIpsToday = [];
-$rTopIp = $conn->query("SELECT ip, ua, COUNT(*) as c, MIN(ts) as first_seen, MAX(ts) as last_seen FROM logs WHERE DATE(ts) = CURDATE() GROUP BY ip ORDER BY c DESC LIMIT 15");
-if ($rTopIp) while ($row = $rTopIp->fetch_assoc()) $topIpsToday[] = $row;
-
-// Top pages aujourd'hui
-$topPagesToday = [];
-$r = $conn->query("SELECT page, COUNT(*) as c FROM logs WHERE DATE(ts) = CURDATE() AND action='page_view' GROUP BY page ORDER BY c DESC LIMIT 15");
-if ($r) while ($row = $r->fetch_assoc()) $topPagesToday[] = $row;
-
-// Actions distribution aujourd'hui
-$actionsToday = [];
-$r = $conn->query("SELECT action, COUNT(*) as c FROM logs WHERE DATE(ts) = CURDATE() GROUP BY action ORDER BY c DESC");
-if ($r) while ($row = $r->fetch_assoc()) $actionsToday[$row['action']] = (int)$row['c'];
-
-// Sessions uniques aujourd'hui
 $sessionsToday = 0;
 $r = $conn->query("SELECT COUNT(DISTINCT sid) as c FROM logs WHERE DATE(ts) = CURDATE()");
 if ($r) $sessionsToday = (int)$r->fetch_assoc()['c'];
 
-// Unique IPs aujourd'hui
 $uniqueIpsToday = 0;
 $r = $conn->query("SELECT COUNT(DISTINCT ip) as c FROM logs WHERE DATE(ts) = CURDATE()");
 if ($r) $uniqueIpsToday = (int)$r->fetch_assoc()['c'];
 
-// Erreurs JS aujourd'hui
-$jsErrors = [];
-$r = $conn->query("SELECT detail, value, ip, ts FROM logs WHERE action='js_error' AND DATE(ts) = CURDATE() ORDER BY ts DESC LIMIT 10");
-if ($r) while ($row = $r->fetch_assoc()) $jsErrors[] = $row;
-
-// Dernières requêtes BDD (les 30 dernières)
-$lastLogs = [];
-$r = $conn->query("SELECT ts, ip, ua, action, page, detail, sid, screen, lang, duration_ms, uname FROM logs ORDER BY id_log DESC LIMIT 30");
-if ($r) while ($row = $r->fetch_assoc()) $lastLogs[] = $row;
-
-// Activité par heure aujourd'hui
-$hourlyActivity = array_fill(0, 24, 0);
-$r = $conn->query("SELECT HOUR(ts) as h, COUNT(*) as c FROM logs WHERE DATE(ts) = CURDATE() GROUP BY HOUR(ts)");
-if ($r) while ($row = $r->fetch_assoc()) $hourlyActivity[(int)$row['h']] = (int)$row['c'];
-
-// Logs 7 derniers jours
-$weeklyLogs = [];
-$r = $conn->query("SELECT DATE(ts) as d, COUNT(*) as c, COUNT(DISTINCT ip) as ips, COUNT(DISTINCT sid) as sessions FROM logs WHERE ts >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY DATE(ts) ORDER BY d DESC");
-if ($r) while ($row = $r->fetch_assoc()) $weeklyLogs[] = $row;
-
-// Devices (screen resolutions)
-$devices = [];
-$r = $conn->query("SELECT screen, COUNT(*) as c FROM logs WHERE DATE(ts) = CURDATE() AND screen != '' GROUP BY screen ORDER BY c DESC LIMIT 10");
-if ($r) while ($row = $r->fetch_assoc()) $devices[] = $row;
-
-// Langues
-$languages = [];
-$r = $conn->query("SELECT lang, COUNT(*) as c FROM logs WHERE DATE(ts) = CURDATE() AND lang != '' GROUP BY lang ORDER BY c DESC LIMIT 10");
-if ($r) while ($row = $r->fetch_assoc()) $languages[] = $row;
-
-// Referrers
-$referrers = [];
-$r = $conn->query("SELECT referrer, COUNT(*) as c FROM logs WHERE DATE(ts) = CURDATE() AND referrer != '' AND referrer NOT LIKE '%bokonzi%' GROUP BY referrer ORDER BY c DESC LIMIT 10");
-if ($r) while ($row = $r->fetch_assoc()) $referrers[] = $row;
-
 // Bots detection dans IP tracker
 $ipData = readIpLog();
-$lastRequests = array_reverse($ipData['last_requests'] ?? []);
 
-// === SERVEUR ===
-$phpVersion = phpversion();
-$mysqlVersion = '';
-$r = $conn->query("SELECT VERSION() as v");
-if ($r) $mysqlVersion = $r->fetch_assoc()['v'];
+// === UTILISATEURS INSCRITS (avec stats) ===
+$_users = [];
+$rUsers = $conn->query("
+    SELECT u.id_user, u.email, u.nom, u.prenom, u.role, u.picture, u.date_creation, u.last_login,
+        (SELECT COUNT(*) FROM user_sessions us WHERE us.id_user = u.id_user) as nb_sessions_total,
+        (SELECT COUNT(DISTINCT sid) FROM logs l WHERE l.uid = u.id_user AND l.sid IS NOT NULL AND l.sid != '') as nb_sessions_log,
+        (SELECT COUNT(*) FROM logs l WHERE l.uid = u.id_user) as nb_actions
+    FROM users u
+    ORDER BY u.last_login DESC, u.id_user DESC
+");
+if ($rUsers) while ($row = $rUsers->fetch_assoc()) $_users[] = $row;
 
-// Espace disque
-$diskFree = @disk_free_space('/');
-$diskTotal = @disk_total_space('/');
+// Recherches et URLs par user (via logs.uid → ip → search_tracking)
+$_userSearches = [];
+$_userUrls = [];
+foreach ($_users as $u) {
+    $uid = (int)$u['id_user'];
+    // IPs de ce user
+    $ips = [];
+    $r = $conn->query("SELECT DISTINCT ip FROM logs WHERE uid = $uid AND ip != '' LIMIT 10");
+    if ($r) while ($row = $r->fetch_assoc()) $ips[] = "'" . $conn->real_escape_string($row['ip']) . "'";
 
-// Cache files
-$cacheFiles = glob(__DIR__ . '/../cache/*.json') ?: [];
-$cacheSize = 0;
-$oldestCache = null; $newestCache = null;
-foreach ($cacheFiles as $f) {
-    $cacheSize += filesize($f);
-    $mt = filemtime($f);
-    if (!$oldestCache || $mt < $oldestCache) $oldestCache = $mt;
-    if (!$newestCache || $mt > $newestCache) $newestCache = $mt;
+    if (!empty($ips)) {
+        $ipList = implode(',', $ips);
+        // Nombre de recherches
+        $r = $conn->query("SELECT COUNT(*) as c FROM search_tracking WHERE ip IN ($ipList)");
+        $_userSearches[$uid] = $r ? (int)$r->fetch_assoc()['c'] : 0;
+        // Toutes les URLs visitees
+        $urls = [];
+        $r = $conn->query("SELECT page, detail, value, ts FROM logs WHERE uid = $uid AND action = 'page_view' ORDER BY ts DESC");
+        if ($r) while ($row = $r->fetch_assoc()) $urls[] = $row;
+        $_userUrls[$uid] = $urls;
+    } else {
+        $_userSearches[$uid] = 0;
+        $_userUrls[$uid] = [];
+    }
 }
 
-// Log files IP tracker
-$ipLogMonths = listIpLogFiles();
+// === SECTION 17 : PROFILS COMPORTEMENTAUX ===
+// Users avec >1 connexion, tries par nombre de connexions
+$_behaviorUsers = [];
+foreach ($_users as $_u) {
+    $uid = (int)$_u['id_user'];
+    $nbCo = max((int)$_u['nb_sessions_total'], (int)$_u['nb_sessions_log']);
+    if ($nbCo < 2) continue;
 
-// Failed login attempts (security)
-$failedLogins = [];
-$r = $conn->query("SELECT detail, value, ip, ts FROM logs WHERE action='form_submit' AND detail LIKE '%login%' AND DATE(ts) >= DATE_SUB(CURDATE(), INTERVAL 3 DAY) ORDER BY ts DESC LIMIT 20");
-if ($r) while ($row = $r->fetch_assoc()) $failedLogins[] = $row;
+    $nom = trim(($_u['nom'] ?? '') . ' ' . ($_u['prenom'] ?? ''));
+    $prenom = trim($_u['prenom'] ?? '');
+    $nomFam = trim($_u['nom'] ?? '');
 
-// === VUES TRACKING (profils & clubs) ===
-$hasVuesTables = false;
-$r = $conn->query("SHOW TABLES LIKE 'athlete_vues_ip'");
-if ($r && $r->num_rows > 0) $hasVuesTables = true;
+    // IPs de ce user
+    $userIps = [];
+    $r = $conn->query("SELECT DISTINCT ip FROM logs WHERE uid = $uid AND ip != '' LIMIT 20");
+    if ($r) while ($row = $r->fetch_assoc()) $userIps[] = $conn->real_escape_string($row['ip']);
 
-$totalVuesAthletes = 0; $totalVuesClubs = 0;
-$nbAthVus = 0; $nbClubsVus = 0;
-$uniqueVueIpsAth = 0; $uniqueVueIpsClub = 0;
-$vuesTodayAth = 0; $vuesTodayClub = 0;
-$topVuesAthletes = []; $topVuesClubs = [];
-$lastVuesAthletes = []; $lastVuesClubs = [];
-$topVuesIps = [];
-$vuesParJour = [];
+    // Profils athletes visites (depuis logs)
+    $visitedProfiles = [];
+    $r = $conn->query("SELECT page, detail, value, ts FROM logs WHERE uid = $uid AND action = 'page_view' AND (page LIKE '%page=profil%' OR page LIKE '%pages/profil%') ORDER BY ts DESC LIMIT 100");
+    if ($r) while ($row = $r->fetch_assoc()) $visitedProfiles[] = $row;
 
-if ($hasVuesTables) {
+    // Profils consultes depuis search_tracking (type=athlete, source=page_view)
+    $viewedAthletes = [];
+    if (!empty($userIps)) {
+        $ipList = implode("','", $userIps);
+        $r = $conn->query("SELECT entity_name, entity_id, COUNT(*) as nb, MAX(created_at) as last_view FROM search_tracking WHERE ip IN ('$ipList') AND search_type = 'athlete' AND source = 'page_view' GROUP BY entity_name, entity_id ORDER BY nb DESC LIMIT 30");
+        if ($r) while ($row = $r->fetch_assoc()) $viewedAthletes[] = $row;
+    }
+
+    // Clubs consultes
+    $viewedClubs = [];
+    if (!empty($userIps)) {
+        $ipList = implode("','", $userIps);
+        $r = $conn->query("SELECT entity_name, COUNT(*) as nb FROM search_tracking WHERE ip IN ('$ipList') AND search_type = 'club' GROUP BY entity_name ORDER BY nb DESC LIMIT 20");
+        if ($r) while ($row = $r->fetch_assoc()) $viewedClubs[] = $row;
+    }
+
+    // Recherches textuelles
+    $searchQueries = [];
+    if (!empty($userIps)) {
+        $ipList = implode("','", $userIps);
+        $r = $conn->query("SELECT query_text, search_type, COUNT(*) as nb FROM search_tracking WHERE ip IN ('$ipList') AND query_text != '' GROUP BY query_text, search_type ORDER BY nb DESC LIMIT 20");
+        if ($r) while ($row = $r->fetch_assoc()) $searchQueries[] = $row;
+    }
+
+    // Follows (athletes + clubs)
+    $email = $conn->real_escape_string($_u['email']);
+    $followedAthletes = [];
+    $r = $conn->query("SELECT af.athlete_id_ext, CONCAT(a.prenom_athlete, ' ', a.nom_athlete) as nom_athlete FROM athlete_follows af LEFT JOIN athletes a ON a.athlete_id_externe = af.athlete_id_ext WHERE af.email = '$email'");
+    if ($r) while ($row = $r->fetch_assoc()) $followedAthletes[] = $row;
+
+    $followedClubs = [];
+    $r = $conn->query("SELECT cf.club_id, c.nom_club FROM club_follows cf LEFT JOIN clubs c ON c.id_club = cf.club_id WHERE cf.email = '$email'");
+    if ($r) while ($row = $r->fetch_assoc()) $followedClubs[] = $row;
+
+    // Horaires d'activite (repartition par tranche)
+    $hourDistrib = ['matin' => 0, 'apresmidi' => 0, 'soir' => 0, 'nuit' => 0];
+    $r = $conn->query("SELECT HOUR(ts) as h, COUNT(*) as c FROM logs WHERE uid = $uid GROUP BY HOUR(ts)");
+    if ($r) while ($row = $r->fetch_assoc()) {
+        $h = (int)$row['h'];
+        if ($h >= 6 && $h < 12) $hourDistrib['matin'] += (int)$row['c'];
+        elseif ($h >= 12 && $h < 18) $hourDistrib['apresmidi'] += (int)$row['c'];
+        elseif ($h >= 18 && $h < 23) $hourDistrib['soir'] += (int)$row['c'];
+        else $hourDistrib['nuit'] += (int)$row['c'];
+    }
+
+    // Jours actifs
+    $activeDays = 0;
+    $r = $conn->query("SELECT COUNT(DISTINCT DATE(ts)) as d FROM logs WHERE uid = $uid");
+    if ($r) $activeDays = (int)$r->fetch_assoc()['d'];
+
+    // Derniere activite
+    $lastActivity = null;
+    $r = $conn->query("SELECT MAX(ts) as last_ts FROM logs WHERE uid = $uid");
+    if ($r) $lastActivity = $r->fetch_assoc()['last_ts'];
+
+    // Devices (mobile vs desktop depuis screen)
+    $devices = ['mobile' => 0, 'desktop' => 0];
+    $r = $conn->query("SELECT screen, COUNT(*) as c FROM logs WHERE uid = $uid AND screen != '' GROUP BY screen LIMIT 10");
+    if ($r) while ($row = $r->fetch_assoc()) {
+        $w = (int)explode('x', $row['screen'])[0];
+        if ($w > 0 && $w <= 768) $devices['mobile'] += (int)$row['c'];
+        else $devices['desktop'] += (int)$row['c'];
+    }
+
+    // Pages les plus visitees (top 5)
+    $topPages = [];
+    $r = $conn->query("SELECT page, COUNT(*) as c FROM logs WHERE uid = $uid AND action = 'page_view' AND page != '' GROUP BY page ORDER BY c DESC LIMIT 5");
+    if ($r) while ($row = $r->fetch_assoc()) $topPages[] = $row;
+
+    // Nombre total de recherches
+    $nbSearch = $_userSearches[$uid] ?? 0;
+
+    // Detection : nom/prenom correspond a un athlete visite ?
+    $selfProfileMatch = null;
+    if ($prenom !== '' && $nomFam !== '') {
+        foreach ($viewedAthletes as $va) {
+            $eName = mb_strtolower($va['entity_name'] ?? '');
+            $uNom = mb_strtolower($nomFam);
+            $uPrenom = mb_strtolower($prenom);
+            if (strpos($eName, $uNom) !== false && strpos($eName, $uPrenom) !== false) {
+                $selfProfileMatch = $va;
+                break;
+            }
+        }
+    }
+
+    // Generer la phrase de profil
+    $profile = '';
+    $fullName = trim(($_u['prenom'] ?? '') . ' ' . ($_u['nom'] ?? '')) ?: $_u['email'];
+
+    // Type d'utilisateur
+    $daysSinceCreation = $_u['date_creation'] ? max(1, (int)((time() - strtotime($_u['date_creation'])) / 86400)) : 1;
+    $coPerDay = round($nbCo / $daysSinceCreation, 2);
+
+    if ($nbCo >= 20) $profile .= "$fullName est un utilisateur tres actif ($nbCo connexions";
+    elseif ($nbCo >= 5) $profile .= "$fullName est un utilisateur regulier ($nbCo connexions";
+    else $profile .= "$fullName est un utilisateur occasionnel ($nbCo connexions";
+    $profile .= " en $activeDays jour" . ($activeDays > 1 ? 's' : '') . " depuis le " . ($daysSinceCreation > 0 ? date('d/m/Y', strtotime($_u['date_creation'])) : '?') . ").";
+
+    // Self-profile match
+    if ($selfProfileMatch) {
+        $profile .= " Il consulte probablement son propre profil (" . htmlspecialchars($selfProfileMatch['entity_name']) . " — " . $selfProfileMatch['nb'] . " visite" . ($selfProfileMatch['nb'] > 1 ? 's' : '') . "), ce qui suggere qu'il est l'athlete correspondant.";
+    }
+
+    // Horaire prefere
+    arsort($hourDistrib);
+    $topHour = array_key_first($hourDistrib);
+    $hourLabels = ['matin' => 'le matin (6h-12h)', 'apresmidi' => 'l\'apres-midi (12h-18h)', 'soir' => 'le soir (18h-23h)', 'nuit' => 'la nuit (23h-6h)'];
+    if ($hourDistrib[$topHour] > 0) {
+        $profile .= " Il se connecte principalement " . $hourLabels[$topHour] . ".";
+    }
+
+    // Device
+    if ($devices['mobile'] + $devices['desktop'] > 0) {
+        if ($devices['mobile'] > $devices['desktop']) $profile .= " Navigation majoritairement sur mobile.";
+        elseif ($devices['desktop'] > $devices['mobile']) $profile .= " Navigation majoritairement sur desktop.";
+        else $profile .= " Navigation mixte mobile/desktop.";
+    }
+
+    // Centres d'interet
+    if (!empty($viewedAthletes)) {
+        $topAth = array_slice($viewedAthletes, 0, 3);
+        $names = array_map(function($a) { return htmlspecialchars($a['entity_name']) . ' (' . $a['nb'] . 'x)'; }, $topAth);
+        $profile .= " Athletes les plus consultes : " . implode(', ', $names) . ".";
+    }
+    if (!empty($viewedClubs)) {
+        $topCl = array_slice($viewedClubs, 0, 3);
+        $names = array_map(function($c) { return htmlspecialchars($c['entity_name']) . ' (' . $c['nb'] . 'x)'; }, $topCl);
+        $profile .= " Clubs suivis : " . implode(', ', $names) . ".";
+    }
+    if (!empty($followedAthletes)) {
+        $profile .= " Suit " . count($followedAthletes) . " athlete" . (count($followedAthletes) > 1 ? 's' : '');
+        $fNames = array_map(function($f) { return htmlspecialchars($f['nom_athlete']); }, array_slice($followedAthletes, 0, 3));
+        $profile .= " (" . implode(', ', $fNames) . ").";
+    }
+    if (!empty($followedClubs)) {
+        $profile .= " Suit " . count($followedClubs) . " club" . (count($followedClubs) > 1 ? 's' : '');
+        $fNames = array_map(function($f) { return htmlspecialchars($f['nom_club']); }, array_slice($followedClubs, 0, 3));
+        $profile .= " (" . implode(', ', $fNames) . ").";
+    }
+
+    // Recherches
+    if ($nbSearch > 0) {
+        $profile .= " $nbSearch recherche" . ($nbSearch > 1 ? 's' : '') . " effectuee" . ($nbSearch > 1 ? 's' : '') . ".";
+        if (!empty($searchQueries)) {
+            $topQ = array_slice($searchQueries, 0, 3);
+            $qs = array_map(function($q) { return '"' . htmlspecialchars($q['query_text']) . '"'; }, $topQ);
+            $profile .= " Termes frequents : " . implode(', ', $qs) . ".";
+        }
+    }
+
+    // Derniere activite
+    if ($lastActivity) {
+        $daysAgo = (int)((time() - strtotime($lastActivity)) / 86400);
+        if ($daysAgo === 0) $profile .= " Actif aujourd'hui.";
+        elseif ($daysAgo === 1) $profile .= " Derniere activite hier.";
+        elseif ($daysAgo <= 7) $profile .= " Derniere activite il y a $daysAgo jours.";
+        else $profile .= " Inactif depuis $daysAgo jours.";
+    }
+
+    $_behaviorUsers[] = [
+        'user' => $_u,
+        'nb_co' => $nbCo,
+        'nb_search' => $nbSearch,
+        'nb_actions' => (int)$_u['nb_actions'],
+        'active_days' => $activeDays,
+        'visited_profiles' => $visitedProfiles,
+        'viewed_athletes' => $viewedAthletes,
+        'viewed_clubs' => $viewedClubs,
+        'search_queries' => $searchQueries,
+        'followed_athletes' => $followedAthletes,
+        'followed_clubs' => $followedClubs,
+        'hour_distrib' => $hourDistrib,
+        'devices' => $devices,
+        'top_pages' => $topPages,
+        'self_match' => $selfProfileMatch,
+        'profile_text' => $profile,
+        'last_activity' => $lastActivity,
+    ];
+}
+// Trier par nombre de connexions decroissant
+usort($_behaviorUsers, function($a, $b) { return $b['nb_co'] - $a['nb_co']; });
+
+$hasVuesTables = false; // Sections 3-12 desactivees
+
+if (false) { // DESACTIVE — sections supprimees
     // Totaux
     $r = $conn->query("SELECT SUM(vues) as s, COUNT(*) as c FROM athletes WHERE vues > 0");
     if ($r) { $row = $r->fetch_assoc(); $totalVuesAthletes = (int)($row['s'] ?? 0); $nbAthVus = (int)$row['c']; }
@@ -483,6 +571,14 @@ if ($resContact) {
 $unreadCount = 0;
 foreach ($contactMessages as $cm) { if (!$cm['lu']) $unreadCount++; }
 
+// === COURRIER NON CONFIRME ===
+$unconfirmedMessages = [];
+$resUnconf = $conn->query("SELECT * FROM contact_confirm_tokens WHERE used = 0 ORDER BY created_at DESC");
+if ($resUnconf) {
+    while ($row = $resUnconf->fetch_assoc()) $unconfirmedMessages[] = $row;
+    $resUnconf->free();
+}
+
 // === SIGNALEMENTS PROFIL ===
 $profileReports = [];
 $conn->query("CREATE TABLE IF NOT EXISTS `profile_reports` (
@@ -497,9 +593,11 @@ $conn->query("CREATE TABLE IF NOT EXISTS `profile_reports` (
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 // Ajouter colonne visible si elle n'existe pas
-$_vc = $conn->query("SHOW COLUMNS FROM `athletes` LIKE 'visible'");
-if ($_vc && $_vc->num_rows === 0) {
-    $conn->query("ALTER TABLE `athletes` ADD COLUMN `visible` TINYINT(1) UNSIGNED NOT NULL DEFAULT 1");
+$_vc = @$conn->query("SHOW COLUMNS FROM `athletes` LIKE 'visible'");
+$_hasVisible = ($_vc && $_vc->num_rows > 0);
+if ($_vc) $_vc->free();
+if (!$_hasVisible) {
+    @$conn->query("ALTER TABLE `athletes` ADD COLUMN `visible` TINYINT(1) UNSIGNED NOT NULL DEFAULT 1");
 }
 $resReports = $conn->query("SELECT pr.*, COALESCE(a.visible, 1) as athlete_visible FROM profile_reports pr LEFT JOIN athletes a ON a.athlete_id_externe = pr.athlete_id_ext ORDER BY pr.created_at DESC");
 if ($resReports) {
@@ -604,7 +702,7 @@ if ($r) while ($row = $r->fetch_assoc()) $stTopIps[] = $row;
 $stMyIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
 $stMyIp = trim(explode(',', $stMyIp)[0]);
 
-$conn->close();
+// $conn->close() deplace en fin de fichier
 
 // Helpers
 function fmtSize($bytes) {
@@ -747,6 +845,236 @@ $actionColors = [
             .grid { grid-template-columns: repeat(2, 1fr); }
             .vue-drawer { width:100%;right:-100%; }
         }
+        /* TEST — bloc rouge bordure blanche */
+        .test-block {
+            background: #dc2626;
+            border: 3px solid #fff;
+            border-radius: 12px;
+            padding: 30px 32px;
+            margin: 20px 0;
+            color: #fff;
+            text-align: center;
+        }
+        .test-block-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .test-block-value {
+            font-size: 36px;
+            font-weight: 800;
+        }
+        .test-block-items {
+            max-height: 320px;
+            overflow-y: auto;
+            text-align: left;
+        }
+        .test-block-items::-webkit-scrollbar { width: 6px; }
+        .test-block-items::-webkit-scrollbar-track { background: rgba(0,0,0,.2); border-radius: 3px; }
+        .test-block-items::-webkit-scrollbar-thumb { background: rgba(255,255,255,.35); border-radius: 3px; }
+        .test-block-item {
+            font-size: 28px;
+            font-weight: 700;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            user-select: all;
+        }
+        .test-block-item:hover { background: rgba(255,255,255,.1); }
+        .test-block-item:last-child {
+            border-bottom: none;
+        }
+        .test-block-selectall {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 6px 18px;
+            background: rgba(255,255,255,.18);
+            border: 1px solid rgba(255,255,255,.4);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .test-block-selectall:hover { background: rgba(255,255,255,.3); }
+        .test-block--yellow {
+            background: #ca8a04;
+        }
+        .test-block--blue {
+            background: #1e3a5f;
+            border: 1px solid #2563eb40;
+        }
+        /* Recherche athlete panel */
+        .panel-search {
+            background: #161b22;
+            border: 2px solid #6c5ce7;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+        }
+        .panel-search-title {
+            color: #a29bfe;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .panel-search-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .panel-search-input {
+            flex: 1;
+            min-width: 180px;
+            padding: 12px 16px;
+            background: #0d1117;
+            border: 1px solid #1e2a3a;
+            border-radius: 8px;
+            color: #f0f6fc;
+            font-size: 15px;
+        }
+        .panel-search-input:focus {
+            outline: none;
+            border-color: #6c5ce7;
+            box-shadow: 0 0 0 3px #6c5ce722;
+        }
+        .panel-search-btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .panel-search-btn--primary {
+            background: #6c5ce7;
+            color: #fff;
+        }
+        .panel-search-btn--primary:hover {
+            background: #5a4bd1;
+        }
+        .panel-search-btn--swap {
+            background: #f59e0b20;
+            border: 1px solid #f59e0b40;
+            color: #f59e0b;
+        }
+        .panel-search-btn--swap:hover {
+            background: #f59e0b33;
+        }
+        .panel-search-results {
+            margin-top: 16px;
+        }
+        .panel-search-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-bottom: 1px solid #1e2a3a;
+            color: #c9d1d9;
+            font-size: 15px;
+        }
+        .panel-search-item:hover {
+            background: #1e2a3a40;
+        }
+        .panel-search-item:last-child {
+            border-bottom: none;
+        }
+        .panel-search-name {
+            font-weight: 700;
+            color: #f0f6fc;
+        }
+        .panel-search-meta {
+            color: #5a6580;
+            font-size: 12px;
+        }
+        .panel-search-count {
+            color: #5a6580;
+            font-size: 13px;
+            margin-top: 12px;
+        }
+        /* Live search (copie dashboard.css) */
+        .live-search {
+            position: relative;
+            margin-bottom: 8px;
+        }
+        .live-search input {
+            width: 100%;
+            padding: 14px 16px 14px 44px;
+            background: #0d1117;
+            border: 2px solid #1a2540;
+            border-radius: 10px;
+            color: #f0f6fc;
+            font-size: 16px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .live-search input:focus {
+            outline: none;
+            border-color: #a29bfe;
+            box-shadow: 0 0 0 3px #a29bfe22;
+        }
+        .ls-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 18px;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .ls-status {
+            font-size: 12px;
+            color: #5a6580;
+            margin-top: 6px;
+            min-height: 18px;
+        }
+        .ls-status.error { color: #ff7675; }
+        .ls-spinner {
+            display: inline-block;
+            width: 12px; height: 12px;
+            border: 2px solid #a29bfe44;
+            border-top-color: #a29bfe;
+            border-radius: 50%;
+            animation: _lsSpin 0.6s linear infinite;
+        }
+        @keyframes _lsSpin { to { transform: rotate(360deg); } }
+        .ls-results { display: none; }
+        /* bk-table pour resultats */
+        .bk-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .bk-table th {
+            background: #0d1117;
+            color: #8b949e;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 8px 10px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }
+        .bk-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #1e2a3a;
+            color: #c9d1d9;
+        }
+        .bk-table tr:hover td { background: #1e2a3a40; }
+        .bk-table a { color: #a29bfe; text-decoration: none; }
+        .bk-table a:hover { text-decoration: underline; }
+        .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #1e2a3a; margin-top: 8px; }
+        .badge-cat { background: #6c5ce720; color: #a29bfe; }
+        .badge-m { background: #3b82f620; color: #60a5fa; }
+        .badge-f { background: #ec489920; color: #f472b6; }
+        .badge-perf { background: #f59e0b20; color: #fbbf24; }
     </style>
 </head>
 <body>
@@ -761,6 +1089,109 @@ $actionColors = [
         <a href="?logout=1" style="color:#ef4444;">Deconnexion</a>
     </div>
 </div>
+
+<!-- ============================================================ -->
+<!-- RECHERCHE ATHLETE (live search) -->
+<!-- ============================================================ -->
+<div class="panel-search">
+    <div class="panel-search-title">Recherche Athlete</div>
+    <div class="live-search">
+        <span class="ls-icon">&#128269;</span>
+        <input type="text" id="psInput" placeholder="Recherche rapide par nom..." autocomplete="off">
+        <div class="ls-status" id="psStatus"></div>
+    </div>
+    <div class="ls-results" id="psResults"></div>
+</div>
+<script>
+function _selectAllItems(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+</script>
+<script>
+(function() {
+    var input = document.getElementById('psInput');
+    var status = document.getElementById('psStatus');
+    var results = document.getElementById('psResults');
+    var timer = null;
+    var base = location.hostname === 'localhost' ? '/BK' : '';
+
+    function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+    function hl(text, q) {
+        if (!text) return '';
+        var s = esc(text);
+        var r = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        return s.replace(r, '<mark style="background:#1f6feb44;color:#58a6ff;">$1</mark>');
+    }
+
+    input.addEventListener('input', function() {
+        var q = this.value.trim();
+        clearTimeout(timer);
+        if (q.length < 2) {
+            input.style.borderColor = '#1a2540';
+            results.style.display = 'none';
+            results.innerHTML = '';
+            status.textContent = q.length === 1 ? 'Tapez au moins 2 caracteres...' : '';
+            status.className = 'ls-status';
+            return;
+        }
+        input.style.borderColor = '#a29bfe';
+        status.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;"><span class="ls-spinner"></span> Recherche en cours...</span>';
+        status.className = 'ls-status loading';
+
+        timer = setTimeout(function() {
+            fetch(base + '/api/search.php?nom=' + encodeURIComponent(q) + '&limit=50&bk_key=bk_s3cr3t_2026_xK9mP', { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    input.style.borderColor = '#1a2540';
+                    if (!data.success || !data.athletes || data.athletes.length === 0) {
+                        status.innerHTML = '<span style="color:#ff7675;">&#10007;</span> Aucun resultat pour "' + esc(q) + '"';
+                        status.className = 'ls-status';
+                        results.style.display = 'none';
+                        return;
+                    }
+                    var total = data.total || 0;
+                    status.innerHTML = '<span style="color:#34d399;">&#10003;</span> ' + total + ' resultat' + (total > 1 ? 's' : '') + (total > 50 ? ' (50 affiches)' : '');
+                    status.className = 'ls-status';
+                    input.style.borderColor = '#34d399';
+                    setTimeout(function() { input.style.borderColor = '#1a2540'; }, 1500);
+
+                    var th = '<tr><th>#</th><th>Nom complet</th><th>Club</th><th>Cat</th><th>Sexe</th><th>NAT</th></tr>';
+                    var html = '<div class="table-wrap">';
+                    html += '<table class="bk-table">' + th + '</table>';
+                    html += '<table class="bk-table">';
+                    data.athletes.forEach(function(a, i) {
+                        var nom = (a.nom_complet || (a.nom_athlete + ' ' + a.prenom_athlete)) || '';
+                        var aid = a.athlete_id || a.athlete_id_externe || '';
+                        html += '<tr>';
+                        html += '<td>' + (i + 1) + '</td>';
+                        html += '<td><b><a href="' + base + '/?page=profil&id=' + aid + '" target="_blank">' + hl(nom, q) + '</a></b></td>';
+                        html += '<td>' + esc(a.club || '') + '</td>';
+                        html += '<td><span class="badge badge-cat">' + esc(a.categorie || a.categorie_athlete || '') + '</span></td>';
+                        html += '<td><span class="badge badge-' + (a.sexe || a.sexe_athlete || '').toLowerCase() + '">' + esc(a.sexe || a.sexe_athlete || '') + '</span></td>';
+                        html += '<td>' + esc(a.nationalite || a.nationalite_athlete || '') + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+                    html += '<table class="bk-table">' + th + '</table>';
+                    html += '</div>';
+                    results.innerHTML = html;
+                    results.style.display = 'block';
+                })
+                .catch(function() {
+                    input.style.borderColor = '#ff7675';
+                    status.textContent = 'Erreur de connexion';
+                    status.className = 'ls-status error';
+                });
+        }, 300);
+    });
+})();
+</script>
 
 <?php if ($unreadCount > 0): ?>
 <!-- ALERTE MESSAGES NON LUS -->
@@ -784,10 +1215,6 @@ $actionColors = [
 <!-- SECTION 1 : VUE D'ENSEMBLE -->
 <!-- ============================================================ -->
 <div class="grid">
-    <div class="card"><div class="num"><?= number_format($stats['athletes']) ?></div><div class="label">Athletes</div></div>
-    <div class="card"><div class="num"><?= number_format($stats['clubs']) ?></div><div class="label">Clubs</div></div>
-    <div class="card"><div class="num"><?= number_format($stats['epreuves']) ?></div><div class="label">Epreuves</div></div>
-    <div class="card"><div class="num"><?= number_format($stats['villes']) ?></div><div class="label">Villes</div></div>
     <div class="card"><div class="num info"><?= number_format($stats['users']) ?></div><div class="label">Utilisateurs inscrits</div></div>
     <div class="card"><div class="num info"><?= number_format($activeSessions) ?></div><div class="label">Sessions actives</div></div>
     <div class="card">
@@ -797,1170 +1224,372 @@ $actionColors = [
     </div>
     <div class="card"><div class="num warn"><?= number_format($sessionsToday) ?></div><div class="label">Sessions aujourd'hui</div></div>
     <div class="card"><div class="num pink"><?= number_format($uniqueIpsToday) ?></div><div class="label">IPs uniques aujourd'hui</div></div>
-    <div class="card"><div class="num"><?= number_format($ipData['total_visits'] ?? 0) ?></div><div class="label">Visites IP (mois)</div></div>
-    <div class="card"><div class="num"><?= number_format($ipData['unique_ips'] ?? 0) ?></div><div class="label">IPs uniques (mois)</div></div>
-    <div class="card"><div class="num"><?= number_format($stats['athlete_follows']) ?></div><div class="label">Follows athletes</div></div>
-    <div class="card"><div class="num"><?= number_format($stats['club_follows']) ?></div><div class="label">Follows clubs</div></div>
-    <div class="card"><div class="num"><?= number_format($stats['email_subscribers']) ?></div><div class="label">Emails collectes</div></div>
-    <div class="card"><div class="num" style="font-size:16px;color:#8b949e;"><?= fmtSize($dbSize) ?></div><div class="label">Taille BDD</div></div>
-    <div class="card"><div class="num" style="font-size:16px;color:#8b949e;"><?= count($cacheFiles) ?> (<?= fmtSize($cacheSize) ?>)</div><div class="label">Fichiers cache</div></div>
 </div>
 
 <!-- ============================================================ -->
-<!-- SECTION 2 : ACTIVITE TEMPS REEL -->
+<!-- 5 DERNIERS CLUBS RECHERCHES -->
 <!-- ============================================================ -->
-<div class="section">
-    <h2><span class="live-dot"></span>Dernieres requetes (IP Tracker — temps reel)</h2>
-    <table>
-        <thead><tr><th>Heure</th><th>IP</th><th>Page</th><th>Methode</th></tr></thead>
-        <tbody>
-        <?php foreach (array_slice($lastRequests, 0, 20) as $req): ?>
-        <tr>
-            <td class="time"><?= htmlspecialchars($req['time']) ?></td>
-            <td class="mono"><?= htmlspecialchars($req['ip']) ?></td>
-            <td><?= htmlspecialchars($req['page']) ?></td>
-            <td><span class="badge" style="background:<?= ($req['method'] ?? 'GET') === 'POST' ? '#f59e0b30;color:#f59e0b' : '#6c5ce720;color:#a29bfe' ?>;"><?= htmlspecialchars($req['method'] ?? 'GET') ?></span></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 3 : LOGS BDD — DERNIERES ACTIONS -->
-<!-- ============================================================ -->
-<div class="section">
-    <h2>Dernieres actions utilisateurs (Logs BDD — 30 derniers)</h2>
-    <table>
-        <thead><tr><th>Heure</th><th>IP</th><th>Action</th><th>Page</th><th>Detail</th><th>User</th><th>Ecran</th><th>Langue</th><th>Duree</th></tr></thead>
-        <tbody>
-        <?php foreach ($lastLogs as $log):
-            $ac = $log['action'] ?? '';
-            $acColor = $actionColors[$ac] ?? '#5a6580';
-        ?>
-        <tr>
-            <td class="time"><?= htmlspecialchars($log['ts']) ?></td>
-            <td class="mono"><?= htmlspecialchars($log['ip']) ?></td>
-            <td><span class="badge" style="background:<?= $acColor ?>25;color:<?= $acColor ?>;"><?= htmlspecialchars($ac) ?></span></td>
-            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($log['page']) ?>"><a href="https://bokonzi.com<?= htmlspecialchars($log['page']) ?>" target="_blank" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($log['page']) ?></a></td>
-            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($log['detail']) ?>"><?php $__det = $log['detail']; if (strpos($__det, '/?') === 0 || strpos($__det, '/api/') === 0): ?><a href="https://bokonzi.com<?= htmlspecialchars($__det) ?>" target="_blank" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars(mb_substr($__det, 0, 60)) ?></a><?php else: ?><?= htmlspecialchars(mb_substr($__det, 0, 60)) ?><?php endif; ?></td>
-            <td><?= $log['uname'] ? '<span style="color:#55efc4;">' . htmlspecialchars($log['uname']) . '</span>' : '<span class="dim">-</span>' ?></td>
-            <td class="dim"><?= htmlspecialchars($log['screen']) ?></td>
-            <td class="dim"><?= htmlspecialchars($log['lang']) ?></td>
-            <td class="dim"><?= $log['duration_ms'] ? round($log['duration_ms'] / 1000) . 's' : '-' ?></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 4 : GRAPHIQUES -->
-<!-- ============================================================ -->
-
-<!-- Activité par heure -->
-<div class="section">
-    <h2>Activite par heure (aujourd'hui)</h2>
-    <?php $maxH = max(1, max($hourlyActivity)); ?>
-    <div class="hour-chart">
-        <?php for ($h = 0; $h < 24; $h++):
-            $val = $hourlyActivity[$h];
-            $height = max(2, round(($val / $maxH) * 60));
-        ?>
-        <div class="hour-bar" style="height:<?= $height ?>px;<?= $h === (int)date('G') ? 'background:#f59e0b;' : '' ?>">
-            <div class="htip"><?= str_pad($h, 2, '0', STR_PAD_LEFT) ?>h : <?= $val ?> events</div>
-        </div>
-        <?php endfor; ?>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#5a6580;margin-top:4px;">
-        <span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span>
-    </div>
-</div>
-
-<div class="cols-3">
-    <!-- Actions distribution -->
-    <div class="section">
-        <h2>Actions aujourd'hui</h2>
-        <div class="bar-chart">
-        <?php $maxAc = max(1, !empty($actionsToday) ? max($actionsToday) : 1);
-        foreach ($actionsToday as $action => $count):
-            $color = $actionColors[$action] ?? '#5a6580';
-            $w = round(($count / $maxAc) * 100);
-        ?>
-        <div class="bar-row">
-            <span class="bar-label"><?= $action ?></span>
-            <div class="bar-fill" style="width:<?= $w ?>%;background:<?= $color ?>;"></div>
-            <span class="bar-val"><?= number_format($count) ?></span>
-        </div>
-        <?php endforeach; ?>
-        </div>
-    </div>
-
-    <!-- Devices -->
-    <div class="section">
-        <h2>Ecrans (resolutions)</h2>
-        <table>
-            <thead><tr><th>Resolution</th><th>Nb</th><th>Type</th></tr></thead>
-            <tbody>
-            <?php foreach ($devices as $d):
-                $w = (int)explode('x', $d['screen'])[0];
-                $type = $w <= 480 ? 'Mobile' : ($w <= 1024 ? 'Tablette' : 'Desktop');
-                $typeColor = $w <= 480 ? '#f59e0b' : ($w <= 1024 ? '#8b5cf6' : '#10b981');
-            ?>
-            <tr>
-                <td class="mono"><?= htmlspecialchars($d['screen']) ?></td>
-                <td><?= $d['c'] ?></td>
-                <td><span class="badge" style="background:<?= $typeColor ?>25;color:<?= $typeColor ?>;"><?= $type ?></span></td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($devices)): ?><tr><td colspan="3" class="dim" style="text-align:center;">-</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Langues + Referrers -->
-    <div class="section">
-        <h2>Langues</h2>
-        <table>
-            <thead><tr><th>Langue</th><th>Nb</th></tr></thead>
-            <tbody>
-            <?php foreach ($languages as $l): ?>
-            <tr><td><?= htmlspecialchars($l['lang']) ?></td><td><?= $l['c'] ?></td></tr>
-            <?php endforeach; ?>
-            <?php if (empty($languages)): ?><tr><td colspan="2" class="dim" style="text-align:center;">-</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 5 : SOURCES DE TRAFIC -->
-<!-- ============================================================ -->
-<div class="cols-2">
-    <div class="section">
-        <h2>Sources de trafic (referrers externes)</h2>
-        <table>
-            <thead><tr><th>Referrer</th><th>Visites</th></tr></thead>
-            <tbody>
-            <?php foreach ($referrers as $ref): ?>
-            <tr>
-                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($ref['referrer']) ?>"><?= htmlspecialchars($ref['referrer']) ?></td>
-                <td class="green"><?= $ref['c'] ?></td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($referrers)): ?><tr><td colspan="2" class="dim" style="text-align:center;">Aucun referrer externe</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>Top pages aujourd'hui</h2>
-        <table>
-            <thead><tr><th>Page</th><th>Vues</th></tr></thead>
-            <tbody>
-            <?php foreach ($topPagesToday as $p): ?>
-            <tr>
-                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($p['page']) ?>"><?= htmlspecialchars($p['page']) ?></td>
-                <td class="green"><?= $p['c'] ?></td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($topPagesToday)): ?><tr><td colspan="2" class="dim" style="text-align:center;">-</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 6 : HISTORIQUE 7 JOURS -->
-<!-- ============================================================ -->
-<div class="section">
-    <h2>Historique 7 derniers jours</h2>
-    <table>
-        <thead><tr><th>Date</th><th>Events</th><th>IPs uniques</th><th>Sessions</th></tr></thead>
-        <tbody>
-        <?php foreach ($weeklyLogs as $w): ?>
-        <tr>
-            <td><?= $w['d'] ?></td>
-            <td class="green"><?= number_format($w['c']) ?></td>
-            <td><?= number_format($w['ips']) ?></td>
-            <td><?= number_format($w['sessions']) ?></td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 7 : TOP IPS + SECURITE -->
-<!-- ============================================================ -->
-<div class="cols-2">
-    <div class="section">
-        <h2>Top IPs aujourd'hui (avec User-Agent)</h2>
-        <table>
-            <thead><tr><th>#</th><th>IP</th><th>Req</th><th>Premier</th><th>Dernier</th><th>User Agent</th></tr></thead>
-            <tbody>
-            <?php $i = 0; foreach ($topIpsToday as $tip): $i++;
-                $isBot = preg_match('/bot|crawl|spider|slurp/i', $tip['ua'] ?? '');
-            ?>
-            <tr style="<?= $isBot ? 'opacity:0.5;' : '' ?>">
-                <td><?= $i ?></td>
-                <td class="mono"><?= htmlspecialchars($tip['ip']) ?></td>
-                <td class="green"><?= number_format($tip['c']) ?></td>
-                <td class="time"><?= substr($tip['first_seen'], 11) ?></td>
-                <td class="time"><?= substr($tip['last_seen'], 11) ?></td>
-                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($tip['ua'] ?? '') ?>">
-                    <?= $isBot ? '<span class="badge" style="background:#ef444430;color:#ef4444;">BOT</span> ' : '' ?><?= htmlspecialchars(mb_substr($tip['ua'] ?? '', 0, 80)) ?>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($topIpsToday)): ?><tr><td colspan="6" class="dim" style="text-align:center;">Aucune activite</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- ERREURS JS -->
-    <div class="section">
-        <h2>Erreurs JavaScript (aujourd'hui) — <?= count($jsErrors) ?></h2>
-        <table>
-            <thead><tr><th>Heure</th><th>IP</th><th>Erreur</th><th>Fichier</th></tr></thead>
-            <tbody>
-            <?php foreach ($jsErrors as $err): ?>
-            <tr>
-                <td class="time"><?= substr($err['ts'], 11) ?></td>
-                <td class="mono"><?= htmlspecialchars($err['ip']) ?></td>
-                <td style="color:#ef4444;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($err['detail']) ?>"><?= htmlspecialchars(mb_substr($err['detail'], 0, 80)) ?></td>
-                <td class="dim" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars(mb_substr($err['value'], 0, 60)) ?></td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($jsErrors)): ?><tr><td colspan="4" class="dim" style="text-align:center;">Aucune erreur</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 8 : ENGAGEMENT — FOLLOWS + EMAILS -->
-<!-- ============================================================ -->
-<div class="cols-3">
-    <div class="section">
-        <h2>Derniers follows athletes (<?= $stats['athlete_follows'] ?>)</h2>
-        <table>
-            <thead><tr><th>Email</th><th>Athlete</th><th>Date</th></tr></thead>
-            <tbody>
-            <?php foreach ($lastFollowsAth as $f): ?>
-            <tr>
-                <td class="mono"><?= htmlspecialchars($f['email']) ?></td>
-                <td><a href="../index.php?page=profil&id=<?= (int)$f['athlete_id_ext'] ?>" style="color:#55efc4;">#<?= $f['athlete_id_ext'] ?></a></td>
-                <td class="dim"><?= $f['created_at'] ?></td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($lastFollowsAth)): ?><tr><td colspan="3" class="dim" style="text-align:center;">-</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>Derniers follows clubs (<?= $stats['club_follows'] ?>)</h2>
-        <table>
-            <thead><tr><th>Email</th><th>Club</th><th>Date</th></tr></thead>
-            <tbody>
-            <?php foreach ($lastFollowsClub as $f): ?>
-            <tr>
-                <td class="mono"><?= htmlspecialchars($f['email']) ?></td>
-                <td><?= (int)$f['club_id'] ?></td>
-                <td class="dim"><?= $f['created_at'] ?></td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($lastFollowsClub)): ?><tr><td colspan="3" class="dim" style="text-align:center;">-</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>Emails collectes (<?= $stats['email_subscribers'] ?>)</h2>
-        <table>
-            <thead><tr><th>Email</th><th>Source</th><th>Detail</th><th>Date</th></tr></thead>
-            <tbody>
-            <?php foreach ($lastSubs as $s): ?>
-            <tr>
-                <td class="mono"><?= htmlspecialchars($s['email']) ?></td>
-                <td><span class="badge" style="background:#6c5ce720;color:#a29bfe;"><?= htmlspecialchars($s['source']) ?></span></td>
-                <td class="dim"><?= htmlspecialchars(mb_substr($s['detail'], 0, 30)) ?></td>
-                <td class="dim"><?= $s['created_at'] ?></td>
-            </tr>
-            <?php endforeach; ?>
-            <?php if (empty($lastSubs)): ?><tr><td colspan="4" class="dim" style="text-align:center;">-</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 9 : UTILISATEURS -->
-<!-- ============================================================ -->
-<div class="cols-2">
-    <div class="section">
-        <h2>Derniers inscrits (<?= $stats['users'] ?> total)</h2>
-        <table>
-            <thead><tr><th>#</th><th>Email</th><th>Nom</th><th>Role</th><th>Athlete</th></tr></thead>
-            <tbody>
-            <?php foreach ($lastUsers as $u): ?>
-            <tr>
-                <td><?= $u['id_user'] ?></td>
-                <td class="mono"><?= htmlspecialchars($u['email']) ?></td>
-                <td><?= htmlspecialchars(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? '')) ?></td>
-                <td><span class="badge badge-<?= $u['role'] ?>"><?= $u['role'] ?></span></td>
-                <td><?= $u['id_athlete'] ? '<a href="../index.php?page=profil&id=' . $u['id_athlete'] . '" style="color:#55efc4;">#' . $u['id_athlete'] . '</a>' : '-' ?></td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="section">
-        <h2>Repartition par role</h2>
-        <div class="bar-chart">
-        <?php $maxRole = max(1, !empty($usersByRole) ? max($usersByRole) : 1);
-        foreach ($usersByRole as $role => $count):
-            $colors = ['admin' => '#e11d48', 'athlete' => '#10b981', 'coach' => '#6c5ce7', 'club' => '#f59e0b'];
-            $color = $colors[$role] ?? '#5a6580';
-            $w = round(($count / $maxRole) * 100);
-        ?>
-        <div class="bar-row">
-            <span class="bar-label"><?= $role ?></span>
-            <div class="bar-fill" style="width:<?= $w ?>%;background:<?= $color ?>;"></div>
-            <span class="bar-val"><?= number_format($count) ?></span>
-        </div>
-        <?php endforeach; ?>
-        </div>
-    </div>
-</div>
-
-<!-- ============================================================ -->
-<!-- SECTION 9B : ACTIVITE PAR UTILISATEUR — INTERACTIF -->
-<!-- ============================================================ -->
-<div class="section">
-    <h2 style="color:#a29bfe;font-size:16px;border-color:#a29bfe40;">&#128100; Activite par utilisateur (<?= count($allUsers) ?> users)</h2>
-
-    <!-- Liste utilisateurs cliquable -->
-    <div style="margin-bottom:12px;">
-        <input type="text" id="userFilterInput" placeholder="Filtrer par email ou nom..."
-            oninput="_filterUsers()" style="width:300px;padding:8px 12px;background:#0d1117;border:1px solid #1e2a3a;border-radius:6px;color:#c9d1d9;font-size:13px;">
-    </div>
-
-    <?php $panelAccessList = getPanelAccessList(); ?>
-    <table>
-        <thead><tr><th>#</th><th>User</th><th>Role</th><th>Derniere connexion</th><th>Req/jour</th><th>Athletes suivis</th><th>Clubs suivis</th><th>Session</th><th>Panel</th><th>Details</th></tr></thead>
-        <tbody id="userListBody">
-        <?php foreach ($allUsers as $idx => $u): ?>
-        <tr class="user-row" data-filter="<?= htmlspecialchars(strtolower(($u['email'] ?? '') . ' ' . ($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? ''))) ?>">
-            <td><?= $u['id_user'] ?></td>
-            <td>
-                <?php if (!empty($u['picture'])): ?><img src="<?= htmlspecialchars($u['picture']) ?>" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:4px;" referrerpolicy="no-referrer"><?php endif; ?>
-                <span class="mono" style="font-size:12px;"><?= htmlspecialchars($u['email']) ?></span>
-                <?php if ($u['prenom'] || $u['nom']): ?><br><span style="color:#8b949e;font-size:11px;"><?= htmlspecialchars(trim(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? ''))) ?></span><?php endif; ?>
-            </td>
-            <td><span class="badge badge-<?= $u['role'] ?>"><?= $u['role'] ?></span></td>
-            <td style="font-size:12px;color:#8b949e;"><?= $u['last_login'] ? date('d/m/Y H:i', strtotime($u['last_login'])) : '-' ?></td>
-            <td style="text-align:center;"><?= $u['req_today'] > 0 ? '<span style="color:#f59e0b;font-weight:700;">' . $u['req_today'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
-            <td style="text-align:center;"><?= $u['nb_follows_ath'] > 0 ? '<span style="color:#a29bfe;font-weight:700;">' . $u['nb_follows_ath'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
-            <td style="text-align:center;"><?= $u['nb_follows_club'] > 0 ? '<span style="color:#34d399;font-weight:700;">' . $u['nb_follows_club'] . '</span>' : '<span style="color:#484f58;">0</span>' ?></td>
-            <td style="text-align:center;"><?= $u['sessions_active'] > 0 ? '<span style="color:#55efc4;">Active</span>' : '<span style="color:#484f58;">-</span>' ?></td>
-            <td style="text-align:center;">
-            <?php $hasAccess = isset($panelAccessList[strtolower($u['email'])]); ?>
-            <?php if ($_isSA): ?>
-                <?php if ($hasAccess): ?>
-                    <form method="POST" style="display:inline;"><input type="hidden" name="panel_action" value="revoke"><input type="hidden" name="email" value="<?= htmlspecialchars($u['email']) ?>"><button type="submit" style="padding:3px 8px;background:#ef444420;border:1px solid #ef4444;border-radius:6px;color:#ef4444;font-size:10px;cursor:pointer;" title="Retirer l'acces">&#10003; Acces</button></form>
-                <?php else: ?>
-                    <form method="POST" style="display:inline;"><input type="hidden" name="panel_action" value="grant"><input type="hidden" name="email" value="<?= htmlspecialchars($u['email']) ?>"><button type="submit" style="padding:3px 8px;background:#1e2a3a;border:1px solid #30363d;border-radius:6px;color:#484f58;font-size:10px;cursor:pointer;" title="Donner acces au panel">Donner</button></form>
-                <?php endif; ?>
+<?php
+// --- DERNIERS CLUBS RECHERCHES (50) ---
+$_lastClubs = [];
+$_lcRes = $conn->query("
+    SELECT st.entity_name, st.ip, st.source, st.created_at,
+           COALESCE(NULLIF(CONCAT(u.prenom,' ',u.nom),' '), u.email, NULL) as user_name
+    FROM search_tracking st
+    LEFT JOIN logs l ON l.ip = st.ip AND l.uid IS NOT NULL AND l.ts >= DATE_SUB(st.created_at, INTERVAL 1 HOUR) AND l.ts <= DATE_ADD(st.created_at, INTERVAL 1 HOUR)
+    LEFT JOIN users u ON u.id_user = l.uid
+    WHERE st.search_type = 'club' AND st.entity_name IS NOT NULL AND st.entity_name != ''
+    GROUP BY st.id_search
+    ORDER BY st.created_at DESC
+    LIMIT 50
+");
+if ($_lcRes) { while ($_lcRow = $_lcRes->fetch_assoc()) $_lastClubs[] = $_lcRow; }
+?>
+<div style="background:#111830;border:1px solid #1e2a3a;border-radius:12px;padding:20px;margin:20px 0;">
+    <h3 style="color:#f59e0b;font-size:16px;margin:0 0 14px;font-weight:700;">&#127963; Derniers clubs recherches (<?= count($_lastClubs) ?>)</h3>
+    <?php if ($_lastClubs): ?>
+    <div style="overflow-x:auto;overflow-y:auto;max-height:500px;border-radius:8px;border:1px solid #1e2a3a;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;background:#0c1020;">
+    <tr style="background:#0f1525;position:sticky;top:0;z-index:1;">
+        <th style="padding:10px 10px;text-align:center;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;width:35px;">#</th>
+        <th style="padding:10px 10px;text-align:left;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Club</th>
+        <th style="padding:10px 10px;text-align:left;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Utilisateur / IP</th>
+        <th style="padding:10px 10px;text-align:center;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Source</th>
+        <th style="padding:10px 10px;text-align:right;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Date</th>
+    </tr>
+    <?php foreach ($_lastClubs as $_i => $_c):
+        $srcLabel = ['live_search'=>'Recherche','page_view'=>'Page','panel_open'=>'Panneau'][$_c['source']] ?? $_c['source'];
+        $srcColor = ['live_search'=>'#3b82f6','page_view'=>'#10b981','panel_open'=>'#f59e0b'][$_c['source']] ?? '#8b949e';
+    ?>
+    <tr style="border-top:1px solid #121a30;" onmouseover="this.style.background='#131b35'" onmouseout="this.style.background='transparent'">
+        <td style="padding:7px 10px;text-align:center;color:#5a6580;"><?= $_i + 1 ?></td>
+        <td style="padding:7px 10px;color:#fbbf24;font-weight:600;"><?= htmlspecialchars($_c['entity_name']) ?></td>
+        <td style="padding:7px 10px;">
+            <?php if ($_c['user_name']): ?>
+                <span style="color:#e2e8f0;"><?= htmlspecialchars($_c['user_name']) ?></span>
+                <span style="color:#5a6580;font-size:11px;margin-left:4px;">(<?= htmlspecialchars($_c['ip']) ?>)</span>
             <?php else: ?>
-                <?= $hasAccess ? '<span style="color:#55efc4;font-size:10px;">&#10003;</span>' : '' ?>
+                <span style="color:#8b949e;font-family:monospace;"><?= htmlspecialchars($_c['ip']) ?></span>
             <?php endif; ?>
-            </td>
-            <td><button onclick="_toggleUserDetail(<?= $u['id_user'] ?>)" style="padding:3px 10px;background:#6c5ce720;border:1px solid #6c5ce7;border-radius:6px;color:#a29bfe;font-size:11px;cursor:pointer;">Voir</button></td>
-        </tr>
-        <!-- Drawer detail cache -->
-        <tr id="userDetail_<?= $u['id_user'] ?>" style="display:none;">
-            <td colspan="10" style="padding:16px;background:#0d1117;">
-                <div style="display:flex;gap:24px;flex-wrap:wrap;">
-                    <!-- Infos -->
-                    <div style="flex:1;min-width:200px;">
-                        <h4 style="color:#f0f6fc;font-size:13px;margin-bottom:8px;">Infos</h4>
-                        <div style="font-size:12px;color:#8b949e;line-height:1.8;">
-                            Provider : <span style="color:#c9d1d9;"><?= $u['oauth_provider'] ?: 'email' ?></span><br>
-                            Google ID : <span style="color:#c9d1d9;"><?= $u['google_id'] ? substr($u['google_id'], 0, 10) . '...' : '-' ?></span><br>
-                            Locale : <span style="color:#c9d1d9;"><?= $u['locale'] ?: '-' ?></span><br>
-                            Inscrit : <span style="color:#c9d1d9;"><?= $u['date_creation'] ? date('d/m/Y H:i', strtotime($u['date_creation'])) : '-' ?></span>
-                        </div>
-                    </div>
-
-                    <!-- Athletes suivis -->
-                    <div style="flex:1;min-width:250px;">
-                        <h4 style="color:#a29bfe;font-size:13px;margin-bottom:8px;">&#9889; Athletes suivis (<?= count($userFollowsDetail[$u['id_user']]['athletes']) ?>)</h4>
-                        <?php if (empty($userFollowsDetail[$u['id_user']]['athletes'])): ?>
-                            <span style="color:#484f58;font-size:12px;">Aucun</span>
-                        <?php else: ?>
-                            <?php foreach ($userFollowsDetail[$u['id_user']]['athletes'] as $fa): ?>
-                            <div style="font-size:12px;padding:3px 0;border-bottom:1px solid #1e2a3a;">
-                                <a href="../index.php?page=profil&id=<?= (int)$fa['athlete_id_ext'] ?>" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars($fa['nom_complet_athlete'] ?: '#' . $fa['athlete_id_ext']) ?></a>
-                                <span style="color:#484f58;font-size:10px;margin-left:6px;"><?= $fa['created_at'] ? date('d/m', strtotime($fa['created_at'])) : '' ?></span>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Clubs suivis -->
-                    <div style="flex:1;min-width:200px;">
-                        <h4 style="color:#34d399;font-size:13px;margin-bottom:8px;">&#127965; Clubs suivis (<?= count($userFollowsDetail[$u['id_user']]['clubs']) ?>)</h4>
-                        <?php if (empty($userFollowsDetail[$u['id_user']]['clubs'])): ?>
-                            <span style="color:#484f58;font-size:12px;">Aucun</span>
-                        <?php else: ?>
-                            <?php foreach ($userFollowsDetail[$u['id_user']]['clubs'] as $fc): ?>
-                            <div style="font-size:12px;padding:3px 0;border-bottom:1px solid #1e2a3a;">
-                                <a href="../index.php?page=recherche&club=<?= urlencode(rtrim($fc['nom_club'] ?? '', '* ')) ?>" style="color:#58a6ff;text-decoration:none;"><?= htmlspecialchars($fc['nom_club'] ?: '#' . $fc['club_id']) ?></a>
-                                <span style="color:#484f58;font-size:10px;margin-left:6px;"><?= $fc['created_at'] ? date('d/m', strtotime($fc['created_at'])) : '' ?></span>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Historique recherches -->
-                    <div style="flex:2;min-width:350px;">
-                        <h4 style="color:#f59e0b;font-size:13px;margin-bottom:8px;">&#128337; Historique recherches (<?= count($userSearchHistory[$u['id_user']]) ?>)</h4>
-                        <?php if (empty($userSearchHistory[$u['id_user']])): ?>
-                            <span style="color:#484f58;font-size:12px;">Aucun historique</span>
-                        <?php else: ?>
-                            <div style="max-height:250px;overflow-y:auto;">
-                            <?php
-                            $tbg = ['athlete'=>'#6c5ce720','club'=>'#34d39920','epreuve'=>'#f59e0b20','ville'=>'#3b82f620','general'=>'#8b949e20'];
-                            $tcl = ['athlete'=>'#a29bfe','club'=>'#34d399','epreuve'=>'#f59e0b','ville'=>'#60a5fa','general'=>'#8b949e'];
-                            foreach ($userSearchHistory[$u['id_user']] as $sh): ?>
-                            <div style="font-size:11px;padding:4px 0;border-bottom:1px solid #1e2a3a10;display:flex;gap:8px;align-items:center;">
-                                <span style="background:<?= $tbg[$sh['search_type']] ?? $tbg['general'] ?>;color:<?= $tcl[$sh['search_type']] ?? $tcl['general'] ?>;padding:1px 6px;border-radius:8px;font-size:10px;white-space:nowrap;"><?= $sh['search_type'] ?></span>
-                                <span style="color:#c9d1d9;flex:1;"><?= htmlspecialchars($sh['entity_name'] ?: $sh['query_text'] ?: '-') ?></span>
-                                <span style="color:#484f58;font-size:10px;white-space:nowrap;"><?= date('d/m H:i', strtotime($sh['created_at'])) ?></span>
-                            </div>
-                            <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
+        </td>
+        <td style="padding:7px 10px;text-align:center;"><span style="background:<?= $srcColor ?>20;color:<?= $srcColor ?>;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;"><?= $srcLabel ?></span></td>
+        <td style="padding:7px 10px;text-align:right;color:#5a6580;font-size:12px;"><?= date('d/m H:i', strtotime($_c['created_at'])) ?></td>
+    </tr>
+    <?php endforeach; ?>
     </table>
-
-    <?php if ($_isSA): ?>
-    <!-- Recap acces panel -->
-    <div id="panelAccess" style="margin-top:20px;padding:16px;background:#0d1117;border:1px solid #30363d;border-radius:8px;">
-        <h3 style="color:#f59e0b;font-size:14px;margin-bottom:12px;">&#128273; Acces au panel (<?= count($panelAccessList) ?> emails autorises)</h3>
-        <?php if (empty($panelAccessList)): ?>
-            <p style="color:#484f58;font-size:12px;">Aucun email autorise. Utilisez les boutons "Donner" ci-dessus.</p>
-        <?php else: ?>
-            <?php foreach ($panelAccessList as $em => $info): ?>
-            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #1e2a3a;">
-                <span style="color:#c9d1d9;font-size:13px;flex:1;" class="mono"><?= htmlspecialchars($em) ?></span>
-                <span style="color:#484f58;font-size:10px;">depuis <?= $info['added'] ?? '?' ?></span>
-                <form method="POST" style="display:inline;"><input type="hidden" name="panel_action" value="revoke"><input type="hidden" name="email" value="<?= htmlspecialchars($em) ?>"><button type="submit" style="padding:2px 8px;background:#ef444420;border:1px solid #ef4444;border-radius:4px;color:#ef4444;font-size:10px;cursor:pointer;">Retirer</button></form>
-            </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
-
-        <!-- Ajout manuel -->
-        <form method="POST" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
-            <input type="hidden" name="panel_action" value="grant">
-            <input type="email" name="email" placeholder="email@exemple.com" required style="flex:1;max-width:300px;padding:6px 10px;background:#161b22;border:1px solid #1e2a3a;border-radius:6px;color:#c9d1d9;font-size:12px;">
-            <button type="submit" style="padding:6px 14px;background:#f59e0b20;border:1px solid #f59e0b;border-radius:6px;color:#f59e0b;font-size:12px;cursor:pointer;">Ajouter</button>
-        </form>
     </div>
+    <?php else: ?>
+    <div style="color:#5a6580;text-align:center;padding:20px;">Aucun club recherche</div>
     <?php endif; ?>
 </div>
 
-<script>
-function _toggleUserDetail(uid) {
-    var row = document.getElementById('userDetail_' + uid);
-    if (!row) return;
-    row.style.display = row.style.display === 'none' ? '' : 'none';
+<?php
+// --- DERNIERS ATHLETES CONSULTES (50) ---
+$_lastSelections = [];
+$_lsRes = $conn->query("
+    SELECT st.entity_name, st.entity_id, st.ip, st.source, st.created_at,
+           COALESCE(NULLIF(CONCAT(u.prenom,' ',u.nom),' '), u.email, NULL) as user_name
+    FROM search_tracking st
+    LEFT JOIN logs l ON l.ip = st.ip AND l.uid IS NOT NULL AND l.ts >= DATE_SUB(st.created_at, INTERVAL 1 HOUR) AND l.ts <= DATE_ADD(st.created_at, INTERVAL 1 HOUR)
+    LEFT JOIN users u ON u.id_user = l.uid
+    WHERE st.search_type = 'athlete' AND st.entity_name IS NOT NULL AND st.entity_name != ''
+    GROUP BY st.id_search
+    ORDER BY st.created_at DESC
+    LIMIT 50
+");
+if ($_lsRes) { while ($_lsRow = $_lsRes->fetch_assoc()) $_lastSelections[] = $_lsRow; }
+?>
+<div style="background:#111830;border:1px solid #1e2a3a;border-radius:12px;padding:20px;margin:20px 0;">
+    <h3 style="color:#a29bfe;font-size:16px;margin:0 0 14px;font-weight:700;">&#127939; Derniers athletes consultes (<?= count($_lastSelections) ?>)</h3>
+    <?php if ($_lastSelections): ?>
+    <div style="overflow-x:auto;overflow-y:auto;max-height:500px;border-radius:8px;border:1px solid #1e2a3a;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;background:#0c1020;">
+    <tr style="background:#0f1525;position:sticky;top:0;z-index:1;">
+        <th style="padding:10px 10px;text-align:center;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;width:35px;">#</th>
+        <th style="padding:10px 10px;text-align:left;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Athlete</th>
+        <th style="padding:10px 10px;text-align:left;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Utilisateur / IP</th>
+        <th style="padding:10px 10px;text-align:center;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Source</th>
+        <th style="padding:10px 10px;text-align:center;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">ID</th>
+        <th style="padding:10px 10px;text-align:right;color:#7c85a0;font-size:10px;text-transform:uppercase;background:#0f1525;">Date</th>
+    </tr>
+    <?php foreach ($_lastSelections as $_i => $_a):
+        $srcLabel = ['live_search'=>'Recherche','page_view'=>'Page','panel_open'=>'Panneau'][$_a['source']] ?? $_a['source'];
+        $srcColor = ['live_search'=>'#3b82f6','page_view'=>'#10b981','panel_open'=>'#f59e0b'][$_a['source']] ?? '#8b949e';
+    ?>
+    <tr style="border-top:1px solid #121a30;" onmouseover="this.style.background='#131b35'" onmouseout="this.style.background='transparent'">
+        <td style="padding:7px 10px;text-align:center;color:#5a6580;"><?= $_i + 1 ?></td>
+        <td style="padding:7px 10px;color:#a29bfe;font-weight:600;"><?= htmlspecialchars($_a['entity_name']) ?></td>
+        <td style="padding:7px 10px;">
+            <?php if ($_a['user_name']): ?>
+                <span style="color:#e2e8f0;"><?= htmlspecialchars($_a['user_name']) ?></span>
+                <span style="color:#5a6580;font-size:11px;margin-left:4px;">(<?= htmlspecialchars($_a['ip']) ?>)</span>
+            <?php else: ?>
+                <span style="color:#8b949e;font-family:monospace;"><?= htmlspecialchars($_a['ip']) ?></span>
+            <?php endif; ?>
+        </td>
+        <td style="padding:7px 10px;text-align:center;"><span style="background:<?= $srcColor ?>20;color:<?= $srcColor ?>;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;"><?= $srcLabel ?></span></td>
+        <td style="padding:7px 10px;text-align:center;color:#5a6580;font-size:11px;font-family:monospace;"><?= $_a['entity_id'] ? htmlspecialchars($_a['entity_id']) : '—' ?></td>
+        <td style="padding:7px 10px;text-align:right;color:#5a6580;font-size:12px;"><?= date('d/m H:i', strtotime($_a['created_at'])) ?></td>
+    </tr>
+    <?php endforeach; ?>
+    </table>
+    </div>
+    <?php else: ?>
+    <div style="color:#5a6580;text-align:center;padding:20px;">Aucun athlete consulte</div>
+    <?php endif; ?>
+</div>
+
+<!-- ============================================================ -->
+<!-- CLASSEMENT ATHLETES LES PLUS RECHERCHES -->
+<!-- ============================================================ -->
+<?php
+$_topAthletes = [];
+$_taRes = $conn->query("
+    SELECT st.entity_name, COUNT(*) as nb_recherches, COUNT(DISTINCT st.ip) as nb_ips,
+           MAX(st.created_at) as derniere_recherche
+    FROM search_tracking st
+    WHERE st.search_type = 'athlete' AND st.entity_name IS NOT NULL AND st.entity_name != ''
+    GROUP BY st.entity_name
+    ORDER BY nb_recherches DESC
+    LIMIT 50
+");
+if ($_taRes) {
+    while ($_taRow = $_taRes->fetch_assoc()) {
+        $_topAthletes[] = $_taRow;
+    }
 }
-function _filterUsers() {
-    var q = document.getElementById('userFilterInput').value.toLowerCase();
-    var rows = document.querySelectorAll('.user-row');
-    rows.forEach(function(r) {
-        var match = r.getAttribute('data-filter').indexOf(q) !== -1;
-        r.style.display = match ? '' : 'none';
-        // Cacher aussi le drawer detail si filtre
-        var next = r.nextElementSibling;
-        if (next && next.id && next.id.startsWith('userDetail_') && !match) next.style.display = 'none';
-    });
+// Preparer les IPs par athlete pour le detail au clic
+$_topAthIps = [];
+foreach ($_topAthletes as $_ta) {
+    $eName = $conn->real_escape_string($_ta['entity_name']);
+    $_ipRes = $conn->query("
+        SELECT st.ip, COUNT(*) as nb, MAX(st.created_at) as derniere,
+               COALESCE(NULLIF(CONCAT(u.prenom,' ',u.nom),' '), u.email, NULL) as user_name
+        FROM search_tracking st
+        LEFT JOIN logs l ON l.ip = st.ip AND l.uid IS NOT NULL AND l.ts >= DATE_SUB(st.created_at, INTERVAL 1 HOUR) AND l.ts <= DATE_ADD(st.created_at, INTERVAL 1 HOUR)
+        LEFT JOIN users u ON u.id_user = l.uid
+        WHERE st.search_type = 'athlete' AND st.entity_name = '$eName'
+        GROUP BY st.ip
+        ORDER BY nb DESC
+    ");
+    $ips = [];
+    if ($_ipRes) {
+        while ($r = $_ipRes->fetch_assoc()) $ips[] = $r;
+    }
+    $_topAthIps[] = $ips;
 }
-</script>
-
-<!-- ============================================================ -->
-<!-- SECTION 10 : BASE DE DONNEES + SERVEUR -->
-<!-- ============================================================ -->
-<div class="cols-2">
-    <div class="section">
-        <h2>Tables BDD — <?= fmtSize($dbSize) ?></h2>
-        <table>
-            <thead><tr><th>Table</th><th>Lignes</th><th>Taille</th></tr></thead>
-            <tbody>
-            <?php foreach ($tableSizes as $ts): ?>
-            <tr>
-                <td class="mono"><?= $ts['table_name'] ?></td>
-                <td><?= number_format((int)$ts['table_rows']) ?></td>
-                <td class="dim"><?= fmtSize((float)$ts['size']) ?></td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
+?>
+<div class="test-block test-block--blue">
+    <div class="test-block-title">Classement athletes les plus recherches (<?= count($_topAthletes) ?>)</div>
+    <?php if ($_topAthletes): ?>
+        <div style="overflow-x:auto;overflow-y:auto;max-height:600px;border-radius:8px;border:1px solid #1e2a3a;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;background:#0c1020;">
+        <tr style="background:#111830;position:sticky;top:0;z-index:1;">
+            <th style="padding:10px 12px;text-align:center;color:#7c85a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px;background:#111830;width:40px;">#</th>
+            <th style="padding:10px 12px;text-align:left;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Athlete</th>
+            <th style="padding:10px 12px;text-align:center;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Recherches</th>
+            <th style="padding:10px 12px;text-align:center;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">IPs uniques</th>
+            <th style="padding:10px 12px;text-align:right;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Derniere</th>
+        </tr>
+        <?php foreach ($_topAthletes as $_ti => $_ta):
+            $pct = $_topAthletes[0]['nb_recherches'] > 0 ? round(($_ta['nb_recherches'] / $_topAthletes[0]['nb_recherches']) * 100) : 0;
+            $ipData = $_topAthIps[$_ti];
+        ?>
+        <tr style="border-top:1px solid #121a30;cursor:pointer;" onclick="var d=document.getElementById('taIps<?= $_ti ?>');d.style.display=d.style.display==='none'?'table-row':'none';" onmouseover="this.style.background='#131b35'" onmouseout="this.style.background='transparent'">
+            <td style="padding:8px 12px;text-align:center;color:#5a6580;font-weight:600;"><?= $_ti + 1 ?></td>
+            <td style="padding:8px 12px;color:#e2e8f0;font-weight:600;">
+                <?= htmlspecialchars($_ta['entity_name']) ?>
+                <span style="font-size:10px;color:#6c5ce7;margin-left:6px;">&#9660; IPs</span>
+                <div style="margin-top:4px;height:3px;background:#1e2a3a;border-radius:2px;overflow:hidden;">
+                    <div style="width:<?= $pct ?>%;height:100%;background:linear-gradient(90deg,#6c5ce7,#a29bfe);border-radius:2px;"></div>
+                </div>
+            </td>
+            <td style="padding:8px 12px;text-align:center;color:#a29bfe;font-weight:700;font-size:15px;"><?= number_format($_ta['nb_recherches']) ?></td>
+            <td style="padding:8px 12px;text-align:center;color:#8b949e;"><?= number_format($_ta['nb_ips']) ?></td>
+            <td style="padding:8px 12px;text-align:right;color:#5a6580;font-size:12px;"><?= date('d/m H:i', strtotime($_ta['derniere_recherche'])) ?></td>
+        </tr>
+        <tr id="taIps<?= $_ti ?>" style="display:none;">
+            <td colspan="5" style="padding:0 12px 12px 40px;background:#0a0e1a;">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;">
+                <tr>
+                    <th style="padding:6px 10px;text-align:left;color:#6c5ce7;font-size:10px;text-transform:uppercase;">IP</th>
+                    <th style="padding:6px 10px;text-align:left;color:#6c5ce7;font-size:10px;text-transform:uppercase;">Utilisateur</th>
+                    <th style="padding:6px 10px;text-align:center;color:#6c5ce7;font-size:10px;text-transform:uppercase;">Nb</th>
+                    <th style="padding:6px 10px;text-align:right;color:#6c5ce7;font-size:10px;text-transform:uppercase;">Derniere</th>
+                </tr>
+                <?php foreach ($ipData as $ip): ?>
+                <tr style="border-top:1px solid #1e2a3a20;">
+                    <td style="padding:5px 10px;color:#e2e8f0;font-family:monospace;"><?= htmlspecialchars($ip['ip']) ?></td>
+                    <td style="padding:5px 10px;color:#8b949e;"><?= $ip['user_name'] ? htmlspecialchars($ip['user_name']) : '<span style="opacity:.4">anonyme</span>' ?></td>
+                    <td style="padding:5px 10px;text-align:center;color:#a29bfe;font-weight:600;"><?= $ip['nb'] ?></td>
+                    <td style="padding:5px 10px;text-align:right;color:#5a6580;"><?= date('d/m H:i', strtotime($ip['derniere'])) ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </table>
+            </td>
+        </tr>
+        <?php endforeach; ?>
         </table>
-    </div>
-
-    <div class="section">
-        <h2>Serveur</h2>
-        <table>
-            <tbody>
-            <tr><td>PHP</td><td class="mono"><?= $phpVersion ?></td></tr>
-            <tr><td>MySQL</td><td class="mono"><?= $mysqlVersion ?></td></tr>
-            <tr><td>Disque libre</td><td class="mono"><?= $diskFree ? fmtSize($diskFree) : 'N/A' ?></td></tr>
-            <tr><td>Disque total</td><td class="mono"><?= $diskTotal ? fmtSize($diskTotal) : 'N/A' ?></td></tr>
-            <tr><td>Disque utilise</td><td class="mono"><?= ($diskTotal && $diskFree) ? round(($diskTotal - $diskFree) / $diskTotal * 100, 1) . '%' : 'N/A' ?></td></tr>
-            <tr><td>Cache fichiers</td><td class="mono"><?= count($cacheFiles) ?> fichiers (<?= fmtSize($cacheSize) ?>)</td></tr>
-            <tr><td>Cache plus ancien</td><td class="dim"><?= $oldestCache ? date('d/m/Y H:i', $oldestCache) : '-' ?></td></tr>
-            <tr><td>Cache plus recent</td><td class="dim"><?= $newestCache ? date('d/m/Y H:i', $newestCache) : '-' ?></td></tr>
-            <tr><td>IP Tracker mois dispo</td><td class="mono"><?= implode(', ', $ipLogMonths) ?: '-' ?></td></tr>
-            <tr><td>Heure serveur</td><td class="mono"><?= date('Y-m-d H:i:s') ?></td></tr>
-            </tbody>
-        </table>
-    </div>
+        </div>
+    <?php else: ?>
+        <div class="test-block-value">Aucune donnee</div>
+    <?php endif; ?>
 </div>
 
 <!-- ============================================================ -->
-<!-- SECTION 11 : DONNEES ATHLETES -->
+<!-- UTILISATEURS INSCRITS -->
 <!-- ============================================================ -->
-<div class="section">
-    <h2>Donnees athletes</h2>
-    <div class="grid" style="padding:0;">
-        <div class="card"><div class="num"><?= number_format($stats['athlete_records']) ?></div><div class="label">Records</div></div>
-        <div class="card"><div class="num"><?= number_format($stats['athlete_resultats']) ?></div><div class="label">Resultats</div></div>
-        <div class="card"><div class="num"><?= number_format($stats['athlete_medailles']) ?></div><div class="label">Medailles</div></div>
-        <div class="card"><div class="num"><?= number_format($stats['athlete_podiums']) ?></div><div class="label">Podiums</div></div>
-        <div class="card"><div class="num"><?= number_format($stats['athlete_selections']) ?></div><div class="label">Selections</div></div>
-        <div class="card"><div class="num"><?= number_format($stats['athlete_progressions']) ?></div><div class="label">Progressions</div></div>
-        <div class="card"><div class="num"><?= number_format($stats['athlete_niveaux']) ?></div><div class="label">Niveaux</div></div>
-        <div class="card"><div class="num"><?= number_format($stats['athlete_clubs']) ?></div><div class="label">Clubs-Athletes</div></div>
-    </div>
-</div>
+<div class="section"><h2 style="color:#a29bfe;font-size:16px;border-color:#a29bfe40;">&#128100; Utilisateurs inscrits (<?= count($_users) ?>)</h2></div>
 
-<!-- ============================================================ -->
-<!-- SECTION 12 : ANALYTICS VUES (Profils & Clubs) — INTERACTIF -->
-<!-- ============================================================ -->
-<?php if ($hasVuesTables): ?>
-<script>
-var VUES_DATA = <?= json_encode([
-    'totals' => [
-        'athVues' => $totalVuesAthletes, 'clubVues' => $totalVuesClubs,
-        'nbAth' => $nbAthVus, 'nbClubs' => $nbClubsVus,
-        'ipsAth' => $uniqueVueIpsAth, 'ipsClub' => $uniqueVueIpsClub,
-        'todayAth' => $vuesTodayAth, 'todayClub' => $vuesTodayClub
-    ],
-    'parJour' => $vuesParJour,
-    'topAthletes' => $topVuesAthletes,
-    'topClubs' => $topVuesClubs,
-    'lastAth' => $lastVuesAthletes,
-    'lastClub' => $lastVuesClubs,
-    'topIps' => $topVuesIps,
-    'rateLimited' => $rateLimitedIps,
-    'rateLimitMax' => $rateLimitDailyLimit,
-    'bannedIps' => $bannedIps
-], JSON_UNESCAPED_UNICODE) ?>;
-</script>
-
-<!-- KPI Cards Vues (PHP statique) -->
-<div class="section"><h2 style="color:#f59e0b;font-size:16px;border-color:#f59e0b40;">&#128065; Analytics Vues — Profils &amp; Clubs</h2></div>
-<div class="grid">
-    <div class="card" style="border-color:#f59e0b40;"><div class="num warn"><?= number_format($totalVuesAthletes) ?></div><div class="label">Vues profils (total)</div><div class="sub"><?= $nbAthVus ?> athletes</div></div>
-    <div class="card" style="border-color:#8b5cf640;"><div class="num info"><?= number_format($totalVuesClubs) ?></div><div class="label">Vues clubs (total)</div><div class="sub"><?= $nbClubsVus ?> clubs</div></div>
-    <div class="card" style="border-color:#10b98140;"><div class="num green"><?= number_format($uniqueVueIpsAth) ?></div><div class="label">IPs uniques (profils)</div></div>
-    <div class="card" style="border-color:#10b98140;"><div class="num green"><?= number_format($uniqueVueIpsClub) ?></div><div class="label">IPs uniques (clubs)</div></div>
-    <div class="card" style="border-color:#3b82f640;"><div class="num" style="color:#60a5fa;"><?= number_format($vuesTodayAth) ?></div><div class="label">Profils vus aujourd'hui</div></div>
-    <div class="card" style="border-color:#3b82f640;"><div class="num" style="color:#60a5fa;"><?= number_format($vuesTodayClub) ?></div><div class="label">Clubs vus aujourd'hui</div></div>
-    <div class="card" style="border-color:#ec489940;"><div class="num pink"><?= number_format($totalVuesAthletes + $totalVuesClubs) ?></div><div class="label">Total combiné</div></div>
-    <div class="card" style="border-color:#ec489940;"><div class="num pink"><?= number_format($vuesTodayAth + $vuesTodayClub) ?></div><div class="label">Aujourd'hui (total)</div></div>
-</div>
-
-<!-- Chart 14 jours (cliquable) -->
-<div class="section">
-    <h2>Historique 14 jours <span style="font-size:11px;color:#5a6580;font-weight:400;">— cliquez sur une barre pour le detail</span></h2>
-    <div style="height:200px;position:relative;"><canvas id="vueChart14"></canvas></div>
-</div>
-
-<!-- Onglets interactifs -->
-<div class="vue-tabs" id="vueTabs">
-    <div class="vue-tab active" onclick="_vueTab('athletes')">Athletes</div>
-    <div class="vue-tab" onclick="_vueTab('clubs')">Clubs</div>
-    <div class="vue-tab" onclick="_vueTab('ips')">IPs</div>
-    <div class="vue-tab" onclick="_vueTab('live')"><span class="live-dot"></span>Temps reel</div>
-    <div class="vue-tab" onclick="_vueTab('blocked')" style="color:#ef4444;">&#9888; Bloques</div>
-</div>
-<div class="vue-tab-body" id="vueTabBody"></div>
-
-<!-- Drawer -->
-<div class="vue-overlay" id="vueOverlay" onclick="_vueClose()"></div>
-<div class="vue-drawer" id="vueDrawer">
-    <div class="vue-drawer-head">
-        <span class="vd-title" id="vueDrawerTitle"></span>
-        <button class="vd-close" onclick="_vueClose()">&times;</button>
-    </div>
-    <div class="vd-body" id="vueDrawerBody"></div>
-</div>
-
-<script>
-(function(){
-var D = VUES_DATA;
-var _curTab = 'athletes';
-var _sortKey = 'vues', _sortDir = 'desc', _filter = '';
-
-function _esc(s) { var d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
-function _fmtDate(s) { if (!s) return '-'; var d = new Date(s); return (d.getDate()<10?'0':'')+d.getDate()+'/'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+' '+(d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes(); }
-function _fmtDateFull(s) { if (!s) return '-'; var d = new Date(s); return (d.getDate()<10?'0':'')+d.getDate()+'/'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'/'+d.getFullYear()+' '+(d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes()+':'+(d.getSeconds()<10?'0':'')+d.getSeconds(); }
-
-// === CHART 14 JOURS ===
-function _vueRenderChart() {
-    var pj = D.parJour.slice().reverse();
-    var labels = pj.map(function(d) { return d.d.substring(5); });
-    var athData = pj.map(function(d) { return parseInt(d.ath)||0; });
-    var clubData = pj.map(function(d) { return parseInt(d.club)||0; });
-    var ctx = document.getElementById('vueChart14');
-    if (!ctx) return;
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                { label: 'Profils', data: athData, backgroundColor: '#f59e0b', borderRadius: 4 },
-                { label: 'Clubs', data: clubData, backgroundColor: '#8b5cf6', borderRadius: 4 }
-            ]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            scales: {
-                x: { stacked: true, grid: { color: '#1e2a3a' }, ticks: { color: '#5a6580', font: { size: 10 } } },
-                y: { stacked: true, grid: { color: '#1e2a3a' }, ticks: { color: '#5a6580' }, beginAtZero: true }
-            },
-            plugins: { legend: { labels: { color: '#8b949e', boxWidth: 12 } } },
-            onClick: function(evt, elems) {
-                if (elems.length > 0) {
-                    var idx = elems[0].index;
-                    _vueShowDay(pj[idx].d);
-                }
-            }
+<div style="overflow-x:auto;overflow-y:auto;max-height:500px;border-radius:12px;border:1px solid #1e2a3a;margin-bottom:20px;">
+<table style="width:100%;border-collapse:collapse;font-size:13px;background:#0c1020;">
+<tr style="background:#111830;position:sticky;top:0;z-index:1;">
+    <th style="padding:12px 14px;text-align:left;color:#7c85a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px;background:#111830;">#</th>
+    <th style="padding:12px 14px;text-align:left;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Utilisateur</th>
+    <th style="padding:12px 14px;text-align:left;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Role</th>
+    <th style="padding:12px 14px;text-align:left;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Inscription</th>
+    <th style="padding:12px 14px;text-align:left;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Derniere connexion</th>
+    <th style="padding:12px 14px;text-align:center;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Connexions</th>
+    <th style="padding:12px 14px;text-align:center;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Actions</th>
+    <th style="padding:12px 14px;text-align:center;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Recherches</th>
+    <th style="padding:12px 14px;text-align:center;color:#7c85a0;font-size:11px;text-transform:uppercase;background:#111830;">Pages</th>
+</tr>
+<?php foreach ($_users as $_ui => $_u):
+    $uid = (int)$_u['id_user'];
+    $nbSearch = $_userSearches[$uid] ?? 0;
+    $urls = $_userUrls[$uid] ?? [];
+    $roleBg = ['admin'=>'#e11d4830','coach'=>'#6c5ce730','club'=>'#f59e0b30','athlete'=>'#10b98130'][$_u['role']] ?? '#1e2a3a';
+    $roleColor = ['admin'=>'#fb7185','coach'=>'#a29bfe','club'=>'#fbbf24','athlete'=>'#34d399'][$_u['role']] ?? '#8b949e';
+?>
+<tr style="border-top:1px solid #121a30;" onmouseover="this.style.background='#131b35'" onmouseout="this.style.background='transparent'">
+    <td style="padding:10px 14px;color:#5a6580;"><?= $_ui + 1 ?></td>
+    <td style="padding:10px 14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <?php if (!empty($_u['picture'])): ?>
+                <img src="<?= htmlspecialchars($_u['picture']) ?>" alt="" style="width:28px;height:28px;border-radius:50%;border:1px solid #1e2a3a;" referrerpolicy="no-referrer">
+            <?php else: ?>
+                <div style="width:28px;height:28px;border-radius:50%;background:#1e2a3a;display:flex;align-items:center;justify-content:center;font-size:12px;color:#5a6580;">&#128100;</div>
+            <?php endif; ?>
+            <div>
+                <div style="color:#e2e8f0;font-weight:600;font-size:13px;"><?= htmlspecialchars(trim(($_u['prenom'] ?? '') . ' ' . ($_u['nom'] ?? '')) ?: '—') ?></div>
+                <div style="color:#5a6580;font-size:11px;"><?= htmlspecialchars($_u['email']) ?></div>
+            </div>
+        </div>
+    </td>
+    <td style="padding:10px 14px;"><span style="background:<?= $roleBg ?>;color:<?= $roleColor ?>;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;"><?= htmlspecialchars($_u['role']) ?></span></td>
+    <td style="padding:10px 14px;color:#8b949e;font-size:12px;"><?= $_u['date_creation'] ? date('d/m/Y', strtotime($_u['date_creation'])) : '—' ?></td>
+    <td style="padding:10px 14px;color:#8b949e;font-size:12px;"><?= $_u['last_login'] ? date('d/m/Y H:i', strtotime($_u['last_login'])) : '—' ?></td>
+    <?php $nbCo = max((int)$_u['nb_sessions_total'], (int)$_u['nb_sessions_log']); ?>
+    <td style="padding:10px 14px;text-align:center;"><span style="color:#a29bfe;font-weight:700;"><?= $nbCo > 0 ? number_format($nbCo) : '<span style="color:#f59e0b;">1</span>' ?></span></td>
+    <td style="padding:10px 14px;text-align:center;"><span style="color:#f59e0b;font-weight:700;"><?= number_format($_u['nb_actions']) ?></span></td>
+    <td style="padding:10px 14px;text-align:center;"><span style="color:#34d399;font-weight:700;"><?= number_format($nbSearch) ?></span></td>
+    <td style="padding:10px 14px;text-align:center;">
+        <?php if (!empty($urls)): ?>
+        <button onclick="var d=document.getElementById('ud<?= $uid ?>');d.style.display=d.style.display==='none'?'table-row':'none'" style="background:#1e2a3a;border:1px solid #2a3560;color:#a29bfe;padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;"><?= count($urls) ?> &#9660;</button>
+        <?php else: ?>
+        <span style="color:#3a4560;">—</span>
+        <?php endif; ?>
+    </td>
+</tr>
+<?php if (!empty($urls)): ?>
+<tr id="ud<?= $uid ?>" style="display:none;">
+    <td colspan="9" style="padding:0;">
+        <?php
+        $_pageCount = [];
+        foreach ($urls as $_url) {
+            $p = $_url['page'] ?: 'autre';
+            $_pageCount[$p] = ($_pageCount[$p] ?? 0) + 1;
         }
-    });
-}
+        arsort($_pageCount);
+        foreach ($_pageCount as $_pg => $_cnt):
+            // Construire le lien direct
+            $pgClean = urldecode($_pg);
+            if (strpos($pgClean, '/') === 0 || strpos($pgClean, '?') === 0) {
+                $href = 'https://bokonzi.com' . $pgClean;
+            } else {
+                $href = 'https://bokonzi.com/' . $pgClean;
+            }
+            // Label court pour l'affichage
+            $label = $pgClean;
+            if (preg_match('/page=([^&]+)/', $pgClean, $m)) {
+                $label = $m[1];
+                if (preg_match('/id=(\d+)/', $pgClean, $m2)) $label .= ' #' . $m2[1];
+                if (preg_match('/open=([^&]+)/', $pgClean, $m3)) $label .= ' — ' . urldecode($m3[1]);
+                if (preg_match('/club=([^&]+)/', $pgClean, $m4)) $label .= ' — ' . urldecode($m4[1]);
+            }
+        ?>
+        <a href="<?= htmlspecialchars($href) ?>" target="_blank" style="display:block;padding:10px 20px;color:#a29bfe;text-decoration:none;font-size:13px;font-weight:600;border-bottom:1px solid #121a30;background:#080c14;transition:background .15s;"
+           onmouseover="this.style.background='#131b35'"
+           onmouseout="this.style.background='#080c14'"
+        ><?= htmlspecialchars($label) ?> <span style="color:#5a6580;font-weight:400;float:right;"><?= $_cnt ?> visite<?= $_cnt > 1 ? 's' : '' ?></span></a>
+        <?php endforeach; ?>
+    </td>
+</tr>
+<?php endif; ?>
+<?php endforeach; ?>
+</table>
+</div>
 
-// === TABS ===
-window._vueTab = function(tab) {
-    _curTab = tab; _filter = ''; _sortKey = 'vues'; _sortDir = 'desc';
-    var tabs = document.querySelectorAll('.vue-tab');
-    tabs.forEach(function(t) { t.classList.remove('active'); });
-    tabs[['athletes','clubs','ips','live','blocked'].indexOf(tab)].classList.add('active');
-    _vueRenderTab();
-};
+<!-- ============================================================ -->
+<!-- ACCES PANEL ADMIN -->
+<!-- ============================================================ -->
+<div id="panelAccess" class="section"><h2 style="color:#f59e0b;font-size:16px;border-color:#f59e0b40;">&#128272; Acces Panel Admin</h2></div>
 
-function _vueRenderTab() {
-    var el = document.getElementById('vueTabBody');
-    if (_curTab === 'athletes') _vueRenderAthletes(el);
-    else if (_curTab === 'clubs') _vueRenderClubs(el);
-    else if (_curTab === 'ips') _vueRenderIps(el);
-    else if (_curTab === 'blocked') _vueRenderBlocked(el);
-    else _vueRenderLive(el);
-}
+<?php $paList = getPanelAccessList(); ?>
+<div style="border:1px solid #1e2a3a;border-radius:12px;overflow:hidden;margin-bottom:20px;">
 
-function _sortHeader(key, label) {
-    var cls = 'vue-sort' + (_sortKey === key ? ' ' + _sortDir : '');
-    return '<th class="'+cls+'" onclick="_vueSortBy(\''+key+'\')">'+label+'</th>';
-}
-window._vueSortBy = function(key) {
-    if (_sortKey === key) _sortDir = _sortDir === 'desc' ? 'asc' : 'desc';
-    else { _sortKey = key; _sortDir = 'desc'; }
-    _vueRenderTab();
-};
-window._vueFilter = function(q) { _filter = q.toLowerCase(); _vueRenderTab(); };
+<!-- Super Admin -->
+<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:#111830;border-bottom:1px solid #1e2a3a;">
+    <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:#e11d4830;display:flex;align-items:center;justify-content:center;font-size:14px;">&#128081;</div>
+        <div>
+            <div style="color:#fb7185;font-weight:700;font-size:14px;">Super Admin</div>
+            <div style="color:#5a6580;font-size:11px;">Credentials BDD</div>
+        </div>
+    </div>
+    <span style="background:#e11d4830;color:#fb7185;padding:4px 12px;border-radius:8px;font-size:11px;font-weight:600;">Permanent</span>
+</div>
 
-function _sortItems(arr, key) {
-    return arr.slice().sort(function(a, b) {
-        var va = key === 'nom' ? (a[key]||'').toLowerCase() : (parseFloat(a[key])||0);
-        var vb = key === 'nom' ? (b[key]||'').toLowerCase() : (parseFloat(b[key])||0);
-        if (typeof va === 'string') return _sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-        return _sortDir === 'asc' ? va - vb : vb - va;
-    });
-}
+<!-- Membres autorises -->
+<?php if (empty($paList)): ?>
+<div style="padding:20px;text-align:center;color:#5a6580;font-size:13px;background:#080c14;">Aucun membre autorise</div>
+<?php else: ?>
+<?php foreach ($paList as $_email => $_info): ?>
+<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#080c14;border-bottom:1px solid #121a30;"
+     onmouseover="this.style.background='#0e1325'" onmouseout="this.style.background='#080c14'">
+    <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:#f59e0b20;display:flex;align-items:center;justify-content:center;font-size:14px;">&#128100;</div>
+        <div>
+            <div style="color:#e2e8f0;font-weight:600;font-size:13px;"><?= htmlspecialchars($_email) ?></div>
+            <div style="color:#5a6580;font-size:11px;">Ajoute le <?= isset($_info['added']) ? date('d/m/Y', strtotime($_info['added'])) : '—' ?></div>
+        </div>
+    </div>
+    <?php if ($_isSA): ?>
+    <form method="post" style="margin:0;" onsubmit="return confirm('Revoquer l\'acces de <?= htmlspecialchars($_email) ?> ?')">
+        <input type="hidden" name="panel_action" value="revoke">
+        <input type="hidden" name="email" value="<?= htmlspecialchars($_email) ?>">
+        <button type="submit" style="background:#ef444420;border:1px solid #ef444440;color:#ef4444;padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;"
+                onmouseover="this.style.background='#ef444440'" onmouseout="this.style.background='#ef444420'">Revoquer</button>
+    </form>
+    <?php else: ?>
+    <span style="color:#34d399;font-size:11px;font-weight:600;">Actif</span>
+    <?php endif; ?>
+</div>
+<?php endforeach; ?>
+<?php endif; ?>
 
-// === ATHLETES TAB (simplifie : Nom + Club + Vues + IPs) ===
-function _vueRenderAthletes(el) {
-    var items = D.topAthletes;
-    if (_filter) items = items.filter(function(a) {
-        return (a.nom||'').toLowerCase().indexOf(_filter) >= 0 || (a.club||'').toLowerCase().indexOf(_filter) >= 0
-            || (a.nationalite_athlete||'').toLowerCase().indexOf(_filter) >= 0;
-    });
-    items = _sortItems(items, _sortKey);
-    var h = '<input type="text" class="vue-search" placeholder="&#128269; Rechercher un athlete, club, nationalite..." oninput="_vueFilter(this.value)" value="'+_esc(_filter)+'">';
-    h += '<p style="color:#5a6580;font-size:11px;margin-bottom:10px;">'+items.length+' athlete'+(items.length>1?'s':'')+' — cliquez sur une ligne pour voir le detail</p>';
-    h += '<div style="max-height:520px;overflow-y:auto;"><table style="font-size:13px;"><thead><tr>'
-        + '<th style="width:40px;">#</th>'
-        + _sortHeader('nom','Nom Prenom')
-        + '<th>Club</th>'
-        + _sortHeader('vues','Vues')
-        + _sortHeader('ips_uniques','IPs uniques')
-        + '</tr></thead><tbody>';
-    if (!items.length) h += '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:30px;font-size:14px;">Aucune donnee</td></tr>';
-    items.forEach(function(a, i) {
-        h += '<tr class="vue-row" onclick="_vueShowAth('+i+')">'
-            + '<td class="dim" style="font-size:12px;">'+(i+1)+'</td>'
-            + '<td style="font-weight:700;color:#e2e8f0;font-size:14px;">'+_esc(a.nom)+'<br><span style="font-size:10px;color:#5a6580;font-weight:400;">'+(a.sexe_athlete||'')+' '+_esc(a.categorie_athlete)+' '+_esc(a.nationalite_athlete)+'</span></td>'
-            + '<td style="color:#8b949e;font-size:12px;">'+_esc((a.club||'').replace(/\*\s*$/,''))+'</td>'
-            + '<td style="text-align:center;"><span style="background:#f59e0b20;color:#f59e0b;font-weight:800;font-size:16px;padding:4px 12px;border-radius:8px;">'+a.vues+'</span></td>'
-            + '<td style="text-align:center;"><span style="color:#55efc4;font-weight:700;font-size:14px;">'+(a.ips_uniques||0)+'</span></td>'
-            + '</tr>';
-    });
-    h += '</tbody></table></div>';
-    el.innerHTML = h;
-}
+<!-- Ajouter un membre (super admin uniquement) -->
+<?php if ($_isSA): ?>
+<div style="padding:14px 20px;background:#0a0f1c;display:flex;align-items:center;gap:10px;">
+    <form method="post" style="display:flex;gap:8px;flex:1;margin:0;">
+        <input type="hidden" name="panel_action" value="grant">
+        <input type="email" name="email" placeholder="Email Google a autoriser..." required style="flex:1;padding:10px 14px;background:#080c14;border:1px solid #1e2a3a;border-radius:8px;color:#e2e8f0;font-size:13px;outline:none;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#1e2a3a'">
+        <button type="submit" style="background:#f59e0b;border:none;color:#000;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">+ Ajouter</button>
+    </form>
+</div>
+<?php endif; ?>
 
-// === CLUBS TAB (simplifie : Nom + Vues + IPs) ===
-function _vueRenderClubs(el) {
-    var items = D.topClubs;
-    if (_filter) items = items.filter(function(c) {
-        return (c.nom_club||'').toLowerCase().indexOf(_filter) >= 0;
-    });
-    items = _sortItems(items, _sortKey === 'nom' ? 'nom_club' : _sortKey);
-    var h = '<input type="text" class="vue-search" placeholder="&#128269; Rechercher un club..." oninput="_vueFilter(this.value)" value="'+_esc(_filter)+'">';
-    h += '<p style="color:#5a6580;font-size:11px;margin-bottom:10px;">'+items.length+' club'+(items.length>1?'s':'')+' — cliquez sur une ligne pour voir le detail</p>';
-    h += '<div style="max-height:520px;overflow-y:auto;"><table style="font-size:13px;"><thead><tr>'
-        + '<th style="width:40px;">#</th>'
-        + _sortHeader('nom_club','Nom du Club')
-        + _sortHeader('nb_athletes','Athletes')
-        + _sortHeader('vues','Vues')
-        + _sortHeader('ips_uniques','IPs uniques')
-        + '</tr></thead><tbody>';
-    if (!items.length) h += '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:30px;font-size:14px;">Aucune donnee</td></tr>';
-    items.forEach(function(c, i) {
-        h += '<tr class="vue-row" onclick="_vueShowClub('+i+')">'
-            + '<td class="dim" style="font-size:12px;">'+(i+1)+'</td>'
-            + '<td style="font-weight:700;color:#e2e8f0;font-size:14px;">'+_esc(c.nom_club)+'</td>'
-            + '<td style="color:#8b949e;text-align:center;">'+(c.nb_athletes||0)+'</td>'
-            + '<td style="text-align:center;"><span style="background:#f59e0b20;color:#f59e0b;font-weight:800;font-size:16px;padding:4px 12px;border-radius:8px;">'+c.vues+'</span></td>'
-            + '<td style="text-align:center;"><span style="color:#55efc4;font-weight:700;font-size:14px;">'+(c.ips_uniques||0)+'</span></td>'
-            + '</tr>';
-    });
-    h += '</tbody></table></div>';
-    el.innerHTML = h;
-}
-
-// === IPS TAB (simplifie) ===
-function _vueRenderIps(el) {
-    var items = D.topIps;
-    if (_filter) items = items.filter(function(ip) { return ip.ip.indexOf(_filter) >= 0; });
-    var h = '<input type="text" class="vue-search" placeholder="&#128269; Rechercher une IP..." oninput="_vueFilter(this.value)" value="'+_esc(_filter)+'">';
-    h += '<p style="color:#5a6580;font-size:11px;margin-bottom:10px;">'+items.length+' IP'+(items.length>1?'s':'')+' — cliquez pour voir la navigation complete</p>';
-    h += '<div style="max-height:520px;overflow-y:auto;"><table style="font-size:13px;"><thead><tr><th>Adresse IP</th><th style="text-align:center;">Profils</th><th style="text-align:center;">Clubs</th><th style="text-align:center;">Total</th><th>Derniere visite</th></tr></thead><tbody>';
-    if (!items.length) h += '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:30px;font-size:14px;">Aucune donnee</td></tr>';
-    items.forEach(function(ip, i) {
-        var total = (parseInt(ip.nb_profils)||0) + (parseInt(ip.nb_clubs)||0);
-        h += '<tr class="vue-row" onclick="_vueShowIp('+i+')">'
-            + '<td class="mono" style="font-weight:700;font-size:13px;">'+_esc(ip.ip)+'</td>'
-            + '<td style="text-align:center;"><span style="background:#f59e0b20;color:#f59e0b;font-weight:700;padding:3px 10px;border-radius:6px;">'+(ip.nb_profils||0)+'</span></td>'
-            + '<td style="text-align:center;"><span style="background:#8b5cf620;color:#a78bfa;font-weight:700;padding:3px 10px;border-radius:6px;">'+(ip.nb_clubs||0)+'</span></td>'
-            + '<td style="text-align:center;"><span style="color:#55efc4;font-weight:800;font-size:16px;">'+total+'</span></td>'
-            + '<td class="time" style="font-size:12px;">'+_fmtDate(ip.last_vue)+'</td>'
-            + '</tr>';
-    });
-    h += '</tbody></table></div>';
-    el.innerHTML = h;
-}
-
-// === LIVE TAB (simplifie) ===
-function _vueRenderLive(el) {
-    var all = [];
-    (D.lastAth||[]).forEach(function(v) { all.push({type:'athlete', ip:v.ip, nom:v.nom||'?', id:v.athlete_id_ext, date:v.created_at}); });
-    (D.lastClub||[]).forEach(function(v) { all.push({type:'club', ip:v.ip, nom:v.nom_club||'?', id:v.club_id, date:v.created_at}); });
-    all.sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
-    var h = '<p style="color:#5a6580;font-size:11px;margin-bottom:10px;">'+all.length+' dernieres vues — profils + clubs melanges</p>';
-    h += '<div style="max-height:550px;overflow-y:auto;"><table style="font-size:13px;"><thead><tr><th>Date/Heure</th><th>IP</th><th>Type</th><th>Nom</th></tr></thead><tbody>';
-    if (!all.length) h += '<tr><td colspan="4" style="text-align:center;color:#5a6580;padding:30px;font-size:14px;">Aucune vue</td></tr>';
-    all.forEach(function(v) {
-        var typeColor = v.type === 'athlete' ? '#f59e0b' : '#8b5cf6';
-        var typeBg = v.type === 'athlete' ? '#f59e0b20' : '#8b5cf620';
-        var typeLabel = v.type === 'athlete' ? 'Profil' : 'Club';
-        var link = v.type === 'athlete' ? '../index.php?page=profil&id='+v.id : '../index.php?page=recherche&club='+encodeURIComponent(v.nom);
-        h += '<tr class="vue-row" onclick="window.open(\''+link+'\',\'_blank\')">'
-            + '<td class="time" style="font-size:12px;">'+_fmtDateFull(v.date)+'</td>'
-            + '<td class="mono" style="font-size:12px;">'+_esc(v.ip)+'</td>'
-            + '<td><span style="background:'+typeBg+';color:'+typeColor+';font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;">'+typeLabel+'</span></td>'
-            + '<td style="font-weight:700;color:#e2e8f0;font-size:14px;">'+_esc(v.nom)+'</td>'
-            + '</tr>';
-    });
-    h += '</tbody></table></div>';
-    el.innerHTML = h;
-}
-
-// === BLOCKED TAB (IPs rate limitees) ===
-function _vueRenderBlocked(el) {
-    var items = D.rateLimited || [];
-    var limit = D.rateLimitMax || 20;
-    if (_filter) items = items.filter(function(r) { return r.ip.indexOf(_filter) >= 0 || r.date.indexOf(_filter) >= 0; });
-
-    // Grouper par IP pour stats globales
-    var byIp = {};
-    items.forEach(function(r) {
-        if (!byIp[r.ip]) byIp[r.ip] = { ip: r.ip, totalReq: 0, totalDep: 0, jours: 0, dates: [] };
-        byIp[r.ip].totalReq += r.count;
-        byIp[r.ip].totalDep += r.depassement;
-        byIp[r.ip].jours++;
-        byIp[r.ip].dates.push(r);
-    });
-    var uniqueIps = Object.keys(byIp).length;
-
-    var h = '<input type="text" class="vue-search" placeholder="&#128269; Rechercher par IP ou date..." oninput="_vueFilter(this.value)" value="'+_esc(_filter)+'">';
-    h += '<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">';
-    h += '<div style="background:#ef444420;border:1px solid #ef444440;border-radius:10px;padding:10px 16px;flex:1;min-width:120px;text-align:center;">'
-        + '<div style="color:#ef4444;font-weight:800;font-size:22px;">'+items.length+'</div>'
-        + '<div style="color:#8b949e;font-size:11px;">Blocages (7j)</div></div>';
-    h += '<div style="background:#f59e0b20;border:1px solid #f59e0b40;border-radius:10px;padding:10px 16px;flex:1;min-width:120px;text-align:center;">'
-        + '<div style="color:#f59e0b;font-weight:800;font-size:22px;">'+uniqueIps+'</div>'
-        + '<div style="color:#8b949e;font-size:11px;">IPs uniques bloquees</div></div>';
-    h += '<div style="background:#8b5cf620;border:1px solid #8b5cf640;border-radius:10px;padding:10px 16px;flex:1;min-width:120px;text-align:center;">'
-        + '<div style="color:#a78bfa;font-weight:800;font-size:22px;">'+limit+'</div>'
-        + '<div style="color:#8b949e;font-size:11px;">Limite / jour</div></div>';
-    h += '</div>';
-
-    h += '<p style="color:#5a6580;font-size:11px;margin-bottom:10px;">IPs ayant depasse la limite de '+limit+' requetes/jour et ayant vu la page d\'inscription — cliquez pour le detail</p>';
-
-    h += '<div style="max-height:520px;overflow-y:auto;"><table style="font-size:13px;"><thead><tr>'
-        + '<th>Date</th>'
-        + '<th>Adresse IP</th>'
-        + '<th style="text-align:center;">Requetes</th>'
-        + '<th style="text-align:center;">Depassement</th>'
-        + '<th style="text-align:center;">Statut</th>'
-        + '</tr></thead><tbody>';
-
-    if (!items.length) h += '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:30px;font-size:14px;">Aucune IP bloquee ces 5 derniers jours</td></tr>';
-
-    items.forEach(function(r, i) {
-        var severity = r.depassement > 20 ? '#ef4444' : r.depassement > 5 ? '#f59e0b' : '#eab308';
-        var severityBg = r.depassement > 20 ? '#ef444420' : r.depassement > 5 ? '#f59e0b20' : '#eab30820';
-        var severityLabel = r.depassement > 20 ? 'Abusif' : r.depassement > 5 ? 'Excessif' : 'Limite';
-        h += '<tr class="vue-row" onclick="_vueShowBlocked('+i+')">'
-            + '<td class="time" style="font-size:12px;">'+_esc(r.date)+'</td>'
-            + '<td class="mono" style="font-weight:700;font-size:13px;">'+_esc(r.ip)+'</td>'
-            + '<td style="text-align:center;"><span style="background:#ef444420;color:#ef4444;font-weight:800;font-size:16px;padding:4px 12px;border-radius:8px;">'+r.count+'</span></td>'
-            + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:700;">+'+r.depassement+'</span></td>'
-            + '<td style="text-align:center;"><span style="background:'+severityBg+';color:'+severity+';font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;">'+severityLabel+'</span></td>'
-            + '</tr>';
-    });
-    h += '</tbody></table></div>';
-
-    // IPs bannies definitivement
-    var banned = D.bannedIps || {};
-    var bannedKeys = Object.keys(banned);
-    if (bannedKeys.length > 0) {
-        h += '<div style="margin-top:16px;"><h4 style="color:#ef4444;font-size:13px;margin-bottom:8px;">&#128274; IPs bannies definitivement ('+bannedKeys.length+')</h4>';
-        h += '<table style="font-size:12px;"><thead><tr><th>IP</th><th>Date du ban</th></tr></thead><tbody>';
-        bannedKeys.forEach(function(ip) {
-            h += '<tr class="vue-row">'
-                + '<td class="mono" style="font-weight:700;" onclick="_vueShowBlockedIp(\''+_esc(ip)+'\')">'+_esc(ip)+'</td>'
-                + '<td><span style="background:#ef444420;color:#ef4444;font-weight:600;padding:3px 10px;border-radius:6px;font-size:11px;">'+_esc(banned[ip])+'</span></td>'
-                + '<td><button onclick="_unbanIp(\''+_esc(ip)+'\',this)" style="background:#10b98120;border:1px solid #10b98140;color:#10b981;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;">Debannir</button></td>'
-                + '</tr>';
-        });
-        h += '</tbody></table></div>';
-    }
-
-    el.innerHTML = h;
-}
-
-// Drawer: detail IP bloquee (une entree = 1 jour)
-window._vueShowBlocked = function(idx) {
-    var items = D.rateLimited || [];
-    if (_filter) items = items.filter(function(r) { return r.ip.indexOf(_filter) >= 0 || r.date.indexOf(_filter) >= 0; });
-    var r = items[idx]; if (!r) return;
-    var limit = D.rateLimitMax || 20;
-
-    var h = '<div class="vd-kpi">'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#ef4444;">'+r.count+'</div><div class="vd-lbl">Requetes ce jour</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#f59e0b;">+'+r.depassement+'</div><div class="vd-lbl">Au-dela de la limite</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#8b949e;">'+limit+'</div><div class="vd-lbl">Limite / jour</div></div>'
-        + '</div>';
-
-    h += '<div class="vd-section"><h4>Informations</h4><table>'
-        + '<tr><td class="dim">Adresse IP</td><td class="mono" style="font-weight:700;">'+_esc(r.ip)+'</td></tr>'
-        + '<tr><td class="dim">Date</td><td>'+_esc(r.date)+'</td></tr>'
-        + '<tr><td class="dim">Requetes effectuees</td><td style="color:#ef4444;font-weight:700;">'+r.count+'</td></tr>'
-        + '<tr><td class="dim">Limite journaliere</td><td>'+limit+'</td></tr>'
-        + '<tr><td class="dim">Depassement</td><td style="color:#f59e0b;font-weight:700;">+'+r.depassement+' requetes</td></tr>'
-        + '</table></div>';
-
-    // Verifier si cette IP a aussi consulte des profils/clubs
-    var profils = (D.lastAth||[]).filter(function(v) { return v.ip === r.ip; });
-    var clubs = (D.lastClub||[]).filter(function(v) { return v.ip === r.ip; });
-
-    if (profils.length) {
-        h += '<div class="vd-section"><h4>Profils consultes par cette IP ('+profils.length+')</h4>';
-        h += '<table><thead><tr><th>Date</th><th>Athlete</th><th>ID</th></tr></thead><tbody>';
-        profils.forEach(function(p) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=profil&id='+p.athlete_id_ext+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(p.created_at)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(p.nom||'?')+'</td>'
-                + '<td class="mono">'+p.athlete_id_ext+'</td></tr>';
-        });
-        h += '</tbody></table></div>';
-    }
-
-    if (clubs.length) {
-        h += '<div class="vd-section"><h4>Clubs consultes par cette IP ('+clubs.length+')</h4>';
-        h += '<table><thead><tr><th>Date</th><th>Club</th></tr></thead><tbody>';
-        clubs.forEach(function(c) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=recherche&club='+encodeURIComponent(c.nom_club||'')+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(c.created_at)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(c.nom_club||'?')+'</td></tr>';
-        });
-        h += '</tbody></table></div>';
-    }
-
-    if (!profils.length && !clubs.length) {
-        h += '<div class="vd-section"><p class="dim">Cette IP n\'apparait pas dans les 50 dernieres vues de profils/clubs enregistrees.</p></div>';
-    }
-
-    h += '<div class="vd-section" style="margin-top:16px;padding:12px;background:#ef444410;border:1px solid #ef444430;border-radius:8px;">'
-        + '<p style="color:#ef4444;font-size:12px;font-weight:600;margin-bottom:4px;">&#9888; Page d\'inscription affichee</p>'
-        + '<p style="color:#8b949e;font-size:11px;">Cette IP a depasse la limite de '+limit+' requetes le '+_esc(r.date)+'. '
-        + 'La page proposant de creer un compte ou de se connecter lui a ete presentee.</p></div>';
-
-    _openDrawer('IP bloquee — ' + _esc(r.ip), h);
-};
-
-// Drawer: recap IP bloquee (toutes dates confondues)
-window._vueShowBlockedIp = function(ip) {
-    var items = (D.rateLimited||[]).filter(function(r) { return r.ip === ip; });
-    if (!items.length) return;
-    var limit = D.rateLimitMax || 20;
-    var totalReq = 0, totalDep = 0;
-    items.forEach(function(r) { totalReq += r.count; totalDep += r.depassement; });
-
-    var h = '<div class="vd-kpi">'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#ef4444;">'+items.length+'</div><div class="vd-lbl">Jours bloques</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#f59e0b;">'+totalReq+'</div><div class="vd-lbl">Total requetes</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#e2e8f0;">+'+totalDep+'</div><div class="vd-lbl">Total depassement</div></div>'
-        + '</div>';
-
-    h += '<div class="vd-section"><h4>Historique des blocages</h4>';
-    h += '<table><thead><tr><th>Date</th><th style="text-align:center;">Requetes</th><th style="text-align:center;">Depassement</th></tr></thead><tbody>';
-    items.forEach(function(r) {
-        h += '<tr><td>'+_esc(r.date)+'</td>'
-            + '<td style="text-align:center;"><span style="background:#ef444420;color:#ef4444;font-weight:700;padding:3px 10px;border-radius:6px;">'+r.count+'</span></td>'
-            + '<td style="text-align:center;color:#f59e0b;font-weight:700;">+'+r.depassement+'</td></tr>';
-    });
-    h += '</tbody></table></div>';
-
-    // Cross-reference with profils/clubs
-    var profils = (D.lastAth||[]).filter(function(v) { return v.ip === ip; });
-    var clubs = (D.lastClub||[]).filter(function(v) { return v.ip === ip; });
-
-    if (profils.length) {
-        h += '<div class="vd-section"><h4>Profils consultes ('+profils.length+')</h4>';
-        h += '<table><thead><tr><th>Date</th><th>Athlete</th></tr></thead><tbody>';
-        profils.forEach(function(p) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=profil&id='+p.athlete_id_ext+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(p.created_at)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(p.nom||'?')+'</td></tr>';
-        });
-        h += '</tbody></table></div>';
-    }
-
-    if (clubs.length) {
-        h += '<div class="vd-section"><h4>Clubs consultes ('+clubs.length+')</h4>';
-        h += '<table><thead><tr><th>Date</th><th>Club</th></tr></thead><tbody>';
-        clubs.forEach(function(c) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=recherche&club='+encodeURIComponent(c.nom_club||'')+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(c.created_at)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(c.nom_club||'?')+'</td></tr>';
-        });
-        h += '</tbody></table></div>';
-    }
-
-    _openDrawer('IP bannie — ' + _esc(ip), h);
-};
-
-// === DRAWER ===
-function _openDrawer(title, bodyHtml) {
-    document.getElementById('vueDrawerTitle').textContent = title;
-    document.getElementById('vueDrawerBody').innerHTML = bodyHtml;
-    document.getElementById('vueDrawer').classList.add('open');
-    document.getElementById('vueOverlay').classList.add('open');
-}
-window._vueClose = function() {
-    document.getElementById('vueDrawer').classList.remove('open');
-    document.getElementById('vueOverlay').classList.remove('open');
-};
-
-// Drawer: detail athlete
-window._vueShowAth = function(idx) {
-    var items = D.topAthletes;
-    if (_filter) items = items.filter(function(a) {
-        return (a.nom||'').toLowerCase().indexOf(_filter) >= 0 || (a.club||'').toLowerCase().indexOf(_filter) >= 0
-            || (a.nationalite_athlete||'').toLowerCase().indexOf(_filter) >= 0 || (a.athlete_id_externe+'').indexOf(_filter) >= 0;
-    });
-    items = _sortItems(items, _sortKey);
-    var a = items[idx]; if (!a) return;
-    var h = '<div class="vd-section">'
-        + '<a href="../index.php?page=profil&id='+a.athlete_id_externe+'" class="vd-link" target="_blank">Voir le profil de '+_esc(a.nom)+' &rarr;</a>'
-        + '</div>';
-    h += '<div class="vd-kpi">'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#f59e0b;">'+a.vues+'</div><div class="vd-lbl">Vues totales</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#55efc4;">'+(a.ips_uniques||0)+'</div><div class="vd-lbl">IPs uniques</div></div>'
-        + '</div>';
-    h += '<div class="vd-section"><h4>Informations</h4><table>'
-        + '<tr><td class="dim">ID</td><td class="mono">'+a.athlete_id_externe+'</td></tr>'
-        + '<tr><td class="dim">Sexe</td><td>'+_esc(a.sexe_athlete)+'</td></tr>'
-        + '<tr><td class="dim">Categorie</td><td>'+_esc(a.categorie_athlete)+'</td></tr>'
-        + '<tr><td class="dim">Nationalite</td><td>'+_esc(a.nationalite_athlete)+'</td></tr>'
-        + '<tr><td class="dim">Club</td><td>'+_esc((a.club||'').replace(/\*\s*$/,''))+'</td></tr>'
-        + '<tr><td class="dim">Derniere vue</td><td class="time">'+_fmtDateFull(a.derniere_vue)+'</td></tr>'
-        + '</table></div>';
-    // IPs qui ont vu ce profil
-    var ips = (D.lastAth||[]).filter(function(v) { return v.athlete_id_ext == a.athlete_id_externe; });
-    h += '<div class="vd-section"><h4>IPs ayant consulte ce profil ('+ips.length+')</h4>';
-    if (ips.length) {
-        h += '<table><thead><tr><th>Date</th><th>IP</th></tr></thead><tbody>';
-        ips.forEach(function(v) {
-            h += '<tr><td class="time">'+_fmtDateFull(v.created_at)+'</td><td class="mono">'+_esc(v.ip)+'</td></tr>';
-        });
-        h += '</tbody></table>';
-    } else h += '<p class="dim">Aucune IP enregistree dans les 50 dernieres vues</p>';
-    h += '</div>';
-    _openDrawer(_esc(a.nom) + ' (#' + a.athlete_id_externe + ')', h);
-};
-
-// Drawer: detail club
-window._vueShowClub = function(idx) {
-    var items = D.topClubs;
-    if (_filter) items = items.filter(function(c) {
-        return (c.nom_club||'').toLowerCase().indexOf(_filter) >= 0 || (c.id_club+'').indexOf(_filter) >= 0;
-    });
-    items = _sortItems(items, _sortKey === 'nom' ? 'nom_club' : _sortKey);
-    var c = items[idx]; if (!c) return;
-    var h = '<div class="vd-section">'
-        + '<a href="../index.php?page=recherche&club='+encodeURIComponent(c.nom_club)+'" class="vd-link" target="_blank">Voir le club '+_esc(c.nom_club)+' &rarr;</a>'
-        + '</div>';
-    h += '<div class="vd-kpi">'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#f59e0b;">'+c.vues+'</div><div class="vd-lbl">Vues totales</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#55efc4;">'+(c.ips_uniques||0)+'</div><div class="vd-lbl">IPs uniques</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#8b5cf6;">'+(c.nb_athletes||0)+'</div><div class="vd-lbl">Athletes</div></div>'
-        + '</div>';
-    h += '<div class="vd-section"><h4>Informations</h4><table>'
-        + '<tr><td class="dim">ID Club</td><td class="mono">'+c.id_club+'</td></tr>'
-        + '<tr><td class="dim">Derniere vue</td><td class="time">'+_fmtDateFull(c.derniere_vue)+'</td></tr>'
-        + '</table></div>';
-    var ips = (D.lastClub||[]).filter(function(v) { return v.club_id == c.id_club; });
-    h += '<div class="vd-section"><h4>IPs ayant consulte ce club ('+ips.length+')</h4>';
-    if (ips.length) {
-        h += '<table><thead><tr><th>Date</th><th>IP</th></tr></thead><tbody>';
-        ips.forEach(function(v) {
-            h += '<tr><td class="time">'+_fmtDateFull(v.created_at)+'</td><td class="mono">'+_esc(v.ip)+'</td></tr>';
-        });
-        h += '</tbody></table>';
-    } else h += '<p class="dim">Aucune IP dans les 50 dernieres vues</p>';
-    h += '</div>';
-    _openDrawer(_esc(c.nom_club) + ' (#' + c.id_club + ')', h);
-};
-
-// Drawer: detail IP
-window._vueShowIp = function(idx) {
-    var items = D.topIps;
-    if (_filter) items = items.filter(function(ip) { return ip.ip.indexOf(_filter) >= 0; });
-    var ip = items[idx]; if (!ip) return;
-    var total = (parseInt(ip.nb_profils)||0) + (parseInt(ip.nb_clubs)||0);
-    var h = '<div class="vd-kpi">'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#f59e0b;">'+(ip.nb_profils||0)+'</div><div class="vd-lbl">Profils</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#8b5cf6;">'+(ip.nb_clubs||0)+'</div><div class="vd-lbl">Clubs</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#55efc4;">'+total+'</div><div class="vd-lbl">Total</div></div>'
-        + '</div>';
-    h += '<div class="vd-section"><h4>Periode</h4><table>'
-        + '<tr><td class="dim">Premiere vue</td><td class="time">'+_fmtDateFull(ip.first_vue)+'</td></tr>'
-        + '<tr><td class="dim">Derniere vue</td><td class="time">'+_fmtDateFull(ip.last_vue)+'</td></tr>'
-        + '</table></div>';
-    // Profils consultes
-    var profils = ip.derniers_profils || [];
-    h += '<div class="vd-section"><h4>Profils consultes ('+profils.length+')</h4>';
-    if (profils.length) {
-        h += '<table><thead><tr><th>Date</th><th>Athlete</th><th>ID</th></tr></thead><tbody>';
-        profils.forEach(function(p) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=profil&id='+p.athlete_id_ext+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(p.created_at)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(p.nom||'?')+'</td>'
-                + '<td class="mono">'+p.athlete_id_ext+'</td></tr>';
-        });
-        h += '</tbody></table>';
-    } else h += '<p class="dim">Aucun profil</p>';
-    h += '</div>';
-    // Clubs consultes
-    var clubs = ip.derniers_clubs || [];
-    h += '<div class="vd-section"><h4>Clubs consultes ('+clubs.length+')</h4>';
-    if (clubs.length) {
-        h += '<table><thead><tr><th>Date</th><th>Club</th><th>ID</th></tr></thead><tbody>';
-        clubs.forEach(function(c) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=recherche&club='+encodeURIComponent(c.nom_club||'')+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(c.created_at)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(c.nom_club||'?')+'</td>'
-                + '<td class="mono">'+c.club_id+'</td></tr>';
-        });
-        h += '</tbody></table>';
-    } else h += '<p class="dim">Aucun club</p>';
-    h += '</div>';
-    _openDrawer('IP ' + _esc(ip.ip), h);
-};
-
-// Drawer: detail jour
-window._vueShowDay = function(dateStr) {
-    var athDay = (D.lastAth||[]).filter(function(v) { return (v.created_at||'').substring(0,10) === dateStr; });
-    var clubDay = (D.lastClub||[]).filter(function(v) { return (v.created_at||'').substring(0,10) === dateStr; });
-    var h = '<div class="vd-kpi">'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#f59e0b;">'+athDay.length+'</div><div class="vd-lbl">Profils</div></div>'
-        + '<div class="vd-kpi-item"><div class="vd-num" style="color:#8b5cf6;">'+clubDay.length+'</div><div class="vd-lbl">Clubs</div></div>'
-        + '</div>';
-    if (athDay.length) {
-        h += '<div class="vd-section"><h4>Profils consultes</h4><table><thead><tr><th>Heure</th><th>IP</th><th>Athlete</th></tr></thead><tbody>';
-        athDay.forEach(function(v) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=profil&id='+v.athlete_id_ext+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(v.created_at)+'</td>'
-                + '<td class="mono">'+_esc(v.ip)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(v.nom||'?')+'</td></tr>';
-        });
-        h += '</tbody></table></div>';
-    }
-    if (clubDay.length) {
-        h += '<div class="vd-section"><h4>Clubs consultes</h4><table><thead><tr><th>Heure</th><th>IP</th><th>Club</th></tr></thead><tbody>';
-        clubDay.forEach(function(v) {
-            h += '<tr class="vue-row" onclick="window.open(\'../index.php?page=recherche&club='+encodeURIComponent(v.nom_club||'')+'\',\'_blank\')">'
-                + '<td class="time">'+_fmtDateFull(v.created_at)+'</td>'
-                + '<td class="mono">'+_esc(v.ip)+'</td>'
-                + '<td style="color:#a29bfe;font-weight:600;">'+_esc(v.nom_club||'?')+'</td></tr>';
-        });
-        h += '</tbody></table></div>';
-    }
-    if (!athDay.length && !clubDay.length) h += '<p class="dim" style="text-align:center;padding:20px;">Aucune vue dans les 50 dernieres enregistrees pour ce jour</p>';
-    _openDrawer('Vues du ' + dateStr, h);
-};
-
-// === INIT ===
-_vueRenderChart();
-_vueRenderTab();
-})();
-</script>
-
-<?php endif; /* hasVuesTables */ ?>
+</div>
 
 <!-- ============================================================ -->
 <!-- SECTION 13 : IPs RATE LIMITEES (bloquees) -->
@@ -2035,9 +1664,10 @@ _vueRenderTab();
 <?php endif; /* rateLimitedIps */ ?>
 
 <script>
+var _ctBase = (location.hostname === 'localhost' ? '/BK' : '') + '/api/contact.php';
 function _unbanIp(ip, btn) {
     if (!confirm('Debannir ' + ip + ' ?')) return;
-    fetch('/api/contact.php?unban_ip=' + encodeURIComponent(ip)).then(function(r) { return r.json(); }).then(function(d) {
+    fetch(_ctBase + '?unban_ip=' + encodeURIComponent(ip), {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) {
             var row = btn.closest('tr');
             row.style.transition = 'opacity 0.3s';
@@ -2061,6 +1691,35 @@ function _rlFilter(q) {
 <!-- ============================================================ -->
 
 <div id="contactSection"></div>
+
+<!-- COURRIER NON CONFIRME -->
+<?php if (!empty($unconfirmedMessages)): ?>
+<div class="section" style="border:2px solid #ef4444;border-radius:12px;padding:16px;margin-bottom:20px;background:#ef444410;">
+    <h2 style="color:#ef4444;font-size:16px;border-color:#ef444440;margin-bottom:12px;">&#9888; Courrier non confirmé <span style="background:#ef4444;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;"><?= count($unconfirmedMessages) ?></span></h2>
+    <p style="color:#8b949e;font-size:12px;margin-bottom:14px;">Ces messages ont été envoyés mais l'expéditeur n'a pas cliqué sur le lien de confirmation.</p>
+    <?php foreach ($unconfirmedMessages as $uc):
+        $expired = strtotime($uc['expires_at']) < time();
+    ?>
+    <div style="background:#161b22;border:1px solid #ef444440;border-left:3px solid #ef4444;border-radius:10px;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+                <span style="color:#e2e8f0;font-weight:700;font-size:14px;"><?= htmlspecialchars($uc['nom'] ?: 'Anonyme') ?></span>
+                <span style="color:#8b949e;font-size:12px;margin-left:8px;"><?= htmlspecialchars($uc['email']) ?></span>
+                <span style="background:#ef4444;color:#fff;font-size:9px;padding:1px 6px;border-radius:4px;margin-left:6px;">NON CONFIRMÉ</span>
+                <?php if ($expired): ?><span style="background:#f59e0b;color:#000;font-size:9px;padding:1px 6px;border-radius:4px;margin-left:4px;">EXPIRÉ</span><?php endif; ?>
+            </div>
+            <span style="color:#5a6580;font-size:11px;"><?= $uc['created_at'] ?></span>
+        </div>
+        <p style="color:#c9d1d9;font-size:13px;line-height:1.5;margin:0;white-space:pre-wrap;"><?= htmlspecialchars($uc['message']) ?></p>
+        <div style="margin-top:8px;">
+            <span class="mono" style="color:#5a6580;font-size:11px;"><?= htmlspecialchars($uc['ip']) ?></span>
+            <span style="color:#5a6580;font-size:11px;margin-left:10px;">Expire : <?= $uc['expires_at'] ?></span>
+        </div>
+    </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <div class="section"><h2 style="color:#6c5ce7;font-size:16px;border-color:#6c5ce740;">&#9993; Messages de contact<?php if ($unreadCount): ?> <span style="background:#ef4444;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;"><?= $unreadCount ?> non lu<?= $unreadCount > 1 ? 's' : '' ?></span><?php endif; ?></h2></div>
 
 <div class="grid" style="grid-template-columns:repeat(3,1fr);">
@@ -2131,9 +1790,10 @@ function _rlFilter(q) {
 </div>
 
 <script>
+var _ctBase2 = (location.hostname === 'localhost' ? '/BK' : '') + '/api/contact.php';
 function _deleteMsg(id, btn) {
     if (!confirm('Supprimer ce message ?')) return;
-    fetch('/api/contact.php?delete=' + id).then(function(r) { return r.json(); }).then(function(d) {
+    fetch(_ctBase2 + '?delete=' + id, {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) {
             var card = btn.closest('.contact-card');
             card.style.transition = 'opacity 0.3s';
@@ -2143,7 +1803,7 @@ function _deleteMsg(id, btn) {
     });
 }
 function _markRead(id, btn) {
-    fetch('/api/contact.php?mark_read=' + id).then(function(r) { return r.json(); }).then(function(d) {
+    fetch(_ctBase2 + '?mark_read=' + id, {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) {
             var card = btn.closest('.contact-card');
             card.style.borderColor = '#1e2a3a';
@@ -2164,7 +1824,7 @@ function _markAllRead() {
     });
     var done = 0;
     ids.forEach(function(id) {
-        fetch('/api/contact.php?mark_read=' + id).then(function(r) { return r.json(); }).then(function() {
+        fetch(_ctBase2 + '?mark_read=' + id, {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function() {
             done++;
             if (done >= ids.length) location.reload();
         });
@@ -2297,14 +1957,15 @@ $reasonLabels = [
 </div>
 
 <script>
+var _rpBase = (location.hostname === 'localhost' ? '/BK' : '') + '/api/report.php';
 function _reportAction(action, id, btn) {
-    fetch('/api/report.php?' + action + '=' + id).then(function(r) { return r.json(); }).then(function(d) {
+    fetch(_rpBase + '?' + action + '=' + id, {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) location.reload();
     });
 }
 function _reportDelete(id, btn) {
     if (!confirm('Supprimer ce signalement ?')) return;
-    fetch('/api/report.php?delete=' + id).then(function(r) { return r.json(); }).then(function(d) {
+    fetch(_rpBase + '?delete=' + id, {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) {
             var card = btn.closest('.report-card');
             card.style.transition = 'opacity 0.3s';
@@ -2317,7 +1978,7 @@ function _toggleVisibility(athleteId, show, btn) {
     var action = show ? 'show_athlete' : 'hide_athlete';
     var msg = show ? 'Rendre ce profil visible ?' : 'Masquer ce profil du site ?';
     if (!confirm(msg)) return;
-    fetch('/api/report.php?' + action + '=' + athleteId).then(function(r) { return r.json(); }).then(function(d) {
+    fetch(_rpBase + '?' + action + '=' + athleteId, {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) location.reload();
     });
 }
@@ -2675,6 +2336,201 @@ _stRender();
 })();
 </script>
 
+<!-- ============================================================ -->
+<!-- SECTION 17 : PROFILS COMPORTEMENTAUX -->
+<!-- ============================================================ -->
+<div class="section"><h2 style="color:#e879f9;font-size:16px;border-color:#c026d340;">&#129504; Profils comportementaux — Utilisateurs fideles (<?= count($_behaviorUsers) ?>)</h2></div>
+
+<?php if (empty($_behaviorUsers)): ?>
+<div style="padding:20px 24px;color:#5a6580;font-size:13px;">Aucun utilisateur avec plus d'une connexion.</div>
+<?php else: ?>
+
+<div style="padding:0 24px 16px;">
+<?php foreach ($_behaviorUsers as $_bi => $_bd):
+    $_bu = $_bd['user'];
+    $uid = (int)$_bu['id_user'];
+    $roleBg = ['admin'=>'#e11d4830','coach'=>'#6c5ce730','club'=>'#f59e0b30','athlete'=>'#10b98130'][$_bu['role']] ?? '#1e2a3a';
+    $roleColor = ['admin'=>'#fb7185','coach'=>'#a29bfe','club'=>'#fbbf24','athlete'=>'#34d399'][$_bu['role']] ?? '#8b949e';
+    $coColor = $_bd['nb_co'] >= 20 ? '#e879f9' : ($_bd['nb_co'] >= 5 ? '#a29bfe' : '#8b949e');
+    $selfMatch = $_bd['self_match'];
+?>
+<div style="background:#111830;border:1px solid <?= $selfMatch ? '#c026d360' : '#1e2a3a' ?>;border-radius:12px;padding:20px;margin-bottom:14px;<?= $selfMatch ? 'box-shadow:0 0 12px #c026d320;' : '' ?>">
+    <!-- Header user -->
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+        <?php if (!empty($_bu['picture'])): ?>
+            <img src="<?= htmlspecialchars($_bu['picture']) ?>" alt="" style="width:42px;height:42px;border-radius:50%;border:2px solid <?= $coColor ?>;" referrerpolicy="no-referrer">
+        <?php else: ?>
+            <div style="width:42px;height:42px;border-radius:50%;background:#1e2a3a;display:flex;align-items:center;justify-content:center;font-size:18px;color:#5a6580;">&#128100;</div>
+        <?php endif; ?>
+        <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span style="color:#e2e8f0;font-weight:700;font-size:15px;"><?= htmlspecialchars(trim(($_bu['prenom'] ?? '') . ' ' . ($_bu['nom'] ?? '')) ?: '—') ?></span>
+                <span style="background:<?= $roleBg ?>;color:<?= $roleColor ?>;padding:2px 10px;border-radius:10px;font-size:10px;font-weight:600;"><?= htmlspecialchars($_bu['role']) ?></span>
+                <?php if ($selfMatch): ?>
+                <span style="background:#c026d330;color:#e879f9;padding:2px 10px;border-radius:10px;font-size:10px;font-weight:700;">&#127939; Probablement l'athlete</span>
+                <?php endif; ?>
+            </div>
+            <div style="color:#5a6580;font-size:11px;margin-top:2px;"><?= htmlspecialchars($_bu['email']) ?> — Inscrit le <?= $_bu['date_creation'] ? date('d/m/Y', strtotime($_bu['date_creation'])) : '?' ?></div>
+        </div>
+        <div style="text-align:right;">
+            <div style="color:<?= $coColor ?>;font-size:28px;font-weight:800;"><?= number_format($_bd['nb_co']) ?></div>
+            <div style="color:#5a6580;font-size:10px;text-transform:uppercase;letter-spacing:.5px;">connexions</div>
+        </div>
+    </div>
+
+    <!-- KPI row -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="background:#0c1020;border:1px solid #1e2a3a;border-radius:8px;padding:8px 14px;flex:1;min-width:80px;text-align:center;">
+            <div style="color:#f59e0b;font-weight:700;font-size:16px;"><?= number_format($_bd['nb_actions']) ?></div>
+            <div style="color:#5a6580;font-size:9px;text-transform:uppercase;">Actions</div>
+        </div>
+        <div style="background:#0c1020;border:1px solid #1e2a3a;border-radius:8px;padding:8px 14px;flex:1;min-width:80px;text-align:center;">
+            <div style="color:#34d399;font-weight:700;font-size:16px;"><?= number_format($_bd['nb_search']) ?></div>
+            <div style="color:#5a6580;font-size:9px;text-transform:uppercase;">Recherches</div>
+        </div>
+        <div style="background:#0c1020;border:1px solid #1e2a3a;border-radius:8px;padding:8px 14px;flex:1;min-width:80px;text-align:center;">
+            <div style="color:#a29bfe;font-weight:700;font-size:16px;"><?= $_bd['active_days'] ?></div>
+            <div style="color:#5a6580;font-size:9px;text-transform:uppercase;">Jours actifs</div>
+        </div>
+        <div style="background:#0c1020;border:1px solid #1e2a3a;border-radius:8px;padding:8px 14px;flex:1;min-width:80px;text-align:center;">
+            <div style="color:#22d3ee;font-weight:700;font-size:16px;"><?= count($_bd['viewed_athletes']) ?></div>
+            <div style="color:#5a6580;font-size:9px;text-transform:uppercase;">Profils vus</div>
+        </div>
+        <div style="background:#0c1020;border:1px solid #1e2a3a;border-radius:8px;padding:8px 14px;flex:1;min-width:80px;text-align:center;">
+            <div style="color:#fb7185;font-weight:700;font-size:16px;"><?= count($_bd['followed_athletes']) + count($_bd['followed_clubs']) ?></div>
+            <div style="color:#5a6580;font-size:9px;text-transform:uppercase;">Suivis</div>
+        </div>
+        <?php
+            $devTotal = $_bd['devices']['mobile'] + $_bd['devices']['desktop'];
+            $devIcon = $_bd['devices']['mobile'] > $_bd['devices']['desktop'] ? '&#128241;' : '&#128187;';
+            $devLabel = $_bd['devices']['mobile'] > $_bd['devices']['desktop'] ? 'Mobile' : 'Desktop';
+        ?>
+        <div style="background:#0c1020;border:1px solid #1e2a3a;border-radius:8px;padding:8px 14px;flex:1;min-width:80px;text-align:center;">
+            <div style="color:#fbbf24;font-size:16px;"><?= $devIcon ?></div>
+            <div style="color:#5a6580;font-size:9px;text-transform:uppercase;"><?= $devLabel ?></div>
+        </div>
+    </div>
+
+    <!-- Phrase de profil -->
+    <div style="background:#0c1020;border:1px solid <?= $selfMatch ? '#c026d340' : '#1e2a3a' ?>;border-radius:8px;padding:14px 16px;margin-bottom:12px;">
+        <div style="color:#c9d1d9;font-size:13px;line-height:1.6;"><?= $_bd['profile_text'] ?></div>
+    </div>
+
+    <!-- Details expandables -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <?php if (!empty($_bd['viewed_athletes'])): ?>
+        <button onclick="var d=document.getElementById('bh_ath<?= $uid ?>');d.style.display=d.style.display==='none'?'block':'none'" style="background:#1e2a3a;border:1px solid #2a3560;color:#22d3ee;padding:5px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">&#128065; Athletes vus (<?= count($_bd['viewed_athletes']) ?>)</button>
+        <?php endif; ?>
+        <?php if (!empty($_bd['viewed_clubs'])): ?>
+        <button onclick="var d=document.getElementById('bh_cl<?= $uid ?>');d.style.display=d.style.display==='none'?'block':'none'" style="background:#1e2a3a;border:1px solid #2a3560;color:#f59e0b;padding:5px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">&#127963; Clubs vus (<?= count($_bd['viewed_clubs']) ?>)</button>
+        <?php endif; ?>
+        <?php if (!empty($_bd['search_queries'])): ?>
+        <button onclick="var d=document.getElementById('bh_sq<?= $uid ?>');d.style.display=d.style.display==='none'?'block':'none'" style="background:#1e2a3a;border:1px solid #2a3560;color:#34d399;padding:5px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">&#128269; Recherches (<?= count($_bd['search_queries']) ?>)</button>
+        <?php endif; ?>
+        <?php if (!empty($_bd['top_pages'])): ?>
+        <button onclick="var d=document.getElementById('bh_pg<?= $uid ?>');d.style.display=d.style.display==='none'?'block':'none'" style="background:#1e2a3a;border:1px solid #2a3560;color:#a29bfe;padding:5px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">&#128196; Pages top (<?= count($_bd['top_pages']) ?>)</button>
+        <?php endif; ?>
+        <?php if (!empty($_bd['followed_athletes']) || !empty($_bd['followed_clubs'])): ?>
+        <button onclick="var d=document.getElementById('bh_fw<?= $uid ?>');d.style.display=d.style.display==='none'?'block':'none'" style="background:#1e2a3a;border:1px solid #2a3560;color:#fb7185;padding:5px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">&#10084; Suivis (<?= count($_bd['followed_athletes']) + count($_bd['followed_clubs']) ?>)</button>
+        <?php endif; ?>
+    </div>
+
+    <!-- Athletes vus (detail) -->
+    <?php if (!empty($_bd['viewed_athletes'])): ?>
+    <div id="bh_ath<?= $uid ?>" style="display:none;margin-top:10px;overflow-x:auto;">
+        <table style="width:100%;font-size:12px;background:#0c1020;border-radius:8px;">
+            <tr><th style="color:#22d3ee;background:#0a0e18;padding:8px 10px;">Athlete</th><th style="color:#22d3ee;background:#0a0e18;padding:8px 10px;text-align:center;">Vues</th><th style="color:#22d3ee;background:#0a0e18;padding:8px 10px;">Derniere</th>
+            <?php if ($selfMatch): ?><th style="color:#c026d3;background:#0a0e18;padding:8px 10px;text-align:center;">Match</th><?php endif; ?>
+            </tr>
+            <?php foreach ($_bd['viewed_athletes'] as $va):
+                $isMatch = $selfMatch && ($va['entity_id'] ?? '') === ($selfMatch['entity_id'] ?? '---');
+            ?>
+            <tr style="<?= $isMatch ? 'background:#c026d315;' : '' ?>">
+                <td style="padding:6px 10px;color:#c9d1d9;font-weight:<?= $isMatch ? '700' : '400' ?>;">
+                    <?php if ($va['entity_id']): ?><a href="../?page=profil&id=<?= (int)$va['entity_id'] ?>" target="_blank" style="color:<?= $isMatch ? '#e879f9' : '#c9d1d9' ?>;text-decoration:none;"><?= htmlspecialchars($va['entity_name']) ?></a>
+                    <?php else: ?><?= htmlspecialchars($va['entity_name']) ?><?php endif; ?>
+                </td>
+                <td style="padding:6px 10px;text-align:center;color:#f59e0b;font-weight:700;"><?= $va['nb'] ?></td>
+                <td style="padding:6px 10px;color:#5a6580;font-size:11px;"><?= $va['last_view'] ? date('d/m H:i', strtotime($va['last_view'])) : '—' ?></td>
+                <?php if ($selfMatch): ?>
+                <td style="padding:6px 10px;text-align:center;"><?= $isMatch ? '<span style="color:#e879f9;font-weight:700;">&#127939; OUI</span>' : '' ?></td>
+                <?php endif; ?>
+            </tr>
+            <?php endforeach; ?>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <!-- Clubs vus (detail) -->
+    <?php if (!empty($_bd['viewed_clubs'])): ?>
+    <div id="bh_cl<?= $uid ?>" style="display:none;margin-top:10px;overflow-x:auto;">
+        <table style="width:100%;font-size:12px;background:#0c1020;border-radius:8px;">
+            <tr><th style="color:#f59e0b;background:#0a0e18;padding:8px 10px;">Club</th><th style="color:#f59e0b;background:#0a0e18;padding:8px 10px;text-align:center;">Vues</th></tr>
+            <?php foreach ($_bd['viewed_clubs'] as $vc): ?>
+            <tr><td style="padding:6px 10px;color:#c9d1d9;"><?= htmlspecialchars($vc['entity_name']) ?></td><td style="padding:6px 10px;text-align:center;color:#f59e0b;font-weight:700;"><?= $vc['nb'] ?></td></tr>
+            <?php endforeach; ?>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <!-- Recherches (detail) -->
+    <?php if (!empty($_bd['search_queries'])): ?>
+    <div id="bh_sq<?= $uid ?>" style="display:none;margin-top:10px;overflow-x:auto;">
+        <table style="width:100%;font-size:12px;background:#0c1020;border-radius:8px;">
+            <tr><th style="color:#34d399;background:#0a0e18;padding:8px 10px;">Recherche</th><th style="color:#34d399;background:#0a0e18;padding:8px 10px;">Type</th><th style="color:#34d399;background:#0a0e18;padding:8px 10px;text-align:center;">Nb</th></tr>
+            <?php foreach ($_bd['search_queries'] as $sq):
+                $typeBg = ['athlete'=>'#10b98130','club'=>'#f59e0b30','epreuve'=>'#6c5ce730','ville'=>'#0891b230','general'=>'#1e2a3a'][$sq['search_type']] ?? '#1e2a3a';
+                $typeColor = ['athlete'=>'#34d399','club'=>'#fbbf24','epreuve'=>'#a29bfe','ville'=>'#22d3ee','general'=>'#8b949e'][$sq['search_type']] ?? '#8b949e';
+            ?>
+            <tr><td style="padding:6px 10px;color:#c9d1d9;"><?= htmlspecialchars($sq['query_text']) ?></td>
+                <td style="padding:6px 10px;"><span style="background:<?= $typeBg ?>;color:<?= $typeColor ?>;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600;"><?= htmlspecialchars($sq['search_type']) ?></span></td>
+                <td style="padding:6px 10px;text-align:center;color:#34d399;font-weight:700;"><?= $sq['nb'] ?></td></tr>
+            <?php endforeach; ?>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <!-- Pages top (detail) -->
+    <?php if (!empty($_bd['top_pages'])): ?>
+    <div id="bh_pg<?= $uid ?>" style="display:none;margin-top:10px;overflow-x:auto;">
+        <table style="width:100%;font-size:12px;background:#0c1020;border-radius:8px;">
+            <tr><th style="color:#a29bfe;background:#0a0e18;padding:8px 10px;">Page</th><th style="color:#a29bfe;background:#0a0e18;padding:8px 10px;text-align:center;">Visites</th></tr>
+            <?php foreach ($_bd['top_pages'] as $tp):
+                $pgLabel = $tp['page'];
+                if (preg_match('/page=([^&]+)/', $pgLabel, $m)) {
+                    $pgLabel = $m[1];
+                    if (preg_match('/id=(\d+)/', $tp['page'], $m2)) $pgLabel .= ' #' . $m2[1];
+                    if (preg_match('/open=([^&]+)/', $tp['page'], $m3)) $pgLabel .= ' — ' . urldecode($m3[1]);
+                }
+            ?>
+            <tr><td style="padding:6px 10px;"><a href="https://bokonzi.com/<?= htmlspecialchars($tp['page']) ?>" target="_blank" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($pgLabel) ?></a></td>
+                <td style="padding:6px 10px;text-align:center;color:#a29bfe;font-weight:700;"><?= $tp['c'] ?></td></tr>
+            <?php endforeach; ?>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <!-- Suivis (detail) -->
+    <?php if (!empty($_bd['followed_athletes']) || !empty($_bd['followed_clubs'])): ?>
+    <div id="bh_fw<?= $uid ?>" style="display:none;margin-top:10px;overflow-x:auto;">
+        <table style="width:100%;font-size:12px;background:#0c1020;border-radius:8px;">
+            <tr><th style="color:#fb7185;background:#0a0e18;padding:8px 10px;">Nom</th><th style="color:#fb7185;background:#0a0e18;padding:8px 10px;">Type</th></tr>
+            <?php foreach ($_bd['followed_athletes'] as $fa): ?>
+            <tr><td style="padding:6px 10px;color:#c9d1d9;"><?= htmlspecialchars($fa['nom_athlete'] ?? 'Athlete #' . $fa['athlete_id_ext']) ?></td>
+                <td style="padding:6px 10px;"><span style="background:#10b98130;color:#34d399;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600;">athlete</span></td></tr>
+            <?php endforeach; ?>
+            <?php foreach ($_bd['followed_clubs'] as $fc): ?>
+            <tr><td style="padding:6px 10px;color:#c9d1d9;"><?= htmlspecialchars($fc['nom_club'] ?? 'Club #' . $fc['club_id']) ?></td>
+                <td style="padding:6px 10px;"><span style="background:#f59e0b30;color:#fbbf24;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600;">club</span></td></tr>
+            <?php endforeach; ?>
+        </table>
+    </div>
+    <?php endif; ?>
+</div>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <!-- SECTION 16 : ACTIONS RAPIDES -->
 <!-- ============================================================ -->
 <div class="section"><h2>Actions rapides</h2></div>
@@ -2697,7 +2553,7 @@ _stRender();
 function _resetVues(type) {
     var label = type === 'all' ? 'athletes + clubs' : type;
     if (!confirm('Remettre a zero les vues ' + label + ' ?')) return;
-    fetch('/api/top_searched.php?reset=' + type + '&bk_key=bk_s3cr3t_2026_xK9mP').then(function(r) { return r.json(); }).then(function(d) {
+    fetch((location.hostname === 'localhost' ? '/BK' : '') + '/api/top_searched.php?reset=' + type + '&bk_key=bk_s3cr3t_2026_xK9mP', {credentials:'same-origin'}).then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) { alert('Vues ' + label + ' remises a zero !'); location.reload(); }
         else alert('Erreur');
     }).catch(function() { alert('Erreur de connexion'); });
@@ -2710,3 +2566,4 @@ function _resetVues(type) {
 
 </body>
 </html>
+<?php $conn->close(); ?>

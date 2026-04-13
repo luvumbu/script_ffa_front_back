@@ -23,11 +23,19 @@
 
 require_once __DIR__ . '/config.php';
 
+// Limites recherches/jour (modifier ici uniquement)
+define('BK_SEARCH_LIMIT_ANON', 100);
+define('BK_SEARCH_LIMIT_LOGGED', 500);
+
 // Rate limiting recherches
 $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
 $ip = trim(explode(',', $ip)[0]);
 $_isLogged = !empty($_COOKIE['bk_token']);
 $_isSA = !empty($_COOKIE['bk_sa_token']);
+// Cle API = bypass rate limit (utilise par le panel admin)
+if (!$_isSA && (($_GET['bk_key'] ?? '') === 'bk_s3cr3t_2026_xK9mP' || ($_SERVER['HTTP_X_BK_KEY'] ?? '') === 'bk_s3cr3t_2026_xK9mP')) {
+    $_isSA = true;
+}
 
 // Compteurs globaux pour la reponse
 $_searchUsed = 0;
@@ -45,15 +53,13 @@ if (!$_isSA) {
     if (!$_skip && $ip !== '') {
         $slFile = __DIR__ . '/../logs/.search_limits.php';
         $slData = [];
-        $today = date('Y-m-d');
         if (file_exists($slFile)) {
             $raw = file_get_contents($slFile);
             $pos = strpos($raw, "\n");
             if ($pos !== false) $slData = json_decode(substr($raw, $pos + 1), true) ?: [];
         }
-        if (($slData['_date'] ?? '') !== $today) $slData = ['_date' => $today];
         $slKey = $ip;
-        $slLimit = $_isLogged ? 100 : 5;
+        $slLimit = $_isLogged ? BK_SEARCH_LIMIT_LOGGED : BK_SEARCH_LIMIT_ANON;
         $slCount = ($slData[$slKey] ?? 0) + 1;
         $slData[$slKey] = $slCount;
         @file_put_contents($slFile, "<?php die('Acces interdit'); ?>\n" . json_encode($slData), LOCK_EX);
@@ -192,12 +198,7 @@ if ($licence !== '') {
     $where[] = "a.licence_athlete LIKE '%$licEsc%'";
 }
 
-// Exclure les athletes des gros clubs (>5000 athletes) sauf si on filtre explicitement par club
-if ($club === '') {
-    $joins[] = "LEFT JOIN athlete_clubs ac_big ON ac_big.id_athlete = a.id_athlete
-        AND ac_big.id_club IN (SELECT id_club FROM athlete_clubs GROUP BY id_club HAVING COUNT(DISTINCT id_athlete) > 5000)";
-    $where[] = "ac_big.id_athlete IS NULL";
-}
+// Filtre clubs >5000 supprime — tous les athletes sont trouvables
 
 // Au moins un filtre requis
 if (empty($where) && empty($joins)) {
@@ -224,7 +225,10 @@ if (empty($where) && empty($joins)) {
     ], 400);
 }
 
-$where[] = "a.visible = 1";
+// Admin avec cle API peut voir les athletes masques
+if (!$_isSA) {
+    $where[] = "a.visible = 1";
+}
 $joinSql = implode("\n", $joins);
 $whereSql = "WHERE " . implode(" AND ", $where);
 
@@ -253,6 +257,7 @@ $nbRecordsCol = "(SELECT COUNT(*) FROM athlete_records _rc WHERE _rc.id_athlete 
 // Recuperer les athletes
 if ($useGroup) {
     $sql = "SELECT a.id_athlete, a.athlete_id_externe, a.nom_complet_athlete,
+                   a.nom_1_athlete, a.nom_2_athlete,
                    a.date_naissance_athlete, a.annee_naissance_athlete,
                    a.categorie_athlete, a.sexe_athlete, a.nationalite_athlete,
                    a.licence_athlete, $nbRecordsCol $extraCols
@@ -264,6 +269,7 @@ if ($useGroup) {
             LIMIT $limit OFFSET $offset";
 } else {
     $sql = "SELECT DISTINCT a.id_athlete, a.athlete_id_externe, a.nom_complet_athlete,
+                   a.nom_1_athlete, a.nom_2_athlete,
                    a.date_naissance_athlete, a.annee_naissance_athlete,
                    a.categorie_athlete, a.sexe_athlete, a.nationalite_athlete,
                    a.licence_athlete, $nbRecordsCol $extraCols
@@ -278,10 +284,17 @@ $res = $conn->query($sql);
 $athletes = [];
 
 if ($res) while ($row = $res->fetch_assoc()) {
+    // Club le plus recent
+    $clubName = '';
+    $rcl = $conn->query("SELECT c.nom_club FROM athlete_clubs ac JOIN clubs c ON c.id_club = ac.id_club WHERE ac.id_athlete = " . (int)$row['id_athlete'] . " ORDER BY ac.annee_debut DESC LIMIT 1");
+    if ($rcl && $rcr = $rcl->fetch_assoc()) $clubName = rtrim($rcr['nom_club'] ?? '', '* ');
+
     $athlete = [
         'id_athlete'       => (int)$row['id_athlete'],
         'athlete_id'       => (int)$row['athlete_id_externe'],
         'nom_complet'      => $row['nom_complet_athlete'],
+        'nom_athlete'      => $row['nom_1_athlete'] ?? '',
+        'prenom_athlete'   => $row['nom_2_athlete'] ?? '',
         'date_naissance'   => $row['date_naissance_athlete'],
         'annee_naissance'  => $row['annee_naissance_athlete'] ? (int)$row['annee_naissance_athlete'] : null,
         'categorie'        => $row['categorie_athlete'],
@@ -289,6 +302,7 @@ if ($res) while ($row = $res->fetch_assoc()) {
         'nationalite'      => $row['nationalite_athlete'],
         'licence'          => $row['licence_athlete'],
         'nb_records'       => (int)$row['nb_records'],
+        'club'             => $clubName,
         'url_detail'       => 'api/athlete.php?id=' . $row['athlete_id_externe'],
     ];
     if (isset($row['filtre_debut'])) {

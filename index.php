@@ -10,44 +10,9 @@ require_once __DIR__ . '/core/db.php';
 require_once __DIR__ . '/core/ip_logger.php';
 logIp();
 
-// === ANTI-SCRAPING : 20 pages/jour max par IP (sauf connectes + whitelist) ===
-(function() {
-    // Skip si utilisateur connecte (Google ou super admin)
-    if (!empty($_COOKIE['bk_token']) || !empty($_COOKIE['bk_sa_token'])) return;
-
-    $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
-    $ip = trim(explode(',', $ip)[0]);
-    if ($ip === '') return;
-
-    // Whitelist Google + Hostinger + localhost + bots/API
-    $wl = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
-    foreach ($wl as $p) { if (strpos($ip, $p) === 0) return; }
-    // Bypass pour requetes API/curl/bots (pas de UA navigateur)
-    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    if ($ua === '' || strpos($ua, 'curl') !== false || strpos($ua, 'bot') !== false || strpos($ua, 'Bot') !== false) return;
-
-    // Compteur journalier par IP
-    $file = __DIR__ . '/logs/.page_limits.php';
-    $data = [];
-    $today = date('Y-m-d');
-    if (file_exists($file)) {
-        $raw = file_get_contents($file);
-        $pos = strpos($raw, "\n");
-        if ($pos !== false) $data = json_decode(substr($raw, $pos + 1), true) ?: [];
-    }
-    // Nettoyer les jours passes
-    if (($data['_date'] ?? '') !== $today) $data = ['_date' => $today];
-
-    $count = ($data[$ip] ?? 0) + 1;
-    $data[$ip] = $count;
-    @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data));
-
-    if ($count > 5) {
-        // Rediriger vers login Google
-        header('Location: ' . (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false ? '/BK' : '') . '/login.php?limit=1');
-        exit;
-    }
-})();
+// === Auth : detecter si utilisateur connecte ===
+require_once __DIR__ . '/core/auth.php';
+$currentUser = getCurrentUser($conn);
 
 function dateFR($d) {
     if (!$d || $d === '-') return '-';
@@ -221,11 +186,17 @@ if ($page === 'clubs') {
     $seoDesc  = 'Liste complète des athlètes français d\'athlétisme avec records, clubs et statistiques.';
 } elseif ($page === 'profil' && $id) {
     $_profNom = '';
-    $_profRes = $conn->query("SELECT nom_complet_athlete, categorie_athlete, sexe_athlete FROM athletes WHERE athlete_id_externe = " . intval($id) . " LIMIT 1");
+    $_profRes = $conn->query("SELECT nom_complet_athlete, categorie_athlete, sexe_athlete, visible FROM athletes WHERE athlete_id_externe = " . intval($id) . " LIMIT 1");
     if ($_profRes && $_profRow = $_profRes->fetch_assoc()) {
-        $_profNom = $_profRow['nom_complet_athlete'];
-        $seoTitle = htmlspecialchars($_profNom) . ' — Athlète | Bokonzi';
-        $seoDesc  = 'Fiche de ' . $_profNom . ' (' . $_profRow['sexe_athlete'] . ', ' . $_profRow['categorie_athlete'] . ') : records, progressions, résultats, clubs, médailles sur Bokonzi.';
+        if (isset($_profRow['visible']) && (int)$_profRow['visible'] === 0) {
+            $seoTitle = 'Profil non disponible — Bokonzi';
+            $seoDesc  = 'Ce profil n\'est plus disponible.';
+            $seoNoIndex = true;
+        } else {
+            $_profNom = $_profRow['nom_complet_athlete'];
+            $seoTitle = htmlspecialchars($_profNom) . ' — Athlète | Bokonzi';
+            $seoDesc  = 'Fiche de ' . $_profNom . ' (' . $_profRow['sexe_athlete'] . ', ' . $_profRow['categorie_athlete'] . ') : records, progressions, résultats, clubs, médailles sur Bokonzi.';
+        }
     } else {
         $seoTitle = 'Profil athlète — Bokonzi';
         $seoDesc  = 'Fiche complète de l\'athlète : records, progressions, résultats, clubs, médailles.';
@@ -367,6 +338,9 @@ if (count($_bcItems) > 1):
     </script>
 <?php endif; ?>
     <link rel="stylesheet" href="dashboard.css">
+<?php if (!$currentUser): ?>
+    <script>try{if(localStorage.getItem('bk_auth_wall')){document.documentElement.style.visibility='hidden';document.addEventListener('DOMContentLoaded',function(){document.documentElement.style.visibility='visible';});}}catch(e){}</script>
+<?php endif; ?>
     <style>.qr-share{text-align:center;padding:20px;margin-top:20px;border-top:1px solid #1a2540}.qr-share img{border-radius:8px;background:#fff;padding:6px}.qr-share .qr-label{color:#5a6580;font-size:12px;margin-top:8px}</style>
     <script>function bkQR(url){return '<div class="qr-share"><img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(url)+'" alt="QR Code" width="120" height="120"><div class="qr-label">Scannez pour partager</div></div>';}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
@@ -460,7 +434,7 @@ if (count($_bcItems) > 1):
     /* Modal Signaler */
     .report-overlay {
         display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center;
     }
     .report-overlay.active { display: flex; }
     .report-modal {
@@ -771,16 +745,14 @@ $_slIp = trim(explode(',', $_slIp)[0]);
 if ($_slIp !== '' && empty($_COOKIE['bk_sa_token'])) {
     $_slFile = __DIR__ . '/logs/.search_limits.php';
     $_slIsLogged = !empty($_COOKIE['bk_token']);
-    $_slLimit = $_slIsLogged ? 100 : 5;
+    $_slLimit = $_slIsLogged ? 500 : 100;
     if (file_exists($_slFile)) {
         $_slRaw = file_get_contents($_slFile);
         $_slPos = strpos($_slRaw, "\n");
         if ($_slPos !== false) {
             $_slArr = json_decode(substr($_slRaw, $_slPos + 1), true) ?: [];
-            if (($_slArr['_date'] ?? '') === date('Y-m-d')) {
-                $_slKey = $_slIp;
-                $_slUsed = (int)($_slArr[$_slKey] ?? 0);
-            }
+            $_slKey = $_slIp;
+            $_slUsed = (int)($_slArr[$_slKey] ?? 0);
         }
     }
 }
@@ -790,9 +762,9 @@ if ($_slIp !== '' && empty($_COOKIE['bk_sa_token'])) {
     <a href="<?= $_canonBase ?>/" class="logo">Bokonzi</a>
     <a href="<?= $_canonBase ?>/?page=accueil" class="<?= $page === 'accueil' ? 'active' : '' ?>">Accueil</a>
     <a href="<?= $_canonBase ?>/?page=athletes" class="<?= $page === 'athletes' ? 'active' : '' ?>">Athlètes</a>
-    <a href="<?= $_canonBase ?>/?page=recherche" class="<?= $page === 'recherche' ? 'active' : '' ?>">Recherche</a><?php if ($_slLimit > 0): ?><span id="searchQuota" title="Recherches utilisees aujourd'hui" style="font-size:11px;padding:2px 7px;border-radius:10px;margin-left:-6px;font-weight:700;cursor:default;<?= $_slUsed > $_slLimit * 0.8 ? 'background:#ef444430;color:#ff7675;border:1px solid #ef4444;' : 'background:#6c5ce720;color:#a29bfe;border:1px solid #6c5ce740;' ?>"><?= $_slUsed ?>/<?= $_slLimit ?></span><?php endif; ?>
+    <a href="<?= $_canonBase ?>/?page=recherche" class="<?= $page === 'recherche' ? 'active' : '' ?>" style="color:#ffd700;font-weight:700;animation:bkGoldBlink 1.5s ease-in-out infinite;">Recherche</a><?php if ($_slLimit > 0): ?><span id="searchQuota" title="Recherches utilisees aujourd'hui" style="font-size:11px;padding:2px 7px;border-radius:10px;margin-left:-6px;font-weight:700;cursor:default;background:#ffd70025;color:#ffd700;border:1px solid #ffd70060;animation:bkGoldBlink 1.5s ease-in-out infinite;"><?= $_slUsed ?>/<?= $_slLimit ?></span><?php endif; ?>
     <a href="<?= $_canonBase ?>/?page=clubs" class="<?= $page === 'clubs' ? 'active' : '' ?>">Clubs</a>
-    <a href="<?= $_canonBase ?>/?page=epreuves" class="<?= $page === 'epreuves' ? 'active' : '' ?>">Épreuves</a>
+
     <a href="<?= $_canonBase ?>/?page=villes" class="<?= $page === 'villes' ? 'active' : '' ?>">Villes</a>
     <a href="<?= $_canonBase ?>/?page=comparer" class="<?= $page === 'comparer' ? 'active' : '' ?>" style="color:#f59e0b;">Comparer</a>
     <?php if ($navUser): ?><a href="<?= $_canonBase ?>/?page=espace" class="<?= $page === 'espace' ? 'active' : '' ?>" style="color:#a29bfe;">Mon Espace</a><?php endif; ?>
@@ -811,10 +783,17 @@ if ($page === 'accueil'):
 
 <h1>Base de Donnees Athletisme Francais — Athletes, Clubs, Records</h1>
 
+<div style="background:#f59e0b15;border:2px solid #f59e0b;border-radius:12px;padding:14px 20px;margin-bottom:20px;text-align:center;">
+    <p style="color:#f59e0b;font-size:14px;font-weight:700;line-height:1.6;margin:0;">
+        &#9888; Plateforme independante a caractere informatif — Bokonzi n'est affilie ni a la FFA ni a athle.fr.<br>
+        <span style="font-size:12px;font-weight:500;">Donnees issues de sources publiques, a des fins informatives et statistiques. <a href="#footerDisclaimer" style="color:#fbbf24;text-decoration:underline;">En savoir plus</a></span>
+    </p>
+</div>
+
 <?php if ($data && ($data['success'] ?? false)): ?>
 
 <!-- ======== STAT CARDS ======== -->
-<div class="grid">
+<div class="grid" style="grid-template-columns:repeat(4,1fr);text-align:center;">
     <a href="?page=athletes" class="card-link"><div class="card">
         <div class="num"><?= number_format($data['comptages']['athletes']['count'], 0, ',', ' ') ?></div>
         <div class="label">Athlètes</div>
@@ -827,14 +806,6 @@ if ($page === 'accueil'):
         <div class="num"><?= number_format($data['comptages']['epreuves']['count'], 0, ',', ' ') ?></div>
         <div class="label">Épreuves</div>
     </div></a>
-    <div class="card accent-amber">
-        <div class="num"><?= number_format($data['comptages']['athlete_resultats']['count'], 0, ',', ' ') ?></div>
-        <div class="label">Résultats</div>
-    </div>
-    <div class="card accent-rose">
-        <div class="num"><?= number_format($data['comptages']['athlete_records']['count'], 0, ',', ' ') ?></div>
-        <div class="label">Records</div>
-    </div>
     <a href="?page=villes" class="card-link"><div class="card accent-green">
         <div class="num"><?= number_format($data['comptages']['villes']['count'], 0, ',', ' ') ?></div>
         <div class="label">Villes</div>
@@ -864,30 +835,99 @@ if ($page === 'accueil'):
 </div>
 <?php endif; ?>
 
-<!-- ======== GRAPHIQUES LIGNE 1 : Sexe + Categories ======== -->
-<div class="charts-row">
-    <div class="chart-card">
-        <h3><span class="chart-icon" style="background:#3b82f620;color:#60a5fa;">M/F</span> Repartition par sexe</h3>
-        <canvas id="chartSexe"></canvas>
+<!-- ======== STADE 3D CSS ======== -->
+<div style="margin-bottom:24px;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#0a0e14 0%,#131a24 60%,#1a2332 100%);padding:30px 0;position:relative;">
+    <!-- Etoiles -->
+    <div style="position:absolute;top:0;left:0;width:100%;height:50%;overflow:hidden;pointer-events:none;" id="stadeStars"></div>
+    <!-- Scene 3D -->
+    <div style="perspective:1000px;display:flex;justify-content:center;align-items:center;height:500px;">
+        <div id="stadeRotate" style="transform-style:preserve-3d;transform:rotateX(55deg) rotateZ(0deg);width:620px;height:430px;position:relative;animation:stadeRotation 90s linear infinite;">
+            <!-- Sol ombre -->
+            <div style="position:absolute;width:680px;height:490px;left:-30px;top:-30px;border-radius:200px;background:radial-gradient(ellipse,rgba(20,10,40,0.5) 0%,transparent 70%);transform:translateZ(-2px);"></div>
+            <!-- Piste rouge (stade = rectangle + 2 demi-cercles) -->
+            <div style="position:absolute;width:620px;height:350px;left:0;top:40px;border-radius:175px;background:linear-gradient(135deg,#a83232,#c0392b,#e74c3c);box-shadow:0 0 40px rgba(192,57,43,0.3);transform:translateZ(0px);"></div>
+            <!-- Couloirs (8 lignes) -->
+            <div style="position:absolute;width:594px;height:324px;left:13px;top:53px;border-radius:162px;border:1px solid rgba(255,255,255,0.15);transform:translateZ(1px);"></div>
+            <div style="position:absolute;width:568px;height:298px;left:26px;top:66px;border-radius:149px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
+            <div style="position:absolute;width:542px;height:272px;left:39px;top:79px;border-radius:136px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
+            <div style="position:absolute;width:516px;height:246px;left:52px;top:92px;border-radius:123px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
+            <div style="position:absolute;width:490px;height:220px;left:65px;top:105px;border-radius:110px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
+            <div style="position:absolute;width:464px;height:194px;left:78px;top:118px;border-radius:97px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
+            <div style="position:absolute;width:438px;height:168px;left:91px;top:131px;border-radius:84px;border:1px solid rgba(255,255,255,0.15);transform:translateZ(1px);"></div>
+            <!-- Pelouse interieure (forme piste) -->
+            <div style="position:absolute;width:418px;height:148px;left:101px;top:141px;border-radius:74px;background:linear-gradient(135deg,#1a6b3c,#27ae60,#2ecc71);box-shadow:inset 0 0 25px rgba(0,0,0,0.3);transform:translateZ(1px);"></div>
+            <!-- Terrain de foot rectangulaire -->
+            <div style="position:absolute;width:290px;height:120px;left:165px;top:155px;border:2px solid rgba(255,255,255,0.5);transform:translateZ(2px);"></div>
+            <!-- Ligne mediane foot -->
+            <div style="position:absolute;width:0px;height:120px;left:310px;top:155px;border-left:1px solid rgba(255,255,255,0.4);transform:translateZ(2px);"></div>
+            <!-- Rond central foot -->
+            <div style="position:absolute;width:50px;height:50px;left:285px;top:190px;border-radius:50%;border:1px solid rgba(255,255,255,0.4);transform:translateZ(2px);"></div>
+            <!-- Point central -->
+            <div style="position:absolute;width:4px;height:4px;left:308px;top:213px;border-radius:50%;background:rgba(255,255,255,0.5);transform:translateZ(2px);"></div>
+            <!-- Surface reparation gauche -->
+            <div style="position:absolute;width:44px;height:66px;left:165px;top:182px;border-right:1px solid rgba(255,255,255,0.35);border-top:1px solid rgba(255,255,255,0.35);border-bottom:1px solid rgba(255,255,255,0.35);transform:translateZ(2px);"></div>
+            <!-- Surface but gauche -->
+            <div style="position:absolute;width:18px;height:34px;left:165px;top:198px;border-right:1px solid rgba(255,255,255,0.3);border-top:1px solid rgba(255,255,255,0.3);border-bottom:1px solid rgba(255,255,255,0.3);transform:translateZ(2px);"></div>
+            <!-- Surface reparation droite -->
+            <div style="position:absolute;width:44px;height:66px;left:411px;top:182px;border-left:1px solid rgba(255,255,255,0.35);border-top:1px solid rgba(255,255,255,0.35);border-bottom:1px solid rgba(255,255,255,0.35);transform:translateZ(2px);"></div>
+            <!-- Surface but droite -->
+            <div style="position:absolute;width:18px;height:34px;left:437px;top:198px;border-left:1px solid rgba(255,255,255,0.3);border-top:1px solid rgba(255,255,255,0.3);border-bottom:1px solid rgba(255,255,255,0.3);transform:translateZ(2px);"></div>
+            <!-- Ligne arrivee piste -->
+            <div style="position:absolute;width:2px;height:95px;right:100px;top:168px;background:rgba(255,255,255,0.5);transform:translateZ(2px);"></div>
+            <!-- Tribune haut -->
+            <div style="position:absolute;width:400px;height:20px;left:110px;top:-38px;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#5238ba,#3f2896);transform:translateZ(24px);box-shadow:0 4px 15px rgba(82,56,186,0.4);"></div>
+            <div style="position:absolute;width:430px;height:16px;left:95px;top:-18px;border-radius:2px;background:linear-gradient(180deg,#362180,#2d1b69);transform:translateZ(16px);"></div>
+            <div style="position:absolute;width:460px;height:14px;left:80px;top:0px;border-radius:2px;background:#2d1b69;transform:translateZ(9px);"></div>
+            <!-- Tribune bas -->
+            <div style="position:absolute;width:400px;height:20px;left:110px;bottom:-38px;border-radius:0 0 4px 4px;background:linear-gradient(0deg,#5238ba,#3f2896);transform:translateZ(24px);box-shadow:0 -4px 15px rgba(82,56,186,0.4);"></div>
+            <div style="position:absolute;width:430px;height:16px;left:95px;bottom:-18px;border-radius:2px;background:linear-gradient(0deg,#362180,#2d1b69);transform:translateZ(16px);"></div>
+            <div style="position:absolute;width:460px;height:14px;left:80px;bottom:0px;border-radius:2px;background:#2d1b69;transform:translateZ(9px);"></div>
+            <!-- Tribune gauche -->
+            <div style="position:absolute;width:18px;height:240px;left:-36px;top:95px;border-radius:4px 0 0 4px;background:linear-gradient(90deg,#5238ba,#3f2896);transform:translateZ(22px);box-shadow:-4px 0 15px rgba(82,56,186,0.4);"></div>
+            <div style="position:absolute;width:14px;height:265px;left:-18px;top:82px;border-radius:2px;background:#362180;transform:translateZ(14px);"></div>
+            <!-- Tribune droite -->
+            <div style="position:absolute;width:18px;height:240px;right:-36px;top:95px;border-radius:0 4px 4px 0;background:linear-gradient(270deg,#5238ba,#3f2896);transform:translateZ(22px);box-shadow:4px 0 15px rgba(82,56,186,0.4);"></div>
+            <div style="position:absolute;width:14px;height:265px;right:-18px;top:82px;border-radius:2px;background:#362180;transform:translateZ(14px);"></div>
+            <!-- Projecteurs -->
+            <div style="position:absolute;left:-56px;top:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
+            <div style="position:absolute;right:-56px;top:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
+            <div style="position:absolute;left:-56px;bottom:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
+            <div style="position:absolute;right:-56px;bottom:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
+        </div>
     </div>
-    <div class="chart-card">
-        <h3><span class="chart-icon" style="background:#10b98120;color:#34d399;">&#128202;</span> Catégories</h3>
-        <canvas id="chartCategories"></canvas>
+    <!-- Texte -->
+    <div style="text-align:center;margin-top:10px;">
+        <div style="color:#a78bfa;font-size:16px;font-weight:700;letter-spacing:2px;">BOKONZI</div>
+        <div style="color:#5a6580;font-size:11px;margin-top:2px;">Base de Données Athlétisme Français</div>
     </div>
 </div>
+<style>
+@keyframes stadeRotation {
+    from { transform: rotateX(55deg) rotateZ(0deg); }
+    to { transform: rotateX(55deg) rotateZ(360deg); }
+}
+@keyframes bkGoldBlink {
+    0%, 100% { opacity: 1; text-shadow: 0 0 8px rgba(255,215,0,0.6); }
+    50% { opacity: 0.6; text-shadow: none; }
+}
+</style>
+<script>
+(function(){
+    var c=document.getElementById('stadeStars');if(!c)return;
+    var h='';for(var i=0;i<50;i++){
+        var x=Math.random()*100,y=Math.random()*100,s=Math.random()*2+0.5,d=Math.random()*3+1;
+        h+='<div style="position:absolute;left:'+x+'%;top:'+y+'%;width:'+s+'px;height:'+s+'px;background:#fff;border-radius:50%;opacity:'+(Math.random()*0.5+0.2)+';animation:stadeStar '+d+'s ease-in-out infinite alternate;"></div>';
+    }
+    c.innerHTML=h;
+    if(!document.getElementById('stadeStarStyle')){
+        var st=document.createElement('style');st.id='stadeStarStyle';
+        st.textContent='@keyframes stadeStar{from{opacity:0.1;}to{opacity:0.6;}}';
+        document.head.appendChild(st);
+    }
+})();
+</script>
 
-<!-- ======== GRAPHIQUES LIGNE 2 : Top Clubs + Top Epreuves (chargés en AJAX) ======== -->
-<div class="charts-row">
-    <div class="chart-card">
-        <h3><span class="chart-icon" style="background:#8b5cf620;color:#a78bfa;">&#127963;</span> Top 10 Clubs</h3>
-        <canvas id="chartClubs"></canvas>
-    </div>
-    <div class="chart-card">
-        <h3><span class="chart-icon" style="background:#ec489920;color:#f472b6;">&#127939;</span> Top 10 Épreuves</h3>
-        <canvas id="chartEpreuves"></canvas>
-    </div>
-</div>
-
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <!-- ======== TABLEAUX DETAILS (chargés en AJAX) ======== -->
 <div id="clubDetailPanelAccueil" class="club-detail-panel">
     <div class="club-detail-header">
@@ -902,6 +942,7 @@ if ($page === 'accueil'):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTabAccueil('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabAccueil('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabAccueil('resume')">Resume</button>
+        <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTabAccueil('sprint')" style="color:#ff6b6b;">Sprint</button>
     </div>
     <div class="club-search-bar" id="clubSearchBarAccueil" style="display:none;padding:8px 16px;">
         <div style="position:relative;">
@@ -917,45 +958,181 @@ if ($page === 'accueil'):
 <div id="accueilClubsWrap" style="margin-bottom:24px;">
     <h2>Top Clubs <span id="accueilClubsCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
     <div class="table-wrap">
-    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th><th>Médailles</th><th>Niveaux</th><th></th></tr></table>
-    <table class="bk-table"><tbody id="topClubsBody"><tr><td colspan="7" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th><th>Médailles</th><th>Niveaux</th><th></th></tr></table>
+    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th><th>Médailles</th><th></th></tr></table>
+    <table class="bk-table"><tbody id="topClubsBody"><tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
+    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th><th>Médailles</th><th></th></tr></table>
     </div>
     <div id="topClubsPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;"></div>
 </div>
 
-<!-- Athlètes -->
-<div id="accueilAthletesWrap" style="margin-bottom:24px;">
-    <h2>Athlètes <span id="accueilAthletesCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-    <div class="table-wrap">
-    <table class="bk-table"><tr><th>Athlète</th><th>Club</th><th>Cat</th><th>NAT</th><th>Médailles</th><th>Podiums</th><th>Sél.</th><th>Records</th><th>Niveaux</th><th></th></tr></table>
-    <table class="bk-table"><tbody id="topAthletesBody"><tr><td colspan="10" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th>Athlète</th><th>Club</th><th>Cat</th><th>NAT</th><th>Médailles</th><th>Podiums</th><th>Sél.</th><th>Records</th><th>Niveaux</th><th></th></tr></table>
-    </div>
-    <div id="topAthletesPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;"></div>
+<!-- ======== PODIUM 3D ======== -->
+<div style="margin-bottom:24px;border-radius:16px;overflow:hidden;background:#0d1117;">
+    <div id="scene3d" style="width:100%;height:350px;"></div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    var el = document.getElementById('scene3d');
+    if (!el || typeof THREE === 'undefined') return;
 
-<!-- Top Villes -->
-<div id="accueilVillesWrap" style="margin-bottom:24px;">
-    <h2>Top Villes <span id="accueilVillesCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-    <div class="table-wrap">
-    <table class="bk-table"><tr><th>#</th><th>Ville</th><th>Résultats</th><th>Athlètes</th><th>Niveaux</th></tr></table>
-    <table class="bk-table"><tbody id="topVillesBody"><tr><td colspan="5" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th>#</th><th>Ville</th><th>Résultats</th><th>Athlètes</th><th>Niveaux</th></tr></table>
-    </div>
-    <div id="topVillesPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;"></div>
-</div>
+    var w = el.clientWidth || 800, h = el.clientHeight || 350;
+    var scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0d1117);
+    scene.fog = new THREE.Fog(0x0d1117, 14, 28);
 
-<!-- Top Épreuves -->
-<div id="accueilEpreuvesWrap" style="margin-bottom:24px;">
-    <h2>Top Épreuves <span id="accueilEpreuvesCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-    <div class="table-wrap">
-    <table class="bk-table"><tr><th>#</th><th>Épreuve</th><th>Records</th><th>Athlètes</th><th>Niveaux</th></tr></table>
-    <table class="bk-table"><tbody id="topEpreuvesBody"><tr><td colspan="5" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th>#</th><th>Épreuve</th><th>Records</th><th>Athlètes</th><th>Niveaux</th></tr></table>
-    </div>
-    <div id="topEpreuvesPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;"></div>
-</div>
+    var camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
+    camera.position.set(0, 5, 12);
+    camera.lookAt(0, 1, 0);
+
+    var renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    el.appendChild(renderer.domElement);
+
+    // Lumieres
+    scene.add(new THREE.AmbientLight(0x334466, 0.7));
+    var sun = new THREE.DirectionalLight(0xffffff, 1.3);
+    sun.position.set(3, 8, 5); sun.castShadow = true;
+    scene.add(sun);
+    var spotGold = new THREE.PointLight(0xffd700, 1.2, 15);
+    spotGold.position.set(0, 6, 3);
+    scene.add(spotGold);
+    scene.add(new THREE.PointLight(0xa78bfa, 0.5, 12, 2).position.set(-4, 4, 0) || scene.children[scene.children.length-1]);
+    scene.add(new THREE.PointLight(0xec4899, 0.4, 12, 2).position.set(4, 4, 0) || scene.children[scene.children.length-1]);
+
+    // Sol
+    var ground = new THREE.Mesh(
+        new THREE.CircleGeometry(12, 64),
+        new THREE.MeshStandardMaterial({ color: 0x8b1a1a, roughness: 0.9 })
+    );
+    ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Lignes couloirs
+    for (var li = 1; li <= 5; li++) {
+        var ring = new THREE.Mesh(
+            new THREE.RingGeometry(li * 1.6 - 0.02, li * 1.6 + 0.02, 64),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.1, side: THREE.DoubleSide })
+        );
+        ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01;
+        scene.add(ring);
+    }
+
+    // === PODIUM (plus grand, bien visible) ===
+    var podGroup = new THREE.Group();
+
+    // 1er — OR (centre)
+    var p1 = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 2.8, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.75, roughness: 0.2 })
+    );
+    p1.position.set(0, 1.4, 0); p1.castShadow = true; p1.receiveShadow = true;
+    podGroup.add(p1);
+
+    // 2e — ARGENT (gauche)
+    var p2 = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 2, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.85, roughness: 0.15 })
+    );
+    p2.position.set(-2.3, 1, 0); p2.castShadow = true; p2.receiveShadow = true;
+    podGroup.add(p2);
+
+    // 3e — BRONZE (droite)
+    var p3 = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 1.4, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0xcd7f32, metalness: 0.7, roughness: 0.25 })
+    );
+    p3.position.set(2.3, 0.7, 0); p3.castShadow = true; p3.receiveShadow = true;
+    podGroup.add(p3);
+
+    // Numeros sur les marches (face avant, texture canvas)
+    function _makeNumberPlane(txt, bgColor, txtColor) {
+        var c = document.createElement('canvas'); c.width = 128; c.height = 128;
+        var cx = c.getContext('2d');
+        cx.fillStyle = bgColor; cx.fillRect(0, 0, 128, 128);
+        cx.fillStyle = txtColor;
+        cx.font = 'bold 90px Arial'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+        cx.fillText(txt, 64, 68);
+        var tex = new THREE.CanvasTexture(c);
+        return new THREE.Mesh(
+            new THREE.PlaneGeometry(1, 1),
+            new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+        );
+    }
+    var n1 = _makeNumberPlane('1', 'rgba(218,165,32,0.9)', '#ffffff');
+    n1.position.set(0, 1, 0.91); podGroup.add(n1);
+    var n2 = _makeNumberPlane('2', 'rgba(160,160,160,0.9)', '#ffffff');
+    n2.position.set(-2.3, 0.6, 0.91); podGroup.add(n2);
+    var n3 = _makeNumberPlane('3', 'rgba(176,112,48,0.9)', '#ffffff');
+    n3.position.set(2.3, 0.3, 0.91); podGroup.add(n3);
+
+    scene.add(podGroup);
+
+    // === MEDAILLES flottantes ===
+    var medals = [];
+    var mColors = [0xffd700, 0xc0c0c0, 0xcd7f32];
+    var mX = [0, -2.3, 2.3];
+    var mBaseY = [3.6, 2.8, 2.3];
+    for (var mi = 0; mi < 3; mi++) {
+        var mg = new THREE.Group();
+        mg.add(new THREE.Mesh(
+            new THREE.TorusGeometry(0.35, 0.1, 24, 48),
+            new THREE.MeshStandardMaterial({ color: mColors[mi], metalness: 0.9, roughness: 0.1 })
+        ));
+        mg.add(new THREE.Mesh(
+            new THREE.CircleGeometry(0.28, 48),
+            new THREE.MeshStandardMaterial({ color: mColors[mi], metalness: 0.8, roughness: 0.15, side: THREE.DoubleSide })
+        ));
+        var rib = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.1, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x6c5ce7, side: THREE.DoubleSide })
+        );
+        rib.position.y = 0.7; mg.add(rib);
+        mg.position.set(mX[mi], mBaseY[mi], 0);
+        scene.add(mg);
+        medals.push({ mesh: mg, baseY: mBaseY[mi], phase: mi * 1.3 });
+    }
+
+    // === PARTICULES dorees ===
+    var pGeo = new THREE.BufferGeometry();
+    var pPos = new Float32Array(120 * 3);
+    for (var pi = 0; pi < 120; pi++) {
+        pPos[pi*3] = (Math.random() - 0.5) * 14;
+        pPos[pi*3+1] = Math.random() * 8;
+        pPos[pi*3+2] = (Math.random() - 0.5) * 8 - 2;
+    }
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    var particles = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xffd700, size: 0.05, transparent: true, opacity: 0.5 }));
+    scene.add(particles);
+
+    // === ANIMATION ===
+    function animate() {
+        requestAnimationFrame(animate);
+        var t = Date.now() * 0.001;
+        // Medailles flottent et tournent
+        medals.forEach(function(m) {
+            m.mesh.position.y = m.baseY + Math.sin(t * 1.5 + m.phase) * 0.18;
+            m.mesh.rotation.y += 0.015;
+        });
+        // Lumiere pulse
+        spotGold.intensity = 1 + Math.sin(t * 2) * 0.3;
+        // Particules montent
+        var pos = particles.geometry.attributes.position.array;
+        for (var i = 1; i < pos.length; i += 3) { pos[i] += 0.004; if (pos[i] > 8) pos[i] = 0; }
+        particles.geometry.attributes.position.needsUpdate = true;
+        // Camera oscillation douce
+        camera.position.x = Math.sin(t * 0.12) * 1.5;
+        camera.lookAt(0, 1, 0);
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', function() {
+        var nw = el.clientWidth, nh = el.clientHeight;
+        if (nw > 0 && nh > 0) { camera.aspect = nw / nh; camera.updateProjectionMatrix(); renderer.setSize(nw, nh); }
+    });
+});
+</script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
@@ -1017,78 +1194,11 @@ document.addEventListener('DOMContentLoaded', function(){
                     + '<td>' + (c.nb_athletes||0).toLocaleString('fr-FR') + '</td>'
                     + '<td>' + (c.nb_records||0).toLocaleString('fr-FR') + '</td>'
                     + '<td>' + (c.nb_medailles > 0 ? '<span style="color:#fbbf24;font-weight:600;">' + c.nb_medailles + '</span>' : '-') + '</td>'
-                    + '<td>' + _nivBar(c.niveaux_pct) + '</td>'
                     + '<td><a href="?page=clubs&open=' + encodeURIComponent(c.club) + '" style="color:#5a6580;font-size:12px;">Détails →</a></td>'
                     + '</tr>';
             });
-            var top10c = d.top_clubs.slice(0, 10);
-            window._topClubsRaw = top10c.map(function(c) { return {name: c.club, count: c.nb_athletes}; });
-            try {
-                new Chart(document.getElementById('chartClubs'), {
-                    type: 'bar',
-                    data: { labels: top10c.map(function(c) { return c.club.substring(0, 20); }), datasets: [{ data: top10c.map(function(c) { return c.nb_athletes; }), backgroundColor: '#a78bfa', borderRadius: 6, barThickness: 22 }] },
-                    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e2a3a' } }, y: { grid: { display: false } } } }
-                });
-            } catch(e) {}
         }
 
-        // Athlètes (shuffle)
-        if (d.top_athletes && d.top_athletes.length > 0) {
-            var ath = d.top_athletes;
-            for (var i = ath.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = ath[i]; ath[i] = ath[j]; ath[j] = t; }
-            document.getElementById('accueilAthletesCount').textContent = '(' + ath.length + ' athlètes)';
-            _paginator(ath, 'topAthletesBody', 'topAthletesPag', 10, function(a, i) {
-                var medH = a.nb_medailles > 0 ? '<span style="color:#fbbf24;font-weight:600;">' + a.nb_medailles + '</span>' : '-';
-                return '<tr>'
-                    + '<td><b><a href="?page=profil&id=' + a.athlete_id + '" style="color:#a29bfe;text-decoration:none;">' + _esc(a.nom) + '</a></b></td>'
-                    + '<td>' + (a.club ? '<a href="?page=clubs&open=' + encodeURIComponent(a.club) + '" style="font-size:12px;color:#8b949e;text-decoration:none;">' + _esc(a.club).substring(0,25) + '</a>' : '-') + '</td>'
-                    + '<td><a href="?page=recherche&categorie=' + encodeURIComponent(a.categorie||'') + '" style="text-decoration:none;"><span class="badge badge-cat">' + _esc(a.categorie||'') + '</span></a></td>'
-                    + '<td><a href="?page=recherche&nationalite=' + encodeURIComponent(a.nationalite||'') + '" style="color:#c9d1d9;text-decoration:none;">' + _esc(a.nationalite||'') + '</a></td>'
-                    + '<td>' + medH + '</td>'
-                    + '<td>' + (a.nb_podiums > 0 ? '<span style="color:#34d399;font-weight:600;">' + a.nb_podiums + '</span>' : '-') + '</td>'
-                    + '<td>' + (a.nb_selections > 0 ? '<span style="color:#818cf8;font-weight:600;">' + a.nb_selections + '</span>' : '-') + '</td>'
-                    + '<td>' + (a.nb_records > 0 ? '<span class="badge badge-perf">' + a.nb_records + '</span>' : '-') + '</td>'
-                    + '<td>' + _nivBar(a.niveaux_pct) + '</td>'
-                    + '<td><button class="btn-cmp-add" data-cmp-ath="' + a.athlete_id + '" data-name="' + _esc(a.nom) + '" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)">+</button></td>'
-                    + '</tr>';
-            });
-        }
-
-        // Top Villes
-        if (d.top_villes && d.top_villes.length > 0) {
-            document.getElementById('accueilVillesCount').textContent = '(' + d.top_villes.length + ' villes)';
-            _paginator(d.top_villes, 'topVillesBody', 'topVillesPag', 10, function(v, i) {
-                return '<tr><td>' + (i+1) + '</td>'
-                    + '<td><a href="?page=villes&open=' + encodeURIComponent(v.ville) + '" style="color:#a29bfe;text-decoration:none;cursor:pointer;">' + _esc(v.ville) + '</a></td>'
-                    + '<td>' + (v.nb_resultats||0).toLocaleString('fr-FR') + '</td>'
-                    + '<td>' + (v.nb_athletes||0).toLocaleString('fr-FR') + '</td>'
-                    + '<td>' + _nivBar(v.niveaux_pct) + '</td>'
-                    + '</tr>';
-            });
-        }
-
-        // Top Épreuves
-        if (d.top_epreuves && d.top_epreuves.length > 0) {
-            document.getElementById('accueilEpreuvesCount').textContent = '(' + d.top_epreuves.length + ' épreuves)';
-            _paginator(d.top_epreuves, 'topEpreuvesBody', 'topEpreuvesPag', 10, function(e, i) {
-                return '<tr><td>' + (i+1) + '</td>'
-                    + '<td><a href="?page=recherche&epreuve=' + encodeURIComponent(e.epreuve) + '" style="color:#a29bfe;text-decoration:none;">' + _esc(e.epreuve) + '</a></td>'
-                    + '<td>' + (e.nb_records||0).toLocaleString('fr-FR') + '</td>'
-                    + '<td>' + (e.nb_athletes||0).toLocaleString('fr-FR') + '</td>'
-                    + '<td>' + _nivBar(e.niveaux_pct) + '</td>'
-                    + '</tr>';
-            });
-            try {
-                var top10e = d.top_epreuves.slice(0, 10);
-                new Chart(document.getElementById('chartEpreuves'), {
-                    type: 'bar',
-                    data: { labels: top10e.map(function(e) { return e.epreuve; }), datasets: [{ label: 'Records', data: top10e.map(function(e) { return e.nb_records; }),
-                        backgroundColor: function(ctx) { var g = ctx.chart.ctx.createLinearGradient(0,0,ctx.chart.width,0); g.addColorStop(0,'#ec4899'); g.addColorStop(1,'#f59e0b'); return g; },
-                        borderRadius: 6, barThickness: 22 }] },
-                    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e2a3a' } }, y: { grid: { display: false } } } }
-                });
-            } catch(e) {}
-        }
     }
 
     <?php if ($detailData): ?>
@@ -1264,50 +1374,7 @@ document.addEventListener('DOMContentLoaded', function() {
     Chart.defaults.borderColor = '#1e2a3a';
     Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
 
-    // --- Sexe (Doughnut) ---
-    new Chart(document.getElementById('chartSexe'), {
-        type: 'doughnut',
-        data: {
-            labels: [<?php foreach ($data['par_sexe'] as $s => $nb) echo "'" . ($s === 'M' ? 'Hommes' : ($s === 'F' ? 'Femmes' : $s)) . "',"; ?>],
-            datasets: [{
-                data: [<?php echo implode(',', array_values($data['par_sexe'])); ?>],
-                backgroundColor: ['#3b82f6', '#ec4899', '#8b5cf6', '#10b981'],
-                borderWidth: 0,
-                hoverOffset: 8
-            }]
-        },
-        options: {
-            responsive: true,
-            cutout: '65%',
-            plugins: {
-                legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true, pointStyleWidth: 10, font: { size: 12 } } }
-            }
-        }
-    });
-
     // --- Categories (Bar horizontal) ---
-    new Chart(document.getElementById('chartCategories'), {
-        type: 'bar',
-        data: {
-            <?php $catsVisibles = ['SE','CA','JU','ES','MI','BE','MA']; $catsFiltrees = array_intersect_key($data['par_categorie'], array_flip($catsVisibles)); ?>
-            labels: [<?php foreach ($catsFiltrees as $cat => $nb) echo "'" . htmlspecialchars($cat) . "',"; ?>],
-            datasets: [{
-                data: [<?php echo implode(',', array_values($catsFiltrees)); ?>],
-                backgroundColor: '#10b981',
-                borderRadius: 4,
-                barThickness: 14
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { color: '#1e2a3a' }, ticks: { font: { size: 11 } } },
-                y: { grid: { display: false }, ticks: { font: { size: 11, weight: 600 } } }
-            }
-        }
-    });
 });
 </script>
 
@@ -1321,121 +1388,57 @@ document.addEventListener('DOMContentLoaded', function() {
 //  LISTE ATHLETES
 // ================================================================
 elseif ($page === 'athletes'):
-    $ordre = $_GET['ordre'] ?? 'random';
-    $data = apiCall("$BASE_API/liste.php?page=$p&limit=50&ordre=$ordre");
+    $epreuves = '100m|200m|400m Haies (76)|400m Haies (91)|110m Haies (91)|110m Haies (99)|110m Haies (106)|Longueur|Triple saut|Perche';
+    $data = apiCall("$BASE_API/liste.php?limit=100&ordre=medailles&niveau=IA,IB&epreuve=" . urlencode($epreuves));
 ?>
 
-<h1>Athlètes</h1>
-
-<div class="live-search">
-    <span class="ls-icon">&#128269;</span>
-    <input type="text" id="lsAthletes" placeholder="Rechercher un athlète par nom..." autocomplete="off">
-    <div class="ls-status" id="lsAthletesStatus"></div>
-</div>
-<div class="ls-results" id="lsAthletesResults" style="display:none;"></div>
-
-<div id="athletesPaginated">
-<div style="margin:10px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-    <span style="color:#8b949e;font-size:13px;">Trier par :</span>
-    <a href="?page=athletes&ordre=random" class="btn <?= $ordre === 'random' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">Random</a>
-    <a href="?page=athletes&ordre=nom" class="btn <?= $ordre === 'nom' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">Nom</a>
-    <a href="?page=athletes&ordre=recent" class="btn <?= $ordre === 'recent' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">Plus récents</a>
-    <a href="?page=athletes&ordre=id" class="btn <?= $ordre === 'id' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">ID athle.fr</a>
-    <a href="?page=athletes&ordre=medailles" class="btn <?= $ordre === 'medailles' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">Médailles</a>
-    <a href="?page=athletes&ordre=podiums" class="btn <?= $ordre === 'podiums' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">Podiums</a>
-    <a href="?page=athletes&ordre=selections" class="btn <?= $ordre === 'selections' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">Sélections</a>
-    <a href="?page=athletes&ordre=records" class="btn <?= $ordre === 'records' ? 'btn-blue' : '' ?>" style="font-size:12px;padding:5px 12px;">Records</a>
+<!-- Mention legale visible immediatement -->
+<div style="background:#f59e0b15;border:2px solid #f59e0b;border-radius:12px;padding:14px 20px;margin-bottom:20px;text-align:center;">
+    <p style="color:#f59e0b;font-size:14px;font-weight:700;line-height:1.6;margin:0;">
+        &#9888; Site informatif independant — Bokonzi n'est pas affilie a la FFA ni a athle.fr.<br>
+        <span style="font-size:12px;font-weight:500;">Donnees issues de sources publiques, a but informatif et statistique uniquement.</span>
+    </p>
 </div>
 
-<?php if ($data && ($data['success'] ?? false)):
-    // Stats de la page courante
-    $athSexe = []; $athCat = []; $athNat = [];
-    foreach ($data['athletes'] as $a) {
-        $s = $a['sexe'] ?: 'Inconnu';
-        $athSexe[$s] = ($athSexe[$s] ?? 0) + 1;
-        $c = $a['categorie'] ?: 'Autre';
-        $athCat[$c] = ($athCat[$c] ?? 0) + 1;
-        $n = $a['nationalite'] ?: 'Autre';
-        $athNat[$n] = ($athNat[$n] ?? 0) + 1;
-    }
-    arsort($athNat);
-    $athNat = array_slice($athNat, 0, 8, true);
-?>
-<p class="subtitle"><?= number_format($data['total'], 0, ',', ' ') ?> athletes — page <?= $data['page'] ?>/<?= $data['total_pages'] ?></p>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+    <h1 style="margin:0;">Top 100 Athlètes</h1>
+    <a href="?page=recherche" style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;background:var(--brand);color:#fff;border-radius:20px;font-size:14px;font-weight:700;text-decoration:none;transition:all .2s;box-shadow:0 2px 12px var(--brand-glow);" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 20px var(--brand-glow)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px var(--brand-glow)'">&#128269; Rechercher un athlète</a>
+</div>
 
-<!-- Graphiques de la page -->
-<div class="charts-row-3" style="margin-bottom:20px;">
-    <div class="chart-card"><h3><span class="chart-icon" style="background:#3b82f620;color:#60a5fa;">M/F</span> Sexe (page)</h3><canvas id="athChartSexe"></canvas></div>
-    <div class="chart-card"><h3><span class="chart-icon" style="background:#10b98120;color:#34d399;">Cat</span> Categories (page)</h3><canvas id="athChartCat"></canvas></div>
-    <div class="chart-card"><h3><span class="chart-icon" style="background:#8b5cf620;color:#a78bfa;">NAT</span> Nationalités (page)</h3><canvas id="athChartNat"></canvas></div>
+<?php if ($data && ($data['success'] ?? false) && !empty($data['athletes'])): ?>
+
+<p class="subtitle" style="margin-bottom:16px;"><?= count($data['athletes']) ?> athlètes niveau IA/IB — 100m, 200m, 400m Haies, 110m Haies, Longueur, Triple saut, Perche</p>
+
+<!-- Popup confirmation apres 5s -->
+<div id="athDisclaimer" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:none;align-items:center;justify-content:center;">
+    <div style="background:#161b22;border:2px solid #f59e0b;border-radius:16px;padding:30px;max-width:500px;text-align:center;margin:20px;">
+        <div style="font-size:40px;margin-bottom:12px;">&#9888;</div>
+        <h3 style="color:#f59e0b;font-size:18px;margin:0 0 14px;">Avertissement legal</h3>
+        <div style="color:#c9d1d9;font-size:13px;line-height:1.7;margin:0 0 20px;text-align:left;">
+            <p style="margin:0 0 10px;">Le site <strong style="color:#f59e0b;">Bokonzi</strong> est une plateforme independante a caractere informatif et statistique consacree a l'athletisme.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Ce site ne constitue en aucun cas un site officiel et n'entretient aucun lien juridique, institutionnel ou commercial avec la Federation Francaise d'Athletisme ni avec le site athle.fr, ni avec toute autre instance officielle.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Les informations diffusees proviennent exclusivement de sources publiques librement accessibles, a des fins strictement informatives et statistiques.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Aucune volonte de tromper, d'induire en erreur ou de porter atteinte a l'image, a la reputation ou a la vie privee des personnes mentionnees n'est poursuivie.</p>
+            <p style="margin:0;color:#8b949e;">Toute personne figurant sur le site peut exercer son droit de suppression via le bouton <span style="color:#f59e0b;">Signaler</span> present sur chaque fiche.</p>
+        </div>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+            <button onclick="document.getElementById('athDisclaimer').style.display='none';" style="background:#1e2a3a;color:#c9d1d9;border:1px solid #2d3a4a;padding:12px 30px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">J'ai lu</button>
+            <button onclick="document.getElementById('athDisclaimer').style.display='none';try{localStorage.setItem('bk_disclaimer_ok_v3','1')}catch(e){}" style="background:#f59e0b;color:#000;border:none;padding:12px 30px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">J'ai compris, ne plus afficher</button>
+        </div>
+    </div>
 </div>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    new Chart(document.getElementById('athChartSexe'), {
-        type: 'doughnut',
-        data: {
-            labels: [<?php foreach ($athSexe as $k => $v) echo "'" . ($k==='M'?'Hommes':($k==='F'?'Femmes':$k)) . "',"; ?>],
-            datasets: [{ data: [<?= implode(',', array_values($athSexe)) ?>], backgroundColor: ['#3b82f6','#ec4899','#8b5cf6','#64748b'], borderWidth: 0 }]
-        },
-        options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, font: { size: 11 } } } } }
-    });
-    new Chart(document.getElementById('athChartCat'), {
-        type: 'bar',
-        data: {
-            labels: [<?php foreach ($athCat as $k => $v) echo "'$k',"; ?>],
-            datasets: [{ data: [<?= implode(',', array_values($athCat)) ?>], backgroundColor: '#34d399', borderRadius: 4, barThickness: 16 }]
-        },
-        options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e2a3a' } }, y: { grid: { display: false } } } }
-    });
-    new Chart(document.getElementById('athChartNat'), {
-        type: 'bar',
-        data: {
-            labels: [<?php foreach ($athNat as $k => $v) echo "'$k',"; ?>],
-            datasets: [{ data: [<?= implode(',', array_values($athNat)) ?>], backgroundColor: '#a78bfa', borderRadius: 4, barThickness: 16 }]
-        },
-        options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e2a3a' } }, y: { grid: { display: false } } } }
-    });
-});
+(function(){
+    if (localStorage.getItem('bk_disclaimer_ok_v3')) return;
+    var seen = sessionStorage.getItem('bk_disc_seen');
+    var delay = seen ? 0 : 2000;
+    setTimeout(function(){
+        var d = document.getElementById('athDisclaimer');
+        if (d) { d.style.display = 'flex'; }
+        sessionStorage.setItem('bk_disc_seen', '1');
+    }, delay);
+})();
 </script>
-
-<?php
-    // Calcul stats globales pour pourcentages
-    $totalAthPage = count($data['athletes']);
-    $sumMed = 0; $sumPod = 0; $sumSel = 0; $sumRec = 0; $sumRes = 0;
-    $maxMed = 0; $maxPod = 0; $maxSel = 0; $maxRec = 0; $maxRes = 0;
-    foreach ($data['athletes'] as $a) {
-        $sumMed += $a['nb_medailles']; $sumPod += $a['nb_podiums']; $sumSel += $a['nb_selections'];
-        $sumRec += $a['nb_records']; $sumRes += $a['nb_resultats'];
-        if ($a['nb_medailles'] > $maxMed) $maxMed = $a['nb_medailles'];
-        if ($a['nb_podiums'] > $maxPod) $maxPod = $a['nb_podiums'];
-        if ($a['nb_selections'] > $maxSel) $maxSel = $a['nb_selections'];
-        if ($a['nb_records'] > $maxRec) $maxRec = $a['nb_records'];
-        if ($a['nb_resultats'] > $maxRes) $maxRes = $a['nb_resultats'];
-    }
-?>
-<!-- Stats résumées de la page -->
-<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-    <div style="flex:1;min-width:100px;text-align:center;padding:10px;background:#f59e0b10;border:1px solid #f59e0b30;border-radius:10px;">
-        <div style="font-size:20px;font-weight:700;color:#fbbf24;"><?= number_format($sumMed, 0, ',', ' ') ?></div>
-        <div style="font-size:11px;color:#8b949e;">Médailles</div>
-    </div>
-    <div style="flex:1;min-width:100px;text-align:center;padding:10px;background:#10b98110;border:1px solid #10b98130;border-radius:10px;">
-        <div style="font-size:20px;font-weight:700;color:#34d399;"><?= number_format($sumPod, 0, ',', ' ') ?></div>
-        <div style="font-size:11px;color:#8b949e;">Podiums</div>
-    </div>
-    <div style="flex:1;min-width:100px;text-align:center;padding:10px;background:#6366f110;border:1px solid #6366f130;border-radius:10px;">
-        <div style="font-size:20px;font-weight:700;color:#818cf8;"><?= number_format($sumSel, 0, ',', ' ') ?></div>
-        <div style="font-size:11px;color:#8b949e;">Sélections</div>
-    </div>
-    <div style="flex:1;min-width:100px;text-align:center;padding:10px;background:#8b5cf610;border:1px solid #8b5cf630;border-radius:10px;">
-        <div style="font-size:20px;font-weight:700;color:#a78bfa;"><?= number_format($sumRec, 0, ',', ' ') ?></div>
-        <div style="font-size:11px;color:#8b949e;">Records</div>
-    </div>
-    <div style="flex:1;min-width:100px;text-align:center;padding:10px;background:#06b6d410;border:1px solid #06b6d430;border-radius:10px;">
-        <div style="font-size:20px;font-weight:700;color:#22d3ee;"><?= number_format($sumRes, 0, ',', ' ') ?></div>
-        <div style="font-size:11px;color:#8b949e;">Résultats</div>
-    </div>
-</div>
 
 <?php
 function _athNivBadge($code) {
@@ -1448,88 +1451,73 @@ function _athNivBadge($code) {
 }
 ?>
 
-<div class="table-wrap">
-<?php $thAthFull = '<tr><th>#</th><th>Athlète</th><th>Club</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Médailles</th><th>Podiums</th><th>Sél.</th><th>Records</th><th class="hide-mobile">Résultats</th><th class="hide-mobile">Spécialité</th><th></th><th></th></tr>'; ?>
-<table class="bk-table"><?= $thAthFull ?></table>
-<table class="bk-table">
+<div class="ath-grid">
     <?php foreach ($data['athletes'] as $idx => $a):
         $med = $a['medailles'] ?? ['or'=>0,'argent'=>0,'bronze'=>0];
         $totalMedA = $med['or'] + $med['argent'] + $med['bronze'];
         $topEp = $a['top_epreuve'] ?? null;
+        $sexeIcon = $a['sexe'] === 'M' ? '&#9794;' : ($a['sexe'] === 'F' ? '&#9792;' : '');
     ?>
-    <tr>
-        <td><?= ($p - 1) * 50 + $idx + 1 ?></td>
-        <td>
-            <b><a href="?page=profil&id=<?= $a['athlete_id'] ?>"><?= htmlspecialchars($a['nom_complet']) ?></a></b>
-            <?php if ($a['date_naissance']): ?>
-                <br><span style="font-size:11px;color:#5a6580;"><?= substr($a['date_naissance'], 0, 4) ?><?php
-                if ($a['taille_cm'] || $a['poids_kg']) {
-                    echo ' · ';
-                    if ($a['taille_cm']) echo $a['taille_cm'] . 'cm';
-                    if ($a['taille_cm'] && $a['poids_kg']) echo '/';
-                    if ($a['poids_kg']) echo $a['poids_kg'] . 'kg';
-                }
-                if ($a['max_points']) echo ' · ' . number_format($a['max_points'], 0, ',', ' ') . ' pts';
-                ?></span>
-            <?php endif; ?>
-        </td>
-        <td><?php if ($a['club']): ?><a href="?page=clubs&open=<?= urlencode($a['club']) ?>" style="color:#a29bfe;text-decoration:none;font-size:12px;"><?= htmlspecialchars(mb_substr($a['club'], 0, 25)) ?><?= mb_strlen($a['club']) > 25 ? '…' : '' ?></a><?php else: ?>-<?php endif; ?></td>
-        <td><a href="?page=recherche&categorie=<?= urlencode($a['categorie']) ?>" style="text-decoration:none;"><span class="badge badge-cat"><?= $a['categorie'] ?></span></a></td>
-        <td><a href="?page=recherche&sexe=<?= urlencode($a['sexe']) ?>" style="text-decoration:none;"><span class="badge badge-<?= strtolower($a['sexe']) ?>"><?= $a['sexe'] ?></span></a></td>
-        <td><?php if ($a['nationalite']): ?><a href="?page=recherche&nationalite=<?= urlencode($a['nationalite']) ?>" style="color:#c9d1d9;text-decoration:none;"><?= $a['nationalite'] ?></a><?php else: ?>-<?php endif; ?></td>
-        <td><?php
-            if ($a['meilleur_niveau']) {
-                echo _athNivBadge($a['meilleur_niveau']);
-                $restNiv = array_filter($a['niveaux'] ?? [], function($n) use ($a) { return $n !== $a['meilleur_niveau']; });
-                if (count($restNiv) > 0) echo '<span style="color:#5a6580;font-size:10px;margin-left:2px;">+' . count($restNiv) . '</span>';
-            } else { echo '-'; }
-        ?></td>
-        <td><?php if ($totalMedA > 0) {
-            if ($med['or'] > 0) echo '<span style="color:#fbbf24;font-size:12px;font-weight:600;" title="Or">🥇' . $med['or'] . '</span> ';
-            if ($med['argent'] > 0) echo '<span style="color:#94a3b8;font-size:12px;font-weight:600;" title="Argent">🥈' . $med['argent'] . '</span> ';
-            if ($med['bronze'] > 0) echo '<span style="color:#cd7f32;font-size:12px;font-weight:600;" title="Bronze">🥉' . $med['bronze'] . '</span>';
-        } else { echo '-'; } ?></td>
-        <td><?php if ($a['nb_podiums'] > 0): ?>
-            <span style="display:inline-block;padding:2px 8px;background:#10b98115;border:1px solid #10b98130;border-radius:5px;color:#34d399;font-size:12px;font-weight:600;"><?= $a['nb_podiums'] ?></span>
-        <?php else: ?>-<?php endif; ?></td>
-        <td><?php if ($a['nb_selections'] > 0): ?>
-            <span style="display:inline-block;padding:2px 8px;background:#6366f115;border:1px solid #6366f130;border-radius:5px;color:#818cf8;font-size:12px;font-weight:600;"><?= $a['nb_selections'] ?></span>
-        <?php else: ?>-<?php endif; ?></td>
-        <td><?php if ($a['nb_records'] > 0): ?><a href="?page=profil&id=<?= $a['athlete_id'] ?>&s=records" style="text-decoration:none;"><span class="badge badge-perf"><?= $a['nb_records'] ?></span></a><?php else: ?>-<?php endif; ?></td>
-        <td class="hide-mobile"><?php if ($a['nb_resultats'] > 0): ?>
-            <span style="color:#22d3ee;font-size:12px;"><?= number_format($a['nb_resultats'], 0, ',', ' ') ?></span>
-            <?php if ($a['nb_progressions'] > 0): ?><br><span style="color:#5a6580;font-size:10px;">↗ <?= $a['nb_progressions'] ?> prog.</span><?php endif; ?>
-        <?php else: ?>-<?php endif; ?></td>
-        <td class="hide-mobile"><?php if ($topEp): ?>
-            <a href="?page=recherche&epreuve=<?= urlencode($topEp['epreuve']) ?>" style="color:#a29bfe;font-size:11px;text-decoration:none;"><?= htmlspecialchars(mb_substr($topEp['epreuve'], 0, 20)) ?></a>
-            <?php if ($topEp['best']): ?><br><span style="color:#5a6580;font-size:10px;">RP: <?= htmlspecialchars($topEp['best']) ?></span><?php endif; ?>
-        <?php else: ?>-<?php endif; ?></td>
-        <td><a href="?page=profil&id=<?= $a['athlete_id'] ?>&s=records" style="font-size:12px;">Profil</a></td>
-        <td><button class="btn-cmp-add" data-cmp-ath="<?= $a['athlete_id'] ?>" data-name="<?= htmlspecialchars($a['nom_complet'], ENT_QUOTES) ?>" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)">+</button></td>
-    </tr>
-    <?php endforeach; ?>
-</table>
-<table class="bk-table"><?= $thAthFull ?></table>
-</div>
+    <div class="ath-card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+            <span style="color:var(--text-muted);font-size:12px;font-weight:700;">#<?= $idx + 1 ?></span>
+            <a class="ath-name" href="?page=profil&id=<?= $a['athlete_id'] ?>" style="margin:0;"><?= htmlspecialchars($a['nom_complet']) ?></a>
+        </div>
+        <?php if ($a['club']): ?>
+        <a class="ath-club" href="?page=recherche&club=<?= urlencode(rtrim($a['club'], '* ')) ?>"><?= htmlspecialchars(rtrim($a['club'], '* ')) ?></a>
+        <?php else: ?>
+        <span class="ath-club">—</span>
+        <?php endif; ?>
 
-<div class="pager">
-    <?php if ($p > 1): ?><a href="?page=athletes&ordre=<?= $ordre ?>&p=<?= $p - 1 ?>">Precedent</a><?php endif; ?>
-    <?php
-    $start = max(1, $p - 3);
-    $end = min($data['total_pages'], $p + 3);
-    for ($i = $start; $i <= $end; $i++):
-    ?>
-        <?php if ($i == $p): ?><span class="current"><?= $i ?></span>
-        <?php else: ?><a href="?page=athletes&ordre=<?= $ordre ?>&p=<?= $i ?>"><?= $i ?></a><?php endif; ?>
-    <?php endfor; ?>
-    <?php if ($p < $data['total_pages']): ?><a href="?page=athletes&ordre=<?= $ordre ?>&p=<?= $p + 1 ?>">Suivant</a><?php endif; ?>
-    <span class="info">(<?= $data['total_pages'] ?> pages)</span>
+        <div class="ath-badges">
+            <span class="badge badge-cat"><?= $a['categorie'] ?></span>
+            <span class="badge badge-<?= strtolower($a['sexe']) ?>"><?= $sexeIcon ?> <?= $a['sexe'] ?></span>
+            <?php if ($a['nationalite']): ?>
+            <span class="badge" style="background:#ffffff08;border:1px solid #ffffff15;color:#c9d1d9;"><?= $a['nationalite'] ?></span>
+            <?php endif; ?>
+            <?php if ($a['meilleur_niveau']): ?><?= _athNivBadge($a['meilleur_niveau']) ?><?php endif; ?>
+        </div>
+
+        <div class="ath-kpis">
+            <div class="ath-kpi">
+                <div class="kv" style="color:<?= $totalMedA > 0 ? '#fbbf24' : '#2d3a4a' ?>;">
+                    <?php if ($totalMedA > 0): ?>
+                        <?php if ($med['or'] > 0): ?>&#129351;<?= $med['or'] ?><?php endif; ?>
+                        <?php if ($med['argent'] > 0): ?> &#129352;<?= $med['argent'] ?><?php endif; ?>
+                        <?php if ($med['bronze'] > 0): ?> &#129353;<?= $med['bronze'] ?><?php endif; ?>
+                    <?php else: ?>—<?php endif; ?>
+                </div>
+                <div class="kl">Médailles</div>
+            </div>
+            <div class="ath-kpi">
+                <div class="kv" style="color:<?= $a['nb_podiums'] > 0 ? '#34d399' : '#2d3a4a' ?>;"><?= $a['nb_podiums'] > 0 ? $a['nb_podiums'] : '—' ?></div>
+                <div class="kl">Podiums</div>
+            </div>
+            <div class="ath-kpi">
+                <div class="kv" style="color:<?= $a['nb_selections'] > 0 ? '#818cf8' : '#2d3a4a' ?>;"><?= $a['nb_selections'] > 0 ? $a['nb_selections'] : '—' ?></div>
+                <div class="kl">Sélections</div>
+            </div>
+            <div class="ath-kpi">
+                <div class="kv" style="color:<?= $a['nb_records'] > 0 ? '#a78bfa' : '#2d3a4a' ?>;"><?= $a['nb_records'] > 0 ? $a['nb_records'] : '—' ?></div>
+                <div class="kl">Records</div>
+            </div>
+        </div>
+
+        <?php if ($topEp): ?>
+        <div class="ath-specialty"><?= htmlspecialchars($topEp['epreuve']) ?><?php if ($topEp['best']): ?> — RP: <?= htmlspecialchars($topEp['best']) ?><?php endif; ?></div>
+        <?php endif; ?>
+
+        <div class="ath-actions">
+            <a href="?page=profil&id=<?= $a['athlete_id'] ?>">Voir le profil</a>
+            <button class="btn-cmp-add" data-cmp-ath="<?= $a['athlete_id'] ?>" data-name="<?= htmlspecialchars($a['nom_complet'], ENT_QUOTES) ?>" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)">+ Comparer</button>
+        </div>
+    </div>
+    <?php endforeach; ?>
 </div>
 
 <?php else: ?>
-<div class="error">Erreur de chargement.</div>
+<div class="error">Aucun athlète trouvé.</div>
 <?php endif; ?>
-</div>
 
 
 <?php
@@ -1954,6 +1942,7 @@ if ($clubFilter !== ''):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
+        <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTab('sprint')" style="color:#ff6b6b;">Sprint</button>
     </div>
     <div class="club-search-bar" id="clubSearchBar" style="display:none;padding:8px 16px;">
         <div style="position:relative;">
@@ -2014,13 +2003,12 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <div class="table-wrap">
-<table class="bk-table"><tr><th>#</th><th>Nom complet</th><th class="hide-mobile">Naissance</th><th>Cat</th><th class="hide-mobile">Sexe</th><th class="hide-mobile">NAT</th><th>Niveaux</th><th>Records (top 5)</th><th></th><th></th></tr></table>
+<table class="bk-table"><tr><th>#</th><th>Nom complet</th><th>Cat</th><th class="hide-mobile">Sexe</th><th class="hide-mobile">NAT</th><th>Niveaux</th><th>Records (top 5)</th><th></th><th></th></tr></table>
 <table class="bk-table">
     <?php foreach ($data['athletes'] as $idx => $a): ?>
     <tr>
         <td><?= ($p - 1) * 100 + $idx + 1 ?></td>
         <td><b><a href="?page=profil&id=<?= $a['athlete_id'] ?>"><?= htmlspecialchars($a['nom_complet']) ?></a></b></td>
-        <td class="hide-mobile"><?= substr($a['date_naissance'] ?? '-', 0, 4) ?: '-' ?></td>
         <td><a href="?page=recherche&categorie=<?= urlencode($a['categorie']) ?>" style="text-decoration:none;"><span class="badge badge-cat"><?= $a['categorie'] ?></span></a></td>
         <td class="hide-mobile"><a href="?page=recherche&sexe=<?= urlencode($a['sexe']) ?>" style="text-decoration:none;"><span class="badge badge-<?= strtolower($a['sexe']) ?>"><?= $a['sexe'] ?></span></a></td>
         <td class="hide-mobile"><a href="?page=recherche&nationalite=<?= urlencode($a['nationalite']) ?>" style="color:#c9d1d9;text-decoration:none;"><?= $a['nationalite'] ?></a></td>
@@ -2041,7 +2029,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </tr>
     <?php endforeach; ?>
 </table>
-<table class="bk-table"><tr><th>#</th><th>Nom complet</th><th class="hide-mobile">Naissance</th><th>Cat</th><th class="hide-mobile">Sexe</th><th class="hide-mobile">NAT</th><th>Niveaux</th><th>Records (top 5)</th><th></th><th></th></tr></table>
+<table class="bk-table"><tr><th>#</th><th>Nom complet</th><th>Cat</th><th class="hide-mobile">Sexe</th><th class="hide-mobile">NAT</th><th>Niveaux</th><th>Records (top 5)</th><th></th><th></th></tr></table>
 </div>
 <?php
     // Pagination
@@ -2086,23 +2074,81 @@ elseif ($page === 'profil' && $id):
     }
     // Tracking search_tracking → fait côté JS (sendBeacon) après chargement profil
 
-    $data = apiCall("$BASE_API/athlete.php?id=$id");
+    // Verifier directement en BDD si le profil est masque
+    $_isProfileHidden = false;
+    $_isAdmin = !empty($_COOKIE['bk_sa_token']) || ($_navHasPanel ?? false);
+    $_chkVis = $conn->query("SELECT visible FROM athletes WHERE athlete_id_externe = " . (int)$id);
+    if ($_chkVis && $_chkRow = $_chkVis->fetch_assoc()) {
+        $_isProfileHidden = ((int)$_chkRow['visible'] === 0);
+    }
+
+    // Si masque + admin → appeler l'API avec _all pour voir le profil
+    if ($_isProfileHidden && $_isAdmin) {
+        $data = apiCall("$BASE_API/athlete.php?id=$id&_all=1");
+    } else {
+        $data = apiCall("$BASE_API/athlete.php?id=$id");
+    }
     $section = $_GET['s'] ?? 'all';
 
-    if ($data && isset($data['visible']) && $data['visible'] === false):
+    if ($_isProfileHidden && !$_isAdmin):
 ?>
-<div class="chart-card" style="margin:24px 0;border-left:3px solid #f59e0b;text-align:center;padding:40px 24px;">
-    <div style="font-size:48px;margin-bottom:16px;">&#128274;</div>
-    <h3 style="margin:0 0 12px;color:#f59e0b;font-size:20px;">Profil non disponible</h3>
-    <p style="color:#8b949e;font-size:15px;line-height:1.6;max-width:500px;margin:0 auto;">
-        Ce profil a ete retire a la demande de l'interesse(e).<br>
-        <span style="font-size:13px;color:#5a6580;">Si vous pensez qu'il s'agit d'une erreur, vous pouvez nous contacter.</span>
-    </p>
+<div style="text-align:center;padding:60px 24px;">
+    <div style="font-size:56px;margin-bottom:20px;">&#128683;</div>
+    <h2 style="color:#ef4444;font-size:22px;margin:0 0 12px;border:none;">Ce profil n'est plus disponible</h2>
+    <p style="color:#5a6580;font-size:14px;max-width:400px;margin:0 auto;line-height:1.6;">Ce profil a ete retire a la demande de l'interesse(e) ou suite a un signalement.</p>
+    <a href="<?= $_canonBase ?>/?page=accueil" style="display:inline-block;margin-top:24px;padding:10px 24px;background:#1e2a3a;border:1px solid #2a3560;border-radius:8px;color:#a29bfe;text-decoration:none;font-size:14px;font-weight:600;">Retour a l'accueil</a>
 </div>
 
 <?php elseif ($data && ($data['success'] ?? false)):
         $i = $data['identite'];
 ?>
+
+<!-- Popup disclaimer profil -->
+<div id="profilDisclaimer" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#161b22;border:2px solid #f59e0b;border-radius:16px;padding:30px;max-width:520px;text-align:center;margin:20px;">
+        <div style="font-size:40px;margin-bottom:12px;">&#9888;</div>
+        <h3 style="color:#f59e0b;font-size:18px;margin:0 0 14px;">Avertissement legal</h3>
+        <div style="color:#c9d1d9;font-size:13px;line-height:1.7;margin:0 0 20px;text-align:left;">
+            <p style="margin:0 0 10px;">Le site <strong style="color:#f59e0b;">Bokonzi</strong> est une plateforme independante a caractere informatif et statistique consacree a l'athletisme.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Ce site ne constitue en aucun cas un site officiel et n'entretient aucun lien juridique, institutionnel ou commercial avec la Federation Francaise d'Athletisme ni avec le site athle.fr, ni avec toute autre instance officielle.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Les informations diffusees proviennent exclusivement de sources publiques librement accessibles, a des fins strictement informatives et statistiques.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Aucune volonte de tromper, d'induire en erreur ou de porter atteinte a l'image, a la reputation ou a la vie privee des personnes mentionnees n'est poursuivie.</p>
+            <p style="margin:0;color:#8b949e;">Toute personne figurant sur le site peut exercer son droit de suppression via le bouton <span style="color:#f59e0b;">Signaler</span> present sur chaque fiche.</p>
+        </div>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+            <button onclick="document.getElementById('profilDisclaimer').style.display='none';" style="background:#1e2a3a;color:#c9d1d9;border:1px solid #2d3a4a;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">J'ai lu</button>
+            <button onclick="document.getElementById('profilDisclaimer').style.display='none';try{localStorage.setItem('bk_profil_disclaimer_ok_v3','1')}catch(e){}" style="background:#f59e0b;color:#000;border:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">J'ai compris, ne plus afficher</button>
+        </div>
+    </div>
+</div>
+<script>
+(function(){
+    if (localStorage.getItem('bk_profil_disclaimer_ok_v3')) return;
+    var seen = sessionStorage.getItem('bk_profil_disc_seen');
+    var delay = seen ? 0 : 2000;
+    setTimeout(function(){
+        var d = document.getElementById('profilDisclaimer');
+        if (d) d.style.display = 'flex';
+        sessionStorage.setItem('bk_profil_disc_seen', '1');
+    }, delay);
+})();
+</script>
+
+<?php if ($_isProfileHidden): ?>
+<div style="background:#ef444418;border:2px solid #ef4444;border-radius:12px;padding:16px 24px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
+    <span style="font-size:28px;">&#128683;</span>
+    <div>
+        <strong style="color:#ef4444;font-size:15px;">Profil masque — Inaccessible publiquement</strong>
+        <p style="color:#8b949e;font-size:12px;margin:4px 0 0;">Ce profil a ete signale et n'est plus visible par les visiteurs.<?php if ($_isAdmin): ?> <a href="<?= $_canonBase ?>/admin/panel.php#signalements" style="color:#a29bfe;">Gerer dans le panel</a><?php endif; ?></p>
+    </div>
+</div>
+<style>
+.profil-header .name, .profil-header .meta, .profil-header .meta b,
+.section-tabs a, .bk-table td, .bk-table td a, h2, h3,
+.badge, .perf-val { color: #ef4444 !important; -webkit-text-fill-color: #ef4444 !important; }
+.profil-header, .chart-card, .bk-table, .search-box, .section-tabs { border-color: #ef444440 !important; }
+</style>
+<?php endif; ?>
 
 <script>
 (function(){
@@ -2122,26 +2168,27 @@ elseif ($page === 'profil' && $id):
             <a href="?page=recherche&sexe=<?= urlencode($i['sexe']) ?>" style="text-decoration:none;"><span class="badge badge-<?= strtolower($i['sexe']) ?>"><?= $i['sexe'] === 'M' ? 'Homme' : 'Femme' ?></span></a>
             <a href="?page=recherche&categorie=<?= urlencode($i['categorie']) ?>" style="text-decoration:none;"><span class="badge badge-cat"><?= htmlspecialchars($i['categorie']) ?></span></a>
             <?= $i['nationalite'] ? '<a href="?page=recherche&nationalite=' . urlencode($i['nationalite']) . '" style="text-decoration:none;"><span class="badge" style="background:#30363d;">' . htmlspecialchars($i['nationalite']) . '</span></a>' : '' ?>
+            <?php if (!empty($i['meilleur_niveau'])):
+                $__mn = $i['meilleur_niveau'];
+                $__nc = $__mn[0] ?? '';
+                if ($__nc === 'N') { $__bg='#e11d4820'; $__bc='#e11d48'; $__tc='#fb7185'; }
+                elseif ($__nc === 'I') { $__bg='#c026d320'; $__bc='#c026d3'; $__tc='#e879f9'; }
+                elseif ($__nc === 'R') { $__bg='#0891b220'; $__bc='#0891b2'; $__tc='#22d3ee'; }
+                else { $__bg='#f9731620'; $__bc='#f97316'; $__tc='#fb923c'; }
+                echo '<span style="display:inline-block;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;margin-left:4px;background:'.$__bg.';border:1px solid '.$__bc.'40;color:'.$__tc.';">'.htmlspecialchars($__mn).'</span>';
+            endif; ?>
             <br>
-            <?php if ($i['date_naissance']): ?>
-                <b>Naissance :</b> <?= substr($i['date_naissance'], 0, 4) ?>
-                <?= $i['lieu_naissance'] ? ' — <a href="?page=villes&open=' . urlencode($i['lieu_naissance']) . '" style="color:#a29bfe;text-decoration:none;">' . htmlspecialchars($i['lieu_naissance']) . '</a>' : '' ?><br>
+            <?php if ($i['lieu_naissance']): ?>
+                <b>Lieu de naissance :</b> <a href="?page=villes&open=<?= urlencode($i['lieu_naissance']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($i['lieu_naissance']) ?></a><br>
             <?php endif; ?>
             <?php if ($i['taille_cm']): ?><b>Taille :</b> <?= $i['taille_cm'] ?> cm | <?php endif; ?>
             <?php if ($i['poids_kg']): ?><b>Poids :</b> <?= $i['poids_kg'] ?> kg | <?php endif; ?>
-            <?php if ($i['licence']): ?><b>Licence :</b> <?= htmlspecialchars($i['licence']) ?><?php endif; ?>
-            <br><b>ID athle.fr :</b> <?= $i['athlete_id'] ?>
+            <br><b>ID athle.fr :</b> <a href="https://www.athle.fr/athletes/<?= $i['athlete_id'] ?>/bilans" target="_blank" style="color:#a29bfe;text-decoration:none;"><?= $i['athlete_id'] ?></a>
             &nbsp;|&nbsp; <a href="pages/profil.php?id=<?= $i['id_athlete'] ?>" target="_blank" style="color:#a29bfe;text-decoration:none;font-size:13px;">&#127760; Profil public</a>
         </div>
     </div>
 </div>
 
-<div class="chart-card" style="margin:16px 0;border-left:3px solid #6c5ce7;" id="bioCard">
-    <h3 style="margin-top:0;"><span class="chart-icon" style="background:#6c5ce720;color:#a29bfe;">&#128221;</span> R&eacute;sum&eacute;</h3>
-    <div id="bioYearSelector" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center;"></div>
-    <p id="bioText" style="color:#c8cfd8;line-height:1.8;font-size:14px;margin:0;">Chargement...</p>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('bioText').textContent).then(function(){alert('R\u00e9sum\u00e9 copi\u00e9 !')})" style="margin-top:12px;background:#253049;color:#a29bfe;border:1px solid #6c5ce740;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;">&#128203; Copier le texte</button>
-</div>
 <script>
 var ATHLETE_DATA = <?= json_encode($data, JSON_UNESCAPED_UNICODE) ?>;
 var _bioSelectedYears = [];
@@ -2223,10 +2270,7 @@ function buildAthleteBio(data, selectedYears) {
     var currentYear=new Date().getFullYear();
     var carriereTerminee=(derniereAnnee>0&&(currentYear-derniereAnnee)>2);
 
-    // \u00c2ge
     var age=null;
-    if(i.date_naissance){var bd=new Date(i.date_naissance);var td=new Date();age=td.getFullYear()-bd.getFullYear();var mo=td.getMonth()-bd.getMonth();if(mo<0||(mo===0&&td.getDate()<bd.getDate()))age--;}
-    else if(i.annee_naissance){age=currentYear-i.annee_naissance;}
 
     // === 1. IDENTIT\u00c9 ===
     var intro = i.nom_complet;
@@ -2235,11 +2279,8 @@ function buildAthleteBio(data, selectedYears) {
     if(i.nationalite&&natMap[i.nationalite]){intro+=' '+natMap[i.nationalite];}
     else if(i.nationalite){intro+=' de nationalit\u00e9 '+i.nationalite;}
     if(i.categorie&&catMap[i.categorie]){intro+=' \u00e9voluant en cat\u00e9gorie '+catMap[i.categorie];}
-    if(i.date_naissance||i.annee_naissance){
-        intro+=', n\u00e9'+eF;
-        intro+=' en '+(i.date_naissance?i.date_naissance.substring(0,4):i.annee_naissance);
-        if(i.lieu_naissance)intro+=' \u00e0 '+i.lieu_naissance;
-        if(age)intro+=' ('+age+' ans)';
+    if(i.lieu_naissance){
+        intro+=', originaire de '+i.lieu_naissance;
     }
     if(i.taille_cm&&i.poids_kg){intro+=', mesurant '+(i.taille_cm/100).toFixed(2).replace('.',',')+' m pour '+i.poids_kg+' kg';}
     else if(i.taille_cm){intro+=', mesurant '+(i.taille_cm/100).toFixed(2).replace('.',',')+' m';}
@@ -2429,6 +2470,8 @@ document.addEventListener('DOMContentLoaded', function(){
     <a href="?page=profil&id=<?= $id ?>&s=resultats" class="<?= $section === 'resultats' ? 'active' : '' ?>">Résultats<span class="count"><?= count($data['resultats']) ?></span></a>
     <a href="?page=profil&id=<?= $id ?>&s=selections" class="<?= $section === 'selections' ? 'active' : '' ?>">Sélections<span class="count"><?= count($data['selections']) ?></span></a>
     <a href="?page=profil&id=<?= $id ?>&s=niveaux" class="<?= $section === 'niveaux' ? 'active' : '' ?>">Niveaux<span class="count"><?= count($data['niveaux']) ?></span></a>
+    <a href="?page=profil&id=<?= $id ?>&s=similaires" class="<?= $section === 'similaires' ? 'active' : '' ?>">Similaires</a>
+    <a href="?page=profil&id=<?= $id ?>&s=resume" class="<?= $section === 'resume' ? 'active' : '' ?>">Résumé</a>
 </div>
 
 <?php
@@ -3056,6 +3099,147 @@ document.addEventListener('DOMContentLoaded', function() {
 <?php endforeach; ?>
 <?php endif; ?>
 
+<?php if ($section === 'all' || $section === 'similaires'): ?>
+<h2 style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">Profils similaires
+<span id="simModeToggle" style="display:inline-flex;border-radius:8px;overflow:hidden;border:1px solid #3d4f6f;font-size:12px;font-weight:500;">
+    <button onclick="_loadSimilar('niveau')" id="simBtnNiv" style="padding:4px 14px;border:none;cursor:pointer;transition:all .2s;background:#6c5ce7;color:#fff;">Niveau</button>
+    <button onclick="_loadSimilar('perf')" id="simBtnPerf" style="padding:4px 14px;border:none;cursor:pointer;transition:all .2s;background:#161b22;color:#8b949e;">Performance</button>
+</span>
+</h2>
+<div id="simEpButtons" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+<div id="similarProfiles"><div class="loading-msg">Chargement...</div></div>
+<script>
+var _simAthId = <?= (int)$id ?>;
+var _simMode = 'niveau';
+var _simEpId = 0;
+var _simEpListLoaded = false;
+function _toggleSimEp(id) {
+    if (_simEpId === id) {
+        // Decocher → retour au mode precedent
+        _simEpId = 0;
+        _loadSimilar('niveau');
+    } else {
+        _simEpId = id;
+        _loadSimilar('epreuve');
+    }
+}
+function _updateSimButtons(mode) {
+    var btnN = document.getElementById('simBtnNiv'), btnP = document.getElementById('simBtnPerf');
+    var off = {background:'#161b22',color:'#8b949e'}, on = {background:'#6c5ce7',color:'#fff'};
+    Object.assign(btnN.style, mode === 'niveau' ? on : off);
+    Object.assign(btnP.style, mode === 'perf' ? on : off);
+    // Mettre a jour les boutons epreuves
+    var btns = document.querySelectorAll('#simEpButtons [data-epid]');
+    btns.forEach(function(b) {
+        var active = mode === 'epreuve' && parseInt(b.getAttribute('data-epid')) === _simEpId;
+        b.style.background = active ? '#6c5ce7' : '#161b22';
+        b.style.color = active ? '#fff' : '#8b949e';
+        b.style.borderColor = active ? '#6c5ce7' : '#3d4f6f';
+    });
+}
+function _loadSimilar(mode) {
+    _simMode = mode || 'niveau';
+    _updateSimButtons(_simMode);
+    var container = document.getElementById('similarProfiles');
+    container.innerHTML = '<div class="loading-msg">Chargement...</div>';
+    var url = '<?= $BASE_API ?>/similar.php?id=' + _simAthId + '&mode=' + _simMode;
+    if (_simMode === 'epreuve' && _simEpId) url += '&ep=' + _simEpId;
+    fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+        if (!data.success || !data.clubs || !data.clubs.length) { container.innerHTML = '<div class="loading-msg">Aucun profil similaire trouve</div>'; return; }
+        var html = '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;font-size:12px;color:#8b949e;">';
+        html += '<span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#818cf8;vertical-align:middle;margin-right:4px;"></span> Epreuve en commun</span>';
+        html += '<span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#818cf8;opacity:0.4;vertical-align:middle;margin-right:4px;"></span> Autre epreuve</span>';
+        html += '<span><span style="font-weight:700;color:#34d399;margin-right:4px;">70%+</span> Tres similaire</span>';
+        html += '<span><span style="font-weight:700;color:#fbbf24;margin-right:4px;">40-69%</span> Moyennement</span>';
+        html += '<span><span style="font-weight:700;color:#f87171;margin-right:4px;">&lt;40%</span> Peu similaire</span>';
+        html += '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;font-size:12px;color:#8b949e;">';
+        html += '<span>Perf : <span style="font-weight:700;color:#34d399;">vert</span> = meilleure</span>';
+        html += '<span><span style="font-weight:700;color:#f87171;">rouge</span> = moins bonne</span>';
+        html += '<span><span style="font-weight:700;color:#fbbf24;">jaune</span> = egale</span>';
+        html += '</div>';
+        data.clubs.forEach(function(club){
+            html += '<div style="margin-bottom:20px;">';
+            html += '<h4 style="color:#a29bfe;font-size:14px;margin-bottom:8px;"><a href="?page=recherche&club=' + encodeURIComponent(club.club_nom.replace(/\*\s*$/, '')) + '" style="color:#a29bfe;text-decoration:none;">' + club.club_nom.replace(/\*\s*$/, '') + '</a></h4>';
+            html += '<div class="table-wrap">';
+            var th = '<tr><th>#</th><th>Athlete</th><th>Similarite</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveau</th><th>Epreuves</th></tr>';
+            html += '<table class="bk-table">' + th + '</table>';
+            html += '<table class="bk-table">';
+            club.athletes.forEach(function(a, idx){
+                var epHtml = '-';
+                if (a.epreuves && a.epreuves.length) {
+                    epHtml = a.epreuves.map(function(ep){
+                        var opacity = ep.commun ? '1' : '0.4';
+                        var perfColor = '#fbbf24'; // defaut jaune (pas comparable)
+                        if (ep.cmp === 'better') perfColor = '#f87171'; // il me bat = rouge
+                        else if (ep.cmp === 'worse') perfColor = '#34d399'; // je le bats = vert
+                        else perfColor = '#fbbf24'; // egal = jaune
+                        return '<span style="display:inline-block;margin:2px 4px;padding:2px 8px;background:#1e2a3a;border:1px solid #818cf840;border-radius:6px;font-size:11px;color:#818cf8;opacity:'+opacity+';">'
+                            + (ep.epreuve||'').replace(/</g,'&lt;')
+                            + ' <span style="color:'+perfColor+';">' + (ep.perf||'').replace(/</g,'&lt;') + '</span>'
+                            + (ep.annee ? ' <span style="color:#5a6580;">(' + ep.annee + ')</span>' : '')
+                            + '</span>';
+                    }).join(' ');
+                }
+                var nivHtml = '-';
+                if (a.niveau) {
+                    var nc = a.niveau.charAt(0), bg, bc, tc;
+                    if (nc === 'N') { bg='#e11d4820'; bc='#e11d48'; tc='#fb7185'; }
+                    else if (nc === 'I') { bg='#c026d320'; bc='#c026d3'; tc='#e879f9'; }
+                    else if (nc === 'R') { bg='#0891b220'; bc='#0891b2'; tc='#22d3ee'; }
+                    else { bg='#f9731620'; bc='#f97316'; tc='#fb923c'; }
+                    nivHtml = '<span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;background:'+bg+';border:1px solid '+bc+'40;color:'+tc+';">'+a.niveau+'</span>';
+                }
+                var pct = a.similarite || 0;
+                var pctColor = pct >= 70 ? '#34d399' : pct >= 40 ? '#fbbf24' : '#f87171';
+                html += '<tr>'
+                    + '<td>' + (idx+1) + '</td>'
+                    + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + (a.nom_complet||'').replace(/</g,'&lt;') + '</a></b></td>'
+                    + '<td><span style="font-weight:700;color:'+pctColor+';">' + pct + '%</span></td>'
+                    + '<td><span class="badge badge-cat">' + (a.categorie||'-') + '</span></td>'
+                    + '<td><span class="badge badge-' + (a.sexe||'').toLowerCase() + '">' + (a.sexe||'-') + '</span></td>'
+                    + '<td>' + (a.nationalite||'-') + '</td>'
+                    + '<td>' + nivHtml + '</td>'
+                    + '<td>' + epHtml + '</td>'
+                    + '</tr>';
+            });
+            html += '</table>';
+            html += '<table class="bk-table">' + th + '</table>';
+            html += '</div></div>';
+        });
+        container.innerHTML = html;
+        // Generer les boutons epreuves (une seule fois)
+        if (!_simEpListLoaded && data.mes_epreuves && data.mes_epreuves.length) {
+            var wrap = document.getElementById('simEpButtons');
+            wrap.style.display = 'flex';
+            var bhtml = '';
+            data.mes_epreuves.forEach(function(ep){
+                bhtml += '<button data-epid="' + ep.id + '" onclick="_toggleSimEp(' + ep.id + ')" style="padding:4px 12px;border-radius:8px;border:1px solid #3d4f6f;background:#161b22;color:#8b949e;font-size:11px;cursor:pointer;transition:all .2s;white-space:nowrap;">'
+                    + (ep.nom||'').replace(/</g,'&lt;')
+                    + (ep.perf ? ' <span style="color:#34d399;font-size:10px;">(' + (ep.perf||'').replace(/</g,'&lt;') + ')</span>' : '')
+                    + '</button>';
+            });
+            wrap.innerHTML = bhtml;
+            _simEpListLoaded = true;
+        }
+    })
+    .catch(function(){ container.innerHTML = '<div class="loading-msg" style="color:#f87171;">Erreur de chargement — essayez un autre mode</div>'; });
+}
+_loadSimilar('niveau');
+</script>
+<?php endif; ?>
+
+<?php if ($section === 'all' || $section === 'resume'): ?>
+<h2>Résumé</h2>
+<div class="chart-card" style="border-left:3px solid #6c5ce7;" id="bioCard">
+    <div id="bioYearSelector" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center;"></div>
+    <p id="bioText" style="color:#c8cfd8;line-height:1.8;font-size:14px;margin:0;">Chargement...</p>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('bioText').textContent).then(function(){alert('R\u00e9sum\u00e9 copi\u00e9 !')})" style="margin-top:12px;background:#253049;color:#a29bfe;border:1px solid #6c5ce740;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;">&#128203; Copier le texte</button>
+</div>
+<?php endif; ?>
+
 <!-- QR Code profil -->
 <div class="qr-share">
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=<?= urlencode('https://bokonzi.com/pages/profil.php?id=' . intval($i['id_athlete'] ?? $id)) ?>" alt="QR Code profil <?= htmlspecialchars($i['nom_complet'] ?? '') ?> — Bokonzi" width="120" height="120">
@@ -3098,6 +3282,7 @@ elseif ($page === 'clubs'):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
+        <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTab('sprint')" style="color:#ff6b6b;">Sprint</button>
     </div>
     <div class="club-search-bar" id="clubSearchBar" style="display:none;padding:8px 16px;">
         <div style="position:relative;">
@@ -5100,6 +5285,7 @@ elseif ($page === 'tuto'):
             <button class="club-detail-tab" data-tab="stats" onclick="switchClubTabTuto('stats')">Stats</button>
             <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabTuto('performances')">Performances</button>
             <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabTuto('resume')">Résumé</button>
+            <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTabTuto('sprint')" style="color:#ff6b6b;">Sprint</button>
         </div>
         <!-- Bouton suite APRÈS les onglets (visible en haut) -->
         <div id="tutoClubTabsDoneTop" style="display:none;text-align:center;padding:10px;background:#10b98110;border:1px solid #10b98130;border-radius:8px;margin:8px 12px;">
@@ -5556,7 +5742,6 @@ function _tutoLoadAthPreview(id) {
             html += '</div>';
             // Infos
             var infos = [];
-            if (a.date_naissance && a.date_naissance.indexOf('0000') !== 0) infos.push('Né(e) : ' + a.date_naissance.substring(0, 4));
             if (a.lieu_naissance) infos.push('Lieu : ' + a.lieu_naissance);
             if (infos.length) html += '<div style="color:#5a6580;font-size:12px;margin-bottom:10px;">' + escapeHtml(infos.join(' — ')) + '</div>';
             // Clubs
@@ -5619,7 +5804,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <?php endif; ?>
 
+
 </div>
+
 
 <!-- ====== PANNEAU EPREUVE DETAIL (global) ====== -->
 <div id="epreuveDetailPanel" class="club-detail-panel">
@@ -5651,12 +5838,14 @@ function escapeHtml(str) {
 }
 function _buildLimitMsg(data) {
     var sub = data.logged
-        ? 'Vous avez atteint votre limite de <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches par jour</b>.<br><span style="color:#8b949e;font-size:16px;">La limite se reinitialise chaque jour a minuit.</span>'
-        : 'Vous avez utilise vos <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches</b> du jour.<br><a href="login.php" style="color:#6c5ce7;text-decoration:underline;font-size:18px;font-weight:700;">Connectez-vous</a> pour passer a <b style="color:#55efc4;font-size:22px;">100 recherches/jour</b> !';
+        ? 'Vous avez atteint votre limite de <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches</b>.<br><span style="color:#8b949e;font-size:16px;">Votre adresse IP a ete enregistree.</span>'
+        : 'Vous avez utilise vos <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches gratuites</b>.<br><a href="login.php" style="color:#6c5ce7;text-decoration:underline;font-size:18px;font-weight:700;">Connectez-vous</a> pour obtenir <b style="color:#55efc4;font-size:22px;">30 recherches</b> !';
     return '<div style="text-align:center;padding:50px 30px;color:#c9d1d9;background:#0d1117;border:2px solid #ff7675;border-radius:16px;margin:20px 0;">'
         + '<div style="font-size:70px;margin-bottom:16px;">&#9203;</div>'
         + '<div style="font-size:28px;font-weight:800;color:#ff7675;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;">Limite de recherches atteinte</div>'
         + '<div style="font-size:18px;line-height:2;">' + sub + '</div>'
+        + '<div style="margin-top:20px;"><a href="#" onclick="event.preventDefault();var w=document.getElementById(\'footerContactForm\');var b=document.getElementById(\'footerContactBtn\');if(w){w.style.display=\'block\';if(b)b.style.display=\'none\';w.scrollIntoView({behavior:\'smooth\'});}return false;" style="color:#8b949e;font-size:13px;text-decoration:none;">&#9993; Nous contacter</a> <span style="color:#30363d;margin:0 6px;">|</span> <a href="#" onclick="event.preventDefault();var d=document.getElementById(\'limitSignalInfo\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';return false;" style="color:#f59e0b;font-size:13px;text-decoration:none;">&#9888; Signaler un profil</a></div>'
+        + '<div id="limitSignalInfo" style="display:none;margin:12px auto 0;max-width:400px;text-align:left;background:#f59e0b10;border:1px solid #f59e0b30;border-radius:8px;padding:12px 14px;"><p style="color:#c9d1d9;font-size:12px;line-height:1.6;margin:0;"><strong style="color:#f59e0b;">Comment signaler un profil ?</strong><br>1. Rendez-vous sur le profil de l\'athlete concerne<br>2. Cliquez sur le bouton <span style="color:#f59e0b;">&#9888; Signaler</span> en haut du profil<br>3. Choisissez un motif et envoyez votre demande</p></div>'
         + '</div>';
 }
 function _updateSearchQuota(data) {
@@ -5665,9 +5854,9 @@ function _updateSearchQuota(data) {
     var u = data.search_used || 0, l = data.search_limit;
     el.textContent = u + '/' + l;
     if (u > l * 0.8) {
-        el.style.background = '#ef444430'; el.style.color = '#ff7675'; el.style.borderColor = '#ef4444';
+        el.style.background = '#ef444430'; el.style.color = '#ff7675'; el.style.borderColor = '#ef4444'; el.style.animation = 'bkGoldBlink 0.8s ease-in-out infinite';
     } else {
-        el.style.background = '#6c5ce720'; el.style.color = '#a29bfe'; el.style.borderColor = '#6c5ce740';
+        el.style.background = '#ffd70025'; el.style.color = '#ffd700'; el.style.borderColor = '#ffd70060'; el.style.animation = 'bkGoldBlink 1.5s ease-in-out infinite';
     }
 }
 function dateFR(d) {
@@ -5894,6 +6083,99 @@ function _closeClubPanel(suffix) {
         window['_clubCompareChart' + s] = null;
     }
 }
+// --- Sprint composition helpers ---
+function _compE(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function _compP(p) {
+    if (!p || p <= 0) return '-';
+    var cs = p % 100, ts = Math.floor(p / 100), sec = ts % 60, min = Math.floor(ts / 60);
+    if (min > 0) return min + "'" + (sec < 10 ? '0' : '') + sec + "''" + (cs < 10 ? '0' : '') + cs;
+    return sec + "''" + (cs < 10 ? '0' : '') + cs;
+}
+function _clubSprintLoad(suffix) {
+    var s = suffix || '';
+    var d = window['_clubDetailData' + s];
+    if (!d || !d.club) return;
+    var clubName = d.club.nom_club;
+    var annees = window['_clubSprintAnnees' + s] || [];
+    var sexe = window['_clubSprintSexe' + s] || '';
+    var excl = window['_clubSprintExcl' + s] || {};
+    var exclIds = Object.keys(excl);
+    var incl = window['_clubSprintInclure' + s] || {};
+    var inclIds = Object.keys(incl);
+
+    window['_clubSprintLoading' + s] = true;
+    _renderClubTab('sprint', s);
+
+    var params = 'club=' + encodeURIComponent(clubName) + '&top=8';
+    if (sexe) params += '&sexe=' + sexe;
+    if (annees.length) params += '&annees=' + annees.join(',');
+    if (inclIds.length) params += '&inclure=' + inclIds.join(',');
+    else if (exclIds.length) params += '&exclure=' + exclIds.join(',');
+
+    fetch(BASE_API + '/composition.php?' + params)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            window['_clubSprintLoading' + s] = false;
+            if (data.success) {
+                window['_clubSprintData' + s] = data;
+            }
+            _renderClubTab('sprint', s);
+        })
+        .catch(function() {
+            window['_clubSprintLoading' + s] = false;
+            _renderClubTab('sprint', s);
+        });
+}
+function _clubSprintSetSexe(sexe, suffix) {
+    var s = suffix || '';
+    window['_clubSprintSexe' + s] = sexe;
+    if (window['_clubSprintData' + s]) _clubSprintLoad(s);
+    else _renderClubTab('sprint', s);
+}
+function _clubSprintToggleAnnee(annee, suffix) {
+    var s = suffix || '';
+    var arr = window['_clubSprintAnnees' + s] || [];
+    var idx = arr.indexOf(annee);
+    if (idx === -1) arr.push(annee); else arr.splice(idx, 1);
+    window['_clubSprintAnnees' + s] = arr;
+    _clubSprintLoad(s);
+}
+function _clubSprintExcl(idExt, suffix) {
+    var s = suffix || '';
+    var excl = window['_clubSprintExcl' + s] || {};
+    if (excl[idExt]) delete excl[idExt]; else excl[idExt] = true;
+    window['_clubSprintExcl' + s] = excl;
+    _clubSprintLoad(s);
+}
+function _clubSprintToggleList(suffix) {
+    var s = suffix || '';
+    window['_clubSprintShowList' + s] = !window['_clubSprintShowList' + s];
+    _renderClubTab('sprint', s);
+}
+function _clubSprintToggleIncl(idExt, suffix) {
+    var s = suffix || '';
+    var incl = window['_clubSprintInclure' + s] || {};
+    if (incl[idExt]) delete incl[idExt]; else incl[idExt] = true;
+    window['_clubSprintInclure' + s] = incl;
+    _renderClubTab('sprint', s);
+}
+function _clubSprintClearIncl(suffix) {
+    var s = suffix || '';
+    window['_clubSprintInclure' + s] = {};
+    _clubSprintLoad(s);
+}
+function _clubSprintFilterAth(suffix) {
+    var s = suffix || '';
+    var inp = document.getElementById('sprintSearchAth' + s);
+    if (!inp) return;
+    var q = inp.value.toLowerCase().trim();
+    var list = document.getElementById('sprintAthList' + s);
+    if (!list) return;
+    list.querySelectorAll('.sp-chip').forEach(function(c) {
+        c.style.display = (!q || c.getAttribute('data-nom').indexOf(q) !== -1) ? '' : 'none';
+    });
+}
+
 // --- Club athlete search ---
 function _clubSearchInit(suffix) {
     var s = suffix || '';
@@ -5972,9 +6254,7 @@ function _clubSearchExec(suffix) {
                     }
                     html += '<tr>'
                         + '<td>' + (i + 1) + '</td>'
-                        + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + highlight(a.nom_complet, q) + '</a></b>'
-                        + (a.date_naissance ? '<br><span style="font-size:11px;color:#5a6580;">' + a.date_naissance.substring(0, 4) + '</span>' : '')
-                        + '</td>'
+                        + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + highlight(a.nom_complet, q) + '</a></b></td>'
                         + '<td><span class="badge badge-cat">' + escapeHtml(a.categorie) + '</span></td>'
                         + '<td><span class="badge badge-' + (a.sexe || '').toLowerCase() + '">' + escapeHtml(a.sexe) + '</span></td>'
                         + '<td>' + escapeHtml(a.nationalite) + '</td>'
@@ -6576,6 +6856,223 @@ function _renderClubTab(tab, suffix) {
             html += '<span style="color:#5a6580;font-size:12px;margin-left:10px;">' + selYears.length + '/6 annees</span>';
             html += '</div>';
             html += '<div id="clubCompareResult' + s + '"></div>';
+        }
+
+    // ================================================================
+    //  ONGLET SPRINT — Composition sprint du club
+    // ================================================================
+    } else if (tab === 'sprint') {
+        var sprintData = window['_clubSprintData' + s];
+        var sprintAnnees = window['_clubSprintAnnees' + s] || [];
+        var sprintSexe = window['_clubSprintSexe' + s] || '';
+        var sprintExcl = window['_clubSprintExcl' + s] || {};
+        var sprintLoading = window['_clubSprintLoading' + s];
+
+        // Boutons filtre
+        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">';
+        html += '<span style="color:#8b949e;font-size:12px;font-weight:700;">SEXE:</span>';
+        html += '<button onclick="_clubSprintSetSexe(\'\',\'' + s + '\')" style="padding:3px 12px;border-radius:16px;border:1px solid ' + (!sprintSexe ? '#ff6b6b' : '#30363d') + ';background:' + (!sprintSexe ? '#ff6b6b20' : 'transparent') + ';color:' + (!sprintSexe ? '#ff6b6b' : '#8b949e') + ';font-size:12px;cursor:pointer;font-weight:600;">Tous</button>';
+        html += '<button onclick="_clubSprintSetSexe(\'M\',\'' + s + '\')" style="padding:3px 12px;border-radius:16px;border:1px solid ' + (sprintSexe === 'M' ? '#3b82f6' : '#30363d') + ';background:' + (sprintSexe === 'M' ? '#3b82f620' : 'transparent') + ';color:' + (sprintSexe === 'M' ? '#60a5fa' : '#8b949e') + ';font-size:12px;cursor:pointer;font-weight:600;">Hommes</button>';
+        html += '<button onclick="_clubSprintSetSexe(\'F\',\'' + s + '\')" style="padding:3px 12px;border-radius:16px;border:1px solid ' + (sprintSexe === 'F' ? '#ec4899' : '#30363d') + ';background:' + (sprintSexe === 'F' ? '#ec489920' : 'transparent') + ';color:' + (sprintSexe === 'F' ? '#f472b6' : '#8b949e') + ';font-size:12px;cursor:pointer;font-weight:600;">Femmes</button>';
+        html += '</div>';
+
+        // Annees
+        if (sprintData && sprintData.annees_disponibles && sprintData.annees_disponibles.length) {
+            html += '<div style="margin-bottom:12px;">';
+            html += '<span style="color:#8b949e;font-size:12px;font-weight:700;">ANNEES:</span> ';
+            sprintData.annees_disponibles.forEach(function(a) {
+                var sel = sprintAnnees.indexOf(a) !== -1;
+                html += '<button onclick="_clubSprintToggleAnnee(' + a + ',\'' + s + '\')" style="padding:2px 10px;border-radius:14px;border:1px solid ' + (sel ? '#ff6b6b' : '#30363d') + ';background:' + (sel ? '#ff6b6b20' : 'transparent') + ';color:' + (sel ? '#ff6b6b' : '#8b949e') + ';font-size:11px;cursor:pointer;margin:2px;">' + a + '</button>';
+            });
+            html += '</div>';
+        }
+
+        // --- Selecteur sprinters ---
+        if (sprintData && sprintData.sprinters && sprintData.sprinters.length) {
+            var spShowList = window['_clubSprintShowList' + s];
+            var spInclure = window['_clubSprintInclure' + s] || {};
+            var inclCount = Object.keys(spInclure).length;
+            html += '<div style="margin-bottom:12px;">';
+            html += '<button onclick="_clubSprintToggleList(\'' + s + '\')" style="padding:4px 14px;border-radius:8px;border:1px solid #30363d;background:' + (spShowList ? '#21262d' : 'transparent') + ';color:#c9d1d9;font-size:12px;cursor:pointer;font-weight:600;">';
+            html += (spShowList ? '&#9650;' : '&#9660;') + ' Selectionner les sprinters';
+            if (inclCount > 0) html += ' <span style="background:#ff6b6b;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:4px;">' + inclCount + ' choisis</span>';
+            html += '</button>';
+            if (inclCount > 0) {
+                html += ' <button onclick="_clubSprintClearIncl(\'' + s + '\')" style="padding:4px 10px;border-radius:8px;border:1px solid #f8717140;background:transparent;color:#f87171;font-size:11px;cursor:pointer;margin-left:4px;">Tout deselectionner</button>';
+            }
+            html += '</div>';
+
+            if (spShowList) {
+                html += '<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:16px;max-height:300px;overflow-y:auto;">';
+                html += '<input type="text" id="sprintSearchAth' + s + '" placeholder="Rechercher un sprinter..." oninput="_clubSprintFilterAth(\'' + s + '\')" style="width:100%;padding:6px 10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:12px;margin-bottom:8px;box-sizing:border-box;">';
+                html += '<div id="sprintAthList' + s + '" style="display:flex;flex-wrap:wrap;gap:4px;">';
+                sprintData.sprinters.forEach(function(sp) {
+                    var isSel = !!spInclure[sp.id];
+                    var sexeF2 = sprintSexe;
+                    if (sexeF2 && sp.sexe !== sexeF2) return;
+                    html += '<div class="sp-chip" data-nom="' + sp.nom.toLowerCase() + '" onclick="_clubSprintToggleIncl(' + sp.id + ',\'' + s + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:' + (isSel ? '#ff6b6b20' : '#21262d') + ';border:1px solid ' + (isSel ? '#ff6b6b' : '#30363d') + ';border-radius:20px;font-size:11px;color:' + (isSel ? '#ff6b6b' : '#c9d1d9') + ';cursor:pointer;transition:all .15s;">';
+                    html += '<span style="font-weight:600;">' + _compE(sp.nom) + '</span>';
+                    html += '<span style="color:#8b949e;font-size:9px;">' + (sp.sexe || '') + ' ' + (sp.cat || '') + '</span>';
+                    if (sp.best_100m) html += '<span style="color:#f59e0b;font-size:9px;">' + sp.best_100m + '</span>';
+                    html += '<span style="color:#5a6580;font-size:9px;">' + sp.derniere_annee + '</span>';
+                    if (isSel) html += '<span style="font-weight:700;margin-left:2px;">&#10003;</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+                if (inclCount > 0) {
+                    html += '<div style="margin-top:8px;text-align:right;">';
+                    html += '<button onclick="_clubSprintLoad(\'' + s + '\')" style="padding:6px 18px;background:linear-gradient(135deg,#ff6b6b,#ee5a24);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Appliquer (' + inclCount + ' athletes)</button>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+        }
+
+        if (sprintLoading) {
+            html += '<div style="text-align:center;padding:30px;color:#8b949e;">Chargement...</div>';
+        } else if (!sprintData) {
+            html += '<div style="text-align:center;padding:30px;">';
+            html += '<div style="font-size:40px;margin-bottom:8px;">&#127939;</div>';
+            html += '<button onclick="_clubSprintLoad(\'' + s + '\')" style="padding:8px 20px;background:linear-gradient(135deg,#ff6b6b,#ee5a24);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">Charger la composition sprint</button>';
+            html += '</div>';
+        } else {
+            var sd = sprintData;
+            var sexeF = sprintSexe;
+
+            // --- 4x100m ---
+            if (sd.relay_4x100) {
+                ['M', 'F'].forEach(function(sx) {
+                    if (sexeF && sexeF !== sx) return;
+                    var relay = sd.relay_4x100[sx];
+                    if (!relay || !relay.equipe || !relay.equipe.length) return;
+                    html += '<div style="background:linear-gradient(135deg,#161b22,#1c2333);border:1px solid #30363d;border-radius:12px;padding:16px;margin-bottom:16px;">';
+                    html += '<div style="font-size:16px;font-weight:700;color:#e6edf3;margin-bottom:12px;">';
+                    html += '<span style="display:inline-block;padding:2px 10px;border-radius:6px;font-size:11px;font-weight:700;' + (sx === 'M' ? 'background:#3b82f620;color:#60a5fa;border:1px solid #3b82f640;' : 'background:#ec489920;color:#f472b6;border:1px solid #ec489940;') + '">' + (sx === 'M' ? 'HOMMES' : 'FEMMES') + '</span>';
+                    html += ' 4x100m';
+                    if (relay.temps_estime_brut) html += ' &mdash; <span style="color:#ff6b6b;font-weight:800;">' + relay.temps_estime_brut + '</span>';
+                    html += '</div>';
+
+                    // Piste visuelle
+                    html += '<div style="display:flex;gap:0;">';
+                    var laneBgs = ['#1a1e2e', '#1e2a2e', '#2a1e1e', '#1e1e2a'];
+                    relay.equipe.forEach(function(p, i) {
+                        html += '<div style="flex:1;padding:12px 8px;text-align:center;border:1px solid #30363d;background:' + (laneBgs[i] || '#1a1e2e') + ';' + (i === 0 ? 'border-radius:10px 0 0 10px;' : '') + (i === relay.equipe.length - 1 ? 'border-radius:0 10px 10px 0;' : '') + '">';
+                        html += '<div style="font-size:10px;color:#8b949e;font-weight:700;">RELAYEUR ' + p.poste + '</div>';
+                        html += '<div style="font-size:10px;color:#6c5ce7;margin-bottom:6px;">' + p.role + '</div>';
+                        html += '<div style="font-size:13px;font-weight:700;color:#e6edf3;"><a href="?page=profil&id=' + p.athlete.id_externe + '" style="color:#58a6ff;text-decoration:none;">' + _compE(p.athlete.nom) + '</a></div>';
+                        html += '<div style="font-size:12px;color:#f59e0b;margin-top:4px;">' + (p.athlete.perf_brut || _compP(p.athlete.perf_int)) + '</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+
+                    if (relay.temps_estime_brut) {
+                        html += '<div style="text-align:center;margin-top:10px;padding:10px;background:#ff6b6b15;border:1px solid #ff6b6b40;border-radius:8px;">';
+                        html += '<div style="color:#8b949e;font-size:11px;">Temps estime (somme 100m - 2.50s passages)</div>';
+                        html += '<div style="font-size:24px;font-weight:800;color:#ff6b6b;">' + relay.temps_estime_brut + '</div>';
+                        html += '</div>';
+                    }
+
+                    if (relay.remplacants && relay.remplacants.length) {
+                        html += '<div style="margin-top:8px;color:#8b949e;font-size:12px;">Remplacants : ';
+                        relay.remplacants.forEach(function(r, i) {
+                            if (i) html += ', ';
+                            html += '<a href="?page=profil&id=' + r.id_externe + '" style="color:#58a6ff;text-decoration:none;font-weight:600;">' + _compE(r.nom) + '</a> (' + (r.perf_brut || _compP(r.perf_int)) + ')';
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+            }
+
+            // --- Estimation 4x100m par annee ---
+            if (sd.estimation_par_annee && sd.estimation_par_annee.length) {
+                var estByS = {};
+                sd.estimation_par_annee.forEach(function(e) {
+                    if (!estByS[e.sexe]) estByS[e.sexe] = [];
+                    estByS[e.sexe].push(e);
+                });
+                ['M', 'F'].forEach(function(sx) {
+                    if (sexeF && sexeF !== sx) return;
+                    var ests = estByS[sx];
+                    if (!ests || !ests.length) return;
+                    html += '<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;margin-bottom:16px;">';
+                    html += '<div style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:12px;">';
+                    html += '<span style="display:inline-block;padding:2px 10px;border-radius:6px;font-size:11px;font-weight:700;' + (sx === 'M' ? 'background:#3b82f620;color:#60a5fa;border:1px solid #3b82f640;' : 'background:#ec489920;color:#f472b6;border:1px solid #ec489940;') + '">' + (sx === 'M' ? 'H' : 'F') + '</span>';
+                    html += ' Estimation 4x100m par annee</div>';
+
+                    // Trouver la meilleure annee
+                    var bestEst = null;
+                    ests.forEach(function(e) { if (e.temps_estime_int > 0 && (!bestEst || e.temps_estime_int < bestEst.temps_estime_int)) bestEst = e; });
+
+                    var thRow = '<tr><th>Annee</th><th>4x100m</th><th>Relayeur 1</th><th>Relayeur 2</th><th>Relayeur 3</th><th>Relayeur 4</th></tr>';
+                    html += '<div class="table-wrap">';
+                    html += '<table class="bk-table">' + thRow + '</table>';
+                    html += '<table class="bk-table">';
+                    ests.forEach(function(e) {
+                        var isBest = bestEst && e.annee === bestEst.annee && e.temps_estime_int > 0;
+                        html += '<tr' + (isBest ? ' style="background:#ff6b6b10;"' : '') + '>';
+                        html += '<td style="font-weight:700;color:#e6edf3;">' + e.annee + (isBest ? ' &#11088;' : '') + '</td>';
+                        if (e.temps_estime_brut) {
+                            html += '<td style="color:#ff6b6b;font-weight:800;font-size:15px;">' + e.temps_estime_brut + '</td>';
+                        } else {
+                            html += '<td style="color:#8b949e;font-size:11px;">' + e.nb_disponibles + '/4 coureurs</td>';
+                        }
+                        for (var ci = 0; ci < 4; ci++) {
+                            var c = e.coureurs[ci];
+                            if (c) {
+                                html += '<td><a href="?page=profil&id=' + c.id_externe + '" style="color:#58a6ff;text-decoration:none;font-size:12px;">' + _compE(c.nom) + '</a><br><span style="color:#f59e0b;font-size:11px;">' + c.perf_brut + '</span></td>';
+                            } else {
+                                html += '<td style="color:#5a6580;">-</td>';
+                            }
+                        }
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+                    html += '<table class="bk-table">' + thRow + '</table>';
+                    html += '</div>';
+                    html += '</div>';
+                });
+            }
+
+            // --- Epreuves individuelles ---
+            if (sd.epreuves && sd.epreuves.length) {
+                sd.epreuves.forEach(function(ep) {
+                    ['M', 'F'].forEach(function(sx) {
+                        if (sexeF && sexeF !== sx) return;
+                        var athletes = ep[sx];
+                        if (!athletes || !athletes.length) return;
+                        html += '<h4 style="font-size:14px;font-weight:700;color:#c9d1d9;margin:16px 0 6px;">' + _compE(ep.nom) + ' <span style="display:inline-block;padding:1px 8px;border-radius:5px;font-size:10px;font-weight:700;' + (sx === 'M' ? 'background:#3b82f620;color:#60a5fa;border:1px solid #3b82f640;' : 'background:#ec489920;color:#f472b6;border:1px solid #ec489940;') + '">' + (sx === 'M' ? 'H' : 'F') + '</span></h4>';
+                        var thRow = '<tr><th style="width:25px;">#</th><th>Athlete</th><th>Cat</th><th>NAT</th><th>Perf</th><th>Annee</th><th style="width:30px;"></th></tr>';
+                        html += '<div class="table-wrap">';
+                        html += '<table class="bk-table">' + thRow + '</table>';
+                        html += '<table class="bk-table">';
+                        athletes.forEach(function(a, i) {
+                            var isExcl = !!sprintExcl[a.id_externe];
+                            html += '<tr' + (isExcl ? ' style="opacity:0.3;text-decoration:line-through;"' : '') + '>';
+                            html += '<td style="color:#8b949e;">' + (i + 1) + '</td>';
+                            html += '<td><a href="?page=profil&id=' + a.id_externe + '" style="color:#58a6ff;text-decoration:none;font-weight:600;">' + _compE(a.nom) + '</a></td>';
+                            html += '<td style="color:#8b949e;font-size:11px;">' + (a.categorie || '-') + '</td>';
+                            html += '<td style="font-size:11px;">' + (a.nationalite || '-') + '</td>';
+                            html += '<td style="color:#f59e0b;font-weight:700;">' + (a.perf_brut || _compP(a.perf_int)) + '</td>';
+                            html += '<td style="color:#8b949e;font-size:11px;">' + (a.annee || '') + '</td>';
+                            html += '<td><button onclick="_clubSprintExcl(' + a.id_externe + ',\'' + s + '\')" style="padding:1px 6px;border-radius:4px;border:1px solid ' + (isExcl ? '#3fb950' : '#f8717140') + ';background:transparent;color:' + (isExcl ? '#3fb950' : '#f87171') + ';font-size:10px;cursor:pointer;" title="' + (isExcl ? 'Reinclure' : 'Exclure') + '">' + (isExcl ? '&#10003;' : '&#10005;') + '</button></td>';
+                            html += '</tr>';
+                        });
+                        html += '</table>';
+                        html += '<table class="bk-table">' + thRow + '</table>';
+                        html += '</div>';
+                    });
+                });
+            }
+
+            if (!sd.epreuves || !sd.epreuves.length) {
+                html += '<div style="text-align:center;padding:20px;color:#8b949e;">Aucune donnee sprint trouvee pour ce club</div>';
+            }
+
+            // Bouton recharger
+            html += '<div style="text-align:center;margin-top:16px;">';
+            html += '<button onclick="_clubSprintLoad(\'' + s + '\')" style="padding:6px 16px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:12px;cursor:pointer;">Recharger</button>';
+            html += '</div>';
         }
     }
     content.innerHTML = html;
@@ -8468,53 +8965,7 @@ function highlight(text, query) {
     return safe.replace(regex, '<mark style="background:#1f6feb44;color:#58a6ff;">$1</mark>');
 }
 
-// --- ATHLETES ---
-liveSearch('lsAthletes', 'lsAthletesStatus', 'lsAthletesResults', 'athletesPaginated', {
-    url: q => BASE_API + '/search.php?nom=' + encodeURIComponent(q) + '&limit=50',
-    key: 'athletes',
-    trackType: 'athlete',
-    trackPage: 'athletes',
-    render: (items, q) => {
-        var thAth = '<tr><th>#</th><th>Athlète</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Records (top 5)</th><th></th><th></th></tr>';
-        let html = '<div class="table-wrap">';
-        html += '<table class="bk-table">' + thAth + '</table>';
-        html += '<table class="bk-table">';
-        var _num = 0;
-        items.forEach(a => {
-            _num++;
-            var inBasket = isAthleteInBasket(a.athlete_id);
-            var nbRec = a.nb_records || 0;
-            var topRecs = a.top_records || [];
-            var recHtml = '';
-            if (topRecs.length > 0) {
-                topRecs.forEach(function(tr) {
-                    recHtml += '<div style="font-size:11px;line-height:1.6;"><a href="?page=recherche&epreuve=' + encodeURIComponent(tr.epreuve) + '" style="color:#a29bfe;text-decoration:none;">' + escapeHtml(tr.epreuve) + '</a> <span class="perf-val" style="font-size:11px;">' + escapeHtml(tr.performance) + '</span> ' + _nivBadge(tr.top_niveau || _highestNiveau(tr.niveaux || [])) + '</div>';
-                });
-            } else if (nbRec > 0) {
-                recHtml = '<span class="badge badge-perf">' + nbRec + '</span>';
-            } else {
-                recHtml = '-';
-            }
-            html += '<tr>'
-                + '<td>' + _num + '</td>'
-                + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + highlight(a.nom_complet, q) + '</a></b>'
-                + (a.date_naissance ? '<br><span style="font-size:11px;color:#5a6580;">' + a.date_naissance.substring(0,4) + '</span>' : '')
-                + '</td>'
-                + '<td><span class="badge badge-cat">' + escapeHtml(a.categorie) + '</span></td>'
-                + '<td><span class="badge badge-' + (a.sexe||'').toLowerCase() + '">' + escapeHtml(a.sexe) + '</span></td>'
-                + '<td>' + escapeHtml(a.nationalite) + '</td>'
-                + '<td>' + _nivBadge(_highestNiveau(a.niveaux || [])) + '</td>'
-                + '<td>' + recHtml + '</td>'
-                + '<td><a href="?page=profil&id=' + a.athlete_id + '&s=records" style="font-size:12px;">Profil</a></td>'
-                + '<td><button class="btn-cmp-add' + (inBasket ? ' added' : '') + '" data-cmp-ath="' + a.athlete_id + '" data-name="' + escapeHtml(a.nom_complet) + '" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)">' + (inBasket ? '\u2713' : '+') + '</button></td>'
-                + '</tr>';
-        });
-        html += '</table>';
-        html += '<table class="bk-table">' + thAth + '</table>';
-        html += '</div>';
-        return html;
-    }
-});
+// --- ATHLETES : live search retire (page redesignee avec cards) ---
 
 // --- RECHERCHE ---
 var _rchExtraParams = <?php
@@ -8531,7 +8982,7 @@ liveSearch('lsRecherche', 'lsRechercheStatus', 'lsRechercheResults', 'rechercheP
     trackType: 'athlete',
     trackPage: 'recherche',
     render: (items, q) => {
-        var thAth2 = '<tr><th>#</th><th>Nom complet</th><th>Naissance</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Records</th><th></th><th></th></tr>';
+        var thAth2 = '<tr><th>#</th><th>Nom complet</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Records</th><th></th><th></th></tr>';
         let html = '<div class="table-wrap">';
         html += '<table class="bk-table">' + thAth2 + '</table>';
         html += '<table class="bk-table">';
@@ -8543,7 +8994,6 @@ liveSearch('lsRecherche', 'lsRechercheStatus', 'lsRechercheResults', 'rechercheP
             html += '<tr>'
                 + '<td>' + _num + '</td>'
                 + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + highlight(a.nom_complet, q) + '</a></b></td>'
-                + '<td>' + (a.date_naissance ? a.date_naissance.substring(0,4) : '-') + '</td>'
                 + '<td><span class="badge badge-cat">' + escapeHtml(a.categorie) + '</span></td>'
                 + '<td><span class="badge badge-' + (a.sexe||'').toLowerCase() + '">' + escapeHtml(a.sexe) + '</span></td>'
                 + '<td>' + escapeHtml(a.nationalite) + '</td>'
@@ -9996,11 +10446,11 @@ function copyCmpLink() {
         <button class="btn-close" onclick="closeReportModal()" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#8b949e;font-size:24px;cursor:pointer;">&times;</button>
         <h3>&#9888; Signaler ce profil</h3>
         <p id="reportAthleteName" style="color:#c9d1d9;font-weight:600;margin-bottom:4px;"></p>
-        <p style="margin-bottom:16px;">Si vous souhaitez que ce profil soit retire de Bokonzi, veuillez indiquer le motif ci-dessous. Nous traiterons votre demande dans les plus brefs delais.</p>
+        <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0 0 16px;line-height:1.5;">&#9993; Indiquez votre adresse email : nous vous enverrons un lien de confirmation qui vous permettra de retirer votre profil instantanement. Sans confirmation par email, votre demande sera traitee manuellement sous 1 a 30 jours selon notre disponibilite.</p>
         <input type="hidden" id="reportAthleteId" value="">
         <input type="hidden" id="reportAthleteNameVal" value="">
         <label for="reportReason">Motif du signalement</label>
-        <select id="reportReason">
+        <select id="reportReason" onchange="(function(v){var h=document.getElementById('reportRetraitHint');var l=document.getElementById('reportEmailLabel');if(v==='retrait'){h.style.display='block';l.innerHTML='Email de contact <span style=&quot;color:#ef4444&quot;>*</span>';}else{h.style.display='none';l.innerHTML='Email de contact';}})(this.value)">
             <option value="">-- Choisir un motif --</option>
             <option value="retrait">Je souhaite retirer mon profil</option>
             <option value="donnees_incorrectes">Donnees incorrectes</option>
@@ -10008,9 +10458,12 @@ function copyCmpLink() {
             <option value="vie_privee">Atteinte a la vie privee</option>
             <option value="autre">Autre</option>
         </select>
+        <div id="reportRetraitHint" style="display:none;background:#ef444415;border:1px solid #ef444440;border-radius:8px;padding:10px 14px;margin:8px 0 12px;">
+            <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0;line-height:1.5;">&#9888; L'email est obligatoire pour ce motif. Vous recevrez un lien de confirmation : un seul clic et votre profil sera masque immediatement.</p>
+        </div>
         <label for="reportMessage">Details (facultatif)</label>
         <textarea id="reportMessage" placeholder="Precisez votre demande..." maxlength="2000"></textarea>
-        <label for="reportEmail">Email de contact (facultatif)</label>
+        <label for="reportEmail" id="reportEmailLabel">Email de contact</label>
         <input type="email" id="reportEmail" placeholder="votre@email.com">
         <button class="btn-submit-report" id="btnSubmitReport" onclick="submitReport()">Envoyer le signalement</button>
         <div id="reportFeedback"></div>
@@ -10047,6 +10500,7 @@ window.submitReport = function() {
     var fb = document.getElementById('reportFeedback');
     var btn = document.getElementById('btnSubmitReport');
     if (!reason) { fb.innerHTML = '<div class="report-error">Veuillez choisir un motif.</div>'; return; }
+    if (reason === 'retrait' && !email) { fb.innerHTML = '<div class="report-error">Veuillez indiquer votre email pour recevoir le lien de confirmation.</div>'; return; }
     btn.disabled = true;
     btn.textContent = 'Envoi en cours...';
     fetch(BASE_API + '/report.php', {
@@ -10057,9 +10511,18 @@ window.submitReport = function() {
     .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
     .then(function(res) {
         if (res.ok && res.data.success) {
-            fb.innerHTML = '<div class="report-success">&#10003; ' + (res.data.message || 'Signalement envoye.') + '</div>';
+            if (res.data.confirm_sent) {
+                fb.innerHTML = '<div style="background:#a29bfe15;border:2px solid #a29bfe;border-radius:12px;padding:18px 20px;margin-top:14px;text-align:center;line-height:1.7;">'
+                    + '<div style="font-size:36px;margin-bottom:8px;">&#9993;</div>'
+                    + '<strong style="color:#a29bfe;font-size:16px;">Verifiez votre boite mail !</strong><br>'
+                    + '<span style="color:#c9d1d9;font-size:14px;">Un email a ete envoye a <strong>' + email + '</strong></span><br><br>'
+                    + '<span style="color:#f0f6fc;font-size:15px;font-weight:700;">&#x1F449; Ouvrez l\'email et cliquez sur le bouton de confirmation pour masquer votre profil.</span><br><br>'
+                    + '<span style="color:#8b949e;font-size:12px;">Sans confirmation, votre profil restera visible.<br>Pensez a verifier vos spams. Le lien expire dans 48h.</span>'
+                    + '</div>';
+            } else {
+                fb.innerHTML = '<div class="report-success">&#10003; ' + (res.data.message || 'Signalement envoye.') + '</div>';
+            }
             btn.textContent = 'Envoye';
-            setTimeout(closeReportModal, 2500);
         } else {
             fb.innerHTML = '<div class="report-error">' + (res.data.error || 'Erreur inconnue') + '</div>';
             btn.disabled = false;
@@ -10093,11 +10556,12 @@ window.submitReport = function() {
 (function() {
     var _followAthleteId = null;
     var _bkUser = null;
+    window._bkUser = null;
 
     // Verifier si l'utilisateur est connecte
     fetch(BASE_API + '/auth/me.php', { credentials: 'same-origin' })
         .then(function(r) { return r.json(); })
-        .then(function(data) { if (data.authenticated) _bkUser = data.user; })
+        .then(function(data) { if (data.authenticated) { _bkUser = data.user; window._bkUser = data.user; } })
         .catch(function() {});
 
     window._showLoginRequired = function(icon, title, desc) {
@@ -10297,11 +10761,9 @@ window.submitReport = function() {
         if (i.sexe) html += '<tr><td style="padding:6px;font-weight:bold;width:150px;">Sexe</td><td style="padding:6px;">' + (i.sexe === 'M' ? 'Homme' : 'Femme') + '</td></tr>';
         if (i.categorie) html += '<tr><td style="padding:6px;font-weight:bold;">Categorie</td><td style="padding:6px;">' + i.categorie + '</td></tr>';
         if (i.nationalite) html += '<tr><td style="padding:6px;font-weight:bold;">Nationalite</td><td style="padding:6px;">' + i.nationalite + '</td></tr>';
-        if (i.date_naissance) html += '<tr><td style="padding:6px;font-weight:bold;">Naissance</td><td style="padding:6px;">' + i.date_naissance + '</td></tr>';
-        if (i.lieu_naissance) html += '<tr><td style="padding:6px;font-weight:bold;">Lieu</td><td style="padding:6px;">' + i.lieu_naissance + '</td></tr>';
+        if (i.lieu_naissance) html += '<tr><td style="padding:6px;font-weight:bold;">Lieu de naissance</td><td style="padding:6px;">' + i.lieu_naissance + '</td></tr>';
         if (i.taille_cm) html += '<tr><td style="padding:6px;font-weight:bold;">Taille</td><td style="padding:6px;">' + i.taille_cm + ' cm</td></tr>';
         if (i.poids_kg) html += '<tr><td style="padding:6px;font-weight:bold;">Poids</td><td style="padding:6px;">' + i.poids_kg + ' kg</td></tr>';
-        if (i.licence) html += '<tr><td style="padding:6px;font-weight:bold;">Licence</td><td style="padding:6px;">' + i.licence + '</td></tr>';
         html += '</table>';
 
         // Clubs
@@ -10438,41 +10900,257 @@ window.submitReport = function() {
         <div style="margin-top:8px;">
             <button id="footerContactBtn" onclick="document.getElementById('footerContactForm').style.display='block';this.style.display='none';" style="background:#1e2a3a;border:1px solid #2d3a4a;color:#c9d1d9;font-size:13px;padding:8px 18px;border-radius:8px;cursor:pointer;">Nous contacter</button>
             <div id="footerContactForm" style="display:none;max-width:260px;">
+                <p style="color:#ef4444;font-size:11px;line-height:1.4;margin:0 0 8px;">&#9993; Un email de confirmation vous sera envoye. Votre message ne nous parviendra qu'apres validation du lien.</p>
                 <input type="text" id="fcNom" maxlength="100" placeholder="Nom (optionnel)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:6px;">
-                <input type="email" id="fcEmail" maxlength="200" placeholder="Email (optionnel)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:6px;">
+                <input type="email" id="fcEmail" maxlength="200" placeholder="Email *" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:6px;" required>
                 <textarea id="fcMsg" maxlength="2000" placeholder="Votre message..." style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;font-family:inherit;resize:vertical;min-height:70px;margin-bottom:6px;"></textarea>
                 <button onclick="_footerContact()" style="width:100%;background:#6c5ce7;border:none;color:#fff;font-size:13px;font-weight:700;padding:9px;border-radius:8px;cursor:pointer;">Envoyer</button>
                 <div id="fcStatus" style="font-size:12px;margin-top:6px;"></div>
             </div>
         </div>
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #1e2a3a;">
+            <strong style="color:#f59e0b;font-size:12px;">Signaler un profil</strong>
+            <p style="color:#5a6580;font-size:11px;line-height:1.5;margin:6px 0 0;">Rendez-vous sur le profil de l'athlete, puis cliquez sur le bouton <span style="color:#8b949e;">&#9888; Signaler</span>. Vous pourrez choisir un motif (retrait, donnees incorrectes, usurpation, vie privee) et nous envoyer votre demande.</p>
+        </div>
     </div>
 </div>
-<div style="text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #1e2a3a;">
+<div style="margin-top:24px;padding-top:16px;border-top:1px solid #1e2a3a;text-align:center;">
+    <div id="footerDisclaimer" style="max-width:700px;margin:0 auto 16px;padding:14px 20px;background:#1e2a3a30;border:1px solid #1e2a3a;border-radius:10px;text-align:left;">
+        <div style="color:#8b949e;font-size:11px;line-height:1.7;margin:0;">
+            <p style="margin:0 0 8px;"><strong style="color:#c9d1d9;">Avertissement legal</strong></p>
+            <p style="margin:0 0 6px;">Le site Bokonzi est une plateforme independante a caractere informatif et statistique consacree a l'athletisme.</p>
+            <p style="margin:0 0 6px;">Ce site ne constitue en aucun cas un site officiel et n'entretient aucun lien juridique, institutionnel ou commercial avec la Federation Francaise d'Athletisme ni avec le site athle.fr, ni avec toute autre instance officielle.</p>
+            <p style="margin:0 0 6px;">Les informations diffusees proviennent exclusivement de sources publiques librement accessibles. Elles sont publiees a des fins strictement informatives et statistiques, dans le respect des reglementations en vigueur, notamment en matiere de protection des donnees personnelles.</p>
+            <p style="margin:0 0 6px;">Le site Bokonzi s'efforce d'assurer l'exactitude et la mise a jour des informations diffusees. Toutefois, aucune garantie ne peut etre apportee quant a l'exhaustivite ou l'absence d'erreurs. En consequence, l'editeur du site ne saurait etre tenu responsable d'eventuelles inexactitudes ou omissions.</p>
+            <p style="margin:0 0 6px;">Aucune volonte de tromper, d'induire en erreur ou de porter atteinte a l'image, a la reputation ou a la vie privee des personnes mentionnees n'est poursuivie.</p>
+            <p style="margin:0 0 6px;">Toute personne figurant sur le site dispose d'un droit d'acces, de rectification, d'opposition et de suppression des donnees la concernant. Ce droit peut etre exerce a tout moment via le dispositif de signalement present sur chaque fiche ou par contact direct avec l'editeur du site. Toute demande legitime fera l'objet d'un traitement dans les meilleurs delais.</p>
+            <p style="margin:0;">En cas de signalement ou de contestation, l'editeur se reserve le droit de modifier, completer ou supprimer sans delai tout contenu concerne, a titre conservatoire ou definitif.</p>
+        </div>
+    </div>
     <p>&copy; <?= date('Y') ?> Bokonzi — Base de données athlétisme français</p>
 </div>
 </footer>
 <script>
 function _footerContact(){
     var msg=document.getElementById('fcMsg').value.trim();
-    if(!msg){document.getElementById('fcStatus').innerHTML='<span style="color:#ef4444">Ecrivez un message.</span>';return;}
+    var email=document.getElementById('fcEmail').value.trim();
+    var fb=document.getElementById('fcStatus');
+    if(!email){fb.innerHTML='<span style="color:#ef4444">Veuillez indiquer votre email.</span>';return;}
+    if(!msg){fb.innerHTML='<span style="color:#ef4444">Ecrivez un message.</span>';return;}
     var btn=event.target;btn.disabled=true;btn.textContent='Envoi...';
-    fetch('<?= $_canonBase ?>/api/contact.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:document.getElementById('fcNom').value.trim(),email:document.getElementById('fcEmail').value.trim(),message:msg})}).then(function(r){return r.json()}).then(function(d){
-        if(d.success){document.getElementById('footerContactForm').innerHTML='<p style="color:#10b981;font-size:13px;font-weight:600;margin-top:8px;">&#10003; Message envoye !</p>';}
-        else{document.getElementById('fcStatus').innerHTML='<span style="color:#ef4444">'+(d.error||'Erreur')+'</span>';btn.disabled=false;btn.textContent='Envoyer';}
-    }).catch(function(){document.getElementById('fcStatus').innerHTML='<span style="color:#ef4444">Erreur de connexion.</span>';btn.disabled=false;btn.textContent='Envoyer';});
+    fetch('<?= $_canonBase ?>/api/contact.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:document.getElementById('fcNom').value.trim(),email:email,message:msg})}).then(function(r){return r.json()}).then(function(d){
+        if(d.success){document.getElementById('footerContactForm').innerHTML='<div style="margin-top:8px;line-height:1.6;"><p style="color:#10b981;font-size:13px;font-weight:600;">&#9993; Verifiez votre boite mail !</p><p style="color:#8b949e;font-size:11px;">Un email de confirmation a ete envoye a <strong style="color:#c9d1d9;">'+email+'</strong>. Cliquez sur le lien pour que votre message nous parvienne.</p></div>';}
+        else{fb.innerHTML='<span style="color:#ef4444">'+(d.error||'Erreur')+'</span>';btn.disabled=false;btn.textContent='Envoyer';}
+    }).catch(function(){fb.innerHTML='<span style="color:#ef4444">Erreur de connexion.</span>';btn.disabled=false;btn.textContent='Envoyer';});
 }
 </script>
+<?php
+    $_welPrenom = '';
+    $_welEmail = '';
+    $_welVerified = true;
+    if ($currentUser) {
+        $_welPrenom = htmlspecialchars($currentUser['prenom'] ?: $currentUser['nom'] ?: '');
+        $_welEmail = htmlspecialchars($currentUser['email'] ?? '');
+        $_welVerified = !empty($currentUser['email_verified']) && (int)$currentUser['email_verified'] === 1;
+    }
+?>
 <?php if (isset($_GET['welcome']) && $_GET['welcome'] === '1'): ?>
-<div id="welcomeToast" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:99999;background:linear-gradient(135deg,#6c5ce7,#5541d0);color:#fff;padding:20px 32px;border-radius:16px;box-shadow:0 8px 32px rgba(108,92,231,.4);font-family:Arial,sans-serif;text-align:center;max-width:420px;width:90%;animation:welcomeSlide .5s ease-out;">
-    <div style="font-size:32px;margin-bottom:8px;">&#127881;</div>
-    <div style="font-size:18px;font-weight:700;margin-bottom:6px;">Bienvenue sur Bokonzi !</div>
-    <div style="font-size:14px;color:#e0d8ff;line-height:1.5;">Votre compte a ete cree avec succes. Explorez les athletes, clubs et records de l'athletisme francais.</div>
-    <button onclick="this.parentElement.remove()" style="margin-top:14px;background:#fff3;border:1px solid #fff5;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">C'est parti !</button>
+<div id="welcomeToast" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:wlFadeIn .3s ease;">
+    <div style="background:linear-gradient(145deg,#12182a,#1a2035);border:1px solid #6c5ce740;border-radius:20px;padding:40px 36px;max-width:460px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(108,92,231,.3);animation:wlPop .4s ease-out;">
+        <div style="font-size:48px;margin-bottom:12px;">&#127881;</div>
+        <h2 style="color:#fff;font-size:24px;font-weight:800;margin-bottom:12px;">Bonjour <?= $_welPrenom ?: 'et bienvenue' ?>, bienvenue sur Bokonzi !</h2>
+        <p style="color:#c9d1d9;font-size:15px;line-height:1.8;margin-bottom:20px;text-align:left;">
+            Votre compte a ete cree avec succes. Vous pouvez desormais explorer librement la plus grande base de donnees de l'athletisme francais :
+        </p>
+        <div style="text-align:left;margin-bottom:24px;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #ffffff08;">
+                <span style="font-size:20px;width:28px;text-align:center;">&#128100;</span>
+                <span style="color:#c9d1d9;font-size:14px;"><b style="color:#a29bfe;">Consulter les profils</b> de plus de 330 000 athletes</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #ffffff08;">
+                <span style="font-size:20px;width:28px;text-align:center;">&#127963;</span>
+                <span style="color:#c9d1d9;font-size:14px;"><b style="color:#34d399;">Decouvrir les clubs</b>, leurs athletes, epreuves et statistiques</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #ffffff08;">
+                <span style="font-size:20px;width:28px;text-align:center;">&#128202;</span>
+                <span style="color:#c9d1d9;font-size:14px;"><b style="color:#60a5fa;">Analyser les performances</b>, records, progressions et classements</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #ffffff08;">
+                <span style="font-size:20px;width:28px;text-align:center;">&#9878;</span>
+                <span style="color:#c9d1d9;font-size:14px;"><b style="color:#fbbf24;">Comparer des athletes</b> ou des clubs entre eux</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #ffffff08;">
+                <span style="font-size:20px;width:28px;text-align:center;">&#11088;</span>
+                <span style="color:#c9d1d9;font-size:14px;"><b style="color:#e879f9;">Suivre vos favoris</b> et retrouver vos athletes et clubs preferes</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;">
+                <span style="font-size:20px;width:28px;text-align:center;">&#128196;</span>
+                <span style="color:#c9d1d9;font-size:14px;"><b style="color:#fb923c;">Telecharger des fiches PDF</b> avec le palmares complet d'un athlete</span>
+            </div>
+        </div>
+<?php if (!$_welVerified && $_welEmail): ?>
+        <div style="background:#f59e0b10;border:1px solid #f59e0b30;border-radius:12px;padding:14px 16px;margin-bottom:20px;">
+            <p style="color:#fbbf24;font-size:13px;font-weight:600;margin-bottom:6px;">&#9993; Confirmez votre email</p>
+            <p style="color:#8b949e;font-size:12px;line-height:1.5;margin-bottom:10px;">Un email a ete envoye a <b style="color:#c9d1d9;"><?= $_welEmail ?></b>.<br>Cliquez sur le lien pour valider votre adresse.</p>
+            <button onclick="_sendVerifFromWelcome()" id="wlVerifBtn" style="background:#f59e0b20;border:1px solid #f59e0b;color:#f59e0b;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Renvoyer l'email de verification</button>
+            <div id="wlVerifStatus" style="font-size:11px;margin-top:6px;"></div>
+        </div>
+<?php endif; ?>
+        <button onclick="this.closest('#welcomeToast').remove()" style="padding:12px 36px;background:linear-gradient(135deg,#6c5ce7,#5541d0);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;" onmouseover="this.style.transform='scale(1.05)';this.style.boxShadow='0 6px 20px #6c5ce740'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='none'">Explorer Bokonzi</button>
+        <p style="color:#3a4560;font-size:11px;margin-top:16px;">Connecte en tant que <?= $_welEmail ?></p>
+    </div>
 </div>
 <style>
+@keyframes wlFadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes wlPop { from { opacity:0; transform:scale(.9); } to { opacity:1; transform:scale(1); } }
 @keyframes welcomeSlide { from { opacity:0; transform:translateX(-50%) translateY(-30px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
 </style>
-<script>setTimeout(function(){ var t=document.getElementById('welcomeToast'); if(t) t.style.transition='opacity .5s', t.style.opacity='0', setTimeout(function(){t.remove()},500); }, 8000);</script>
+<script>try{localStorage.removeItem('bk_auth_wall');}catch(e){}</script>
+<?php if (!$_welVerified): ?>
+<script>
+function _sendVerifFromWelcome() {
+    var btn = document.getElementById('wlVerifBtn'), st = document.getElementById('wlVerifStatus');
+    btn.disabled = true; btn.textContent = 'Envoi...';
+    var base = (location.hostname === 'localhost') ? '/BK' : '';
+    fetch(base + '/api/auth/register.php', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ prenom: '<?= addslashes($_welPrenom) ?>', nom: 'x', email: '<?= addslashes($currentUser['email'] ?? '') ?>', password: 'xxxxxx' })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        st.innerHTML = '<span style="color:#10b981;">&#10003; Email renvoye ! Verifiez votre boite.</span>';
+        btn.disabled = false; btn.textContent = 'Renvoyer';
+    }).catch(function() {
+        st.innerHTML = '<span style="color:#ef4444;">Erreur reseau.</span>';
+        btn.disabled = false; btn.textContent = 'Renvoyer';
+    });
+}
+</script>
 <?php endif; ?>
+<?php endif; ?>
+
+<?php if (isset($_GET['verified']) && $_GET['verified'] === '1'): ?>
+<div id="verifiedToast" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:wlFadeIn .3s ease;">
+    <div style="background:linear-gradient(145deg,#0a1a15,#122a1f);border:1px solid #10b98140;border-radius:20px;padding:40px 36px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(16,185,129,.2);animation:wlPop .4s ease-out;">
+        <div style="width:64px;height:64px;margin:0 auto 16px;background:#10b98120;border:2px solid #10b981;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;">&#10003;</div>
+        <h2 style="color:#fff;font-size:22px;font-weight:800;margin-bottom:8px;">Email confirme<?= $_welPrenom ? ', ' . $_welPrenom : '' ?> !</h2>
+        <p style="color:#34d399;font-size:14px;line-height:1.6;margin-bottom:6px;">Votre adresse email a ete validee avec succes.</p>
+        <p style="color:#5a6580;font-size:13px;line-height:1.5;margin-bottom:24px;">Votre compte est desormais pleinement actif. Profitez de toutes les fonctionnalites de Bokonzi.</p>
+        <button onclick="this.closest('#verifiedToast').remove()" style="padding:12px 36px;background:linear-gradient(135deg,#10b981,#059669);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Continuer</button>
+    </div>
+</div>
+<style>
+@keyframes wlFadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes wlPop { from { opacity:0; transform:scale(.9); } to { opacity:1; transform:scale(1); } }
+</style>
+<script>try{localStorage.removeItem('bk_auth_wall');}catch(e){}</script>
+<?php endif; ?>
+
+<?php if ($currentUser || !empty($_COOKIE['bk_sa_token'])): ?>
+<script>try { localStorage.removeItem('bk_auth_wall'); } catch(e) {}</script>
+<?php else: ?>
+<!-- OVERLAY INSCRIPTION : apparait apres 20s pour les non-connectes -->
+<div id="bkAuthOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);justify-content:center;align-items:center;">
+    <div style="background:#0d1117;border:2px solid #6c5ce7;border-radius:16px;padding:40px 36px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(108,92,231,.3);animation:bkOverlayPop .4s ease-out;">
+        <div style="font-size:48px;margin-bottom:16px;">&#128274;</div>
+        <h2 style="color:#fff;font-size:22px;margin:0 0 10px;font-weight:800;">Inscription obligatoire</h2>
+        <p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 8px;">Pour continuer a consulter les donnees des athletes, creez un compte gratuitement.</p>
+        <p style="color:#6c5ce7;font-size:13px;margin:0 0 24px;">Un seul clic avec Google — gratuit et instantane.</p>
+        <a href="<?= (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false) ? '/BK' : '' ?>/api/auth/google_login.php" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:background .2s,box-shadow .2s;box-sizing:border-box;" onmouseover="this.style.background='#f7f8f8';this.style.boxShadow='0 2px 6px rgba(0,0,0,.2)'" onmouseout="this.style.background='#fff';this.style.boxShadow='none'">
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.08 24.08 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Se connecter avec Google
+        </a>
+        <a href="<?= (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false) ? '/BK' : '' ?>/register.php" style="display:block;margin-top:14px;color:#a29bfe;font-size:14px;font-weight:600;text-decoration:none;">Pas de compte Google ? S'inscrire avec un email</a>
+        <a href="<?= (strpos($_SERVER['HTTP_HOST'] ?? '', 'localhost') !== false) ? '/BK' : '' ?>/login.php" style="display:block;margin-top:8px;color:#8b949e;font-size:13px;text-decoration:none;">Deja un compte ? Se connecter</a>
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #30363d;">
+            <p style="color:#5a6580;font-size:11px;margin:0;">En vous inscrivant, vous acceptez les conditions d'utilisation de Bokonzi.</p>
+            <a href="#" onclick="event.preventDefault();var f=document.getElementById('ovSignalForm');f.style.display=f.style.display==='none'?'block':'none';document.getElementById('ovContactWrap').style.display='none';" style="display:inline-block;margin-top:10px;color:#f59e0b;font-size:12px;text-decoration:none;">&#9888; Signaler un profil</a>
+            <div id="ovSignalForm" style="display:none;margin-top:10px;text-align:left;background:#f59e0b08;border:1px solid #f59e0b30;border-radius:10px;padding:14px;">
+                <p style="color:#c9d1d9;font-size:12px;line-height:1.6;margin:0 0 12px;">
+                    <strong style="color:#f59e0b;">Signaler un profil athlete</strong><br>
+                    Remplissez le formulaire ci-dessous. Indiquez le nom de l'athlete ou l'URL de son profil, le motif, et nous traiterons votre demande rapidement.
+                </p>
+                <input type="text" id="ovSigNom" maxlength="200" placeholder="Nom de l'athlete ou URL du profil *" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;margin-bottom:6px;box-sizing:border-box;">
+                <select id="ovSigReason" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;margin-bottom:6px;box-sizing:border-box;">
+                    <option value="">-- Motif du signalement --</option>
+                    <option value="retrait">Je souhaite retirer mon profil</option>
+                    <option value="donnees_incorrectes">Donnees incorrectes</option>
+                    <option value="usurpation">Usurpation d'identite</option>
+                    <option value="vie_privee">Atteinte a la vie privee</option>
+                    <option value="autre">Autre</option>
+                </select>
+                <textarea id="ovSigMsg" maxlength="2000" placeholder="Details (facultatif)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;font-family:inherit;resize:vertical;min-height:50px;margin-bottom:6px;box-sizing:border-box;"></textarea>
+                <input type="email" id="ovSigEmail" maxlength="200" placeholder="Votre email (facultatif)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;margin-bottom:8px;box-sizing:border-box;">
+                <button onclick="_ovSignal()" id="ovSigBtn" style="width:100%;background:#da3636;border:none;color:#fff;font-size:13px;font-weight:700;padding:9px;border-radius:8px;cursor:pointer;">Envoyer le signalement</button>
+                <div id="ovSigStatus" style="font-size:12px;margin-top:6px;text-align:center;"></div>
+            </div>
+            <span style="color:#30363d;margin:0 6px;">|</span>
+            <a href="#" onclick="event.preventDefault();document.getElementById('ovContactWrap').style.display=document.getElementById('ovContactWrap').style.display==='none'?'block':'none';" style="display:inline-block;margin-top:10px;color:#8b949e;font-size:12px;text-decoration:none;">&#9993; Nous contacter</a>
+            <div id="ovContactWrap" style="display:none;margin-top:10px;text-align:left;">
+                <p style="color:#ef4444;font-size:11px;line-height:1.4;margin:0 0 6px;">&#9993; Un email de confirmation vous sera envoye. Sans validation, votre message ne sera pas transmis.</p>
+                <input type="text" id="ovNom" maxlength="100" placeholder="Nom (optionnel)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;margin-bottom:6px;box-sizing:border-box;">
+                <input type="email" id="ovEmail" maxlength="200" placeholder="Email *" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;margin-bottom:6px;box-sizing:border-box;" required>
+                <textarea id="ovMsg" maxlength="2000" placeholder="Votre message..." style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;font-family:inherit;resize:vertical;min-height:60px;margin-bottom:6px;box-sizing:border-box;"></textarea>
+                <button onclick="_ovContact()" id="ovBtn" style="width:100%;background:#6c5ce7;border:none;color:#fff;font-size:13px;font-weight:700;padding:9px;border-radius:8px;cursor:pointer;">Envoyer</button>
+                <div id="ovStatus" style="font-size:12px;margin-top:6px;text-align:center;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+@keyframes bkOverlayPop { from { opacity:0; transform:scale(.9); } to { opacity:1; transform:scale(1); } }
+</style>
+<script>
+function _bkLockPage(){
+    var ov = document.getElementById('bkAuthOverlay');
+    if (!ov) return;
+    ov.style.display = 'flex';
+    // Supprimer tout le contenu de la page (nav, container, footer)
+    var nav = document.querySelector('nav[aria-label="Navigation principale"]');
+    var container = document.querySelector('.container');
+    var footer = document.querySelector('footer');
+    if (nav) nav.remove();
+    if (container) container.remove();
+    if (footer) footer.remove();
+    // Bloquer le scroll
+    document.body.style.overflow = 'hidden';
+}
+(function(){
+    // Blocage apres 1 heure pour les non-connectes
+    setTimeout(function(){
+        try { localStorage.setItem('bk_auth_wall', '1'); } catch(e) {}
+        _bkLockPage();
+    }, 3600000);
+})();
+function _ovContact(){
+    var email=document.getElementById('ovEmail').value.trim();
+    var msg=document.getElementById('ovMsg').value.trim();
+    var fb=document.getElementById('ovStatus');
+    if(!email){fb.innerHTML='<span style="color:#f85149">Veuillez indiquer votre email.</span>';return;}
+    if(!msg){fb.innerHTML='<span style="color:#f85149">Ecrivez un message.</span>';return;}
+    var btn=document.getElementById('ovBtn');btn.disabled=true;btn.textContent='Envoi...';
+    var base=location.hostname==='localhost'?'/BK':'';
+    fetch(base+'/api/contact.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:document.getElementById('ovNom').value.trim()||'Visiteur (overlay)',email:email,message:msg})}).then(function(r){return r.json()}).then(function(d){
+        if(d.success){document.getElementById('ovContactWrap').innerHTML='<div style="margin-top:4px;line-height:1.5;"><p style="color:#3fb950;font-size:12px;font-weight:600;">&#9993; Verifiez votre boite mail !</p><p style="color:#8b949e;font-size:11px;">Cliquez sur le lien envoye a <strong style="color:#c9d1d9;">'+email+'</strong> pour confirmer l\'envoi de votre message.</p></div>';}
+        else{fb.innerHTML='<span style="color:#f85149">'+(d.error||'Erreur')+'</span>';btn.disabled=false;btn.textContent='Envoyer';}
+    }).catch(function(){fb.innerHTML='<span style="color:#f85149">Erreur de connexion.</span>';btn.disabled=false;btn.textContent='Envoyer';});
+}
+function _ovSignal(){
+    var nom=document.getElementById('ovSigNom').value.trim();
+    var reason=document.getElementById('ovSigReason').value;
+    var fb=document.getElementById('ovSigStatus');
+    if(!nom){fb.innerHTML='<span style="color:#f85149">Indiquez le nom de l\'athlete ou l\'URL du profil.</span>';return;}
+    if(!reason){fb.innerHTML='<span style="color:#f85149">Choisissez un motif.</span>';return;}
+    var btn=document.getElementById('ovSigBtn');btn.disabled=true;btn.textContent='Envoi...';
+    var base=location.hostname==='localhost'?'/BK':'';
+    var msg='[Signalement depuis overlay] Athlete: '+nom+' | Motif: '+reason;
+    var detail=document.getElementById('ovSigMsg').value.trim();
+    if(detail)msg+=' | Details: '+detail;
+    fetch(base+'/api/contact.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:'Signalement profil',email:document.getElementById('ovSigEmail').value.trim(),message:msg})}).then(function(r){return r.json()}).then(function(d){
+        if(d.success){document.getElementById('ovSignalForm').innerHTML='<p style="color:#3fb950;font-size:12px;font-weight:600;margin-top:4px;">&#10003; Signalement envoye ! Nous traiterons votre demande rapidement.</p>';}
+        else{fb.innerHTML='<span style="color:#f85149">'+(d.error||'Erreur')+'</span>';btn.disabled=false;btn.textContent='Envoyer le signalement';}
+    }).catch(function(){fb.innerHTML='<span style="color:#f85149">Erreur de connexion.</span>';btn.disabled=false;btn.textContent='Envoyer le signalement';});
+}
+</script>
+<?php endif; ?>
+
 </body>
 </html>
