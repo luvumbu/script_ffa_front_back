@@ -258,8 +258,9 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 ## API search.php — 12 filtres
 `nom`, `nom1`, `nom2`, `club`, `categorie`, `sexe`, `nationalite`, `epreuve`, `ville`, `competition`, `medaille`, `annee`, `licence`, `page`, `limit`
 - Au moins 1 filtre requis
-- **Rate limiting** : 100/jour anonymes, 500/jour connectes, illimite super admin (badge dore clignotant dans nav)
-- **Constantes** : `BK_SEARCH_LIMIT_ANON = 100`, `BK_SEARCH_LIMIT_LOGGED = 500` (definies en haut de search.php)
+- **Rate limiting** : anonyme = decouverte gratuite de 60 s des l'arrivee sur le site puis recherche bloquee ; connecte sans abo = 5/jour + 30 min entre 2 recherches ; abonnes/super admin = illimite ; whitelist (Google/Hostinger/localhost/bots) ignoree
+- **Logique centralisee** : `core/search_limit.php` → `bkSearchLimit($conn, $consume)` + `bkSlFields($sl)` — partagee par search.php, clubs.php, villes.php, quota.php et le badge nav d'index.php
+- **Constantes** : `BK_SEARCH_TRIAL_ANON = 60`, `BK_SEARCH_LIMIT_FREE = 5`, `BK_SEARCH_COOLDOWN = 1800` (dans `core/search_limit.php`)
 - Exclut clubs >5000 athletes (sauf si filtre club actif)
 - Retourne : niveaux[] + top_records[5] avec top_niveau par athlete
 
@@ -415,22 +416,23 @@ html += '</div>';
 - **Viewer** : `logs/ip_view.php` — auth email whitelist, params `?month=`, `?ip=`, `?raw=1`
 - **Pages avec logIp()** : index.php, api/config.php, pages/*.php, login.php, register.php
 
-### Rate limiting
-- **API search.php** : limites de recherches par jour par IP
-  - **Anonymes** : **100 recherches/jour** (`BK_SEARCH_LIMIT_ANON`)
-  - **Connectes** (`bk_token`) : **500 recherches/jour** (`BK_SEARCH_LIMIT_LOGGED`)
-  - **Super admin** (`bk_sa_token`) : **illimite**
-  - Fichier : `logs/.search_limits.php` (JSON protege par die(), reset quotidien)
-  - Cle compteur = IP directement (meme cle pour connectes et anonymes, seule la limite change)
-  - Retourne `{ success: false, limit_reached: true, limit: N, logged: bool }` (HTTP 429)
-  - Chaque reponse reussie inclut `search_used` et `search_limit` pour mise a jour du badge
-  - **Badge nav** : `<span id="searchQuota">` a cote du lien Recherche, affiche `N/500` ou `N/100`
-    - **Dore clignotant** (`#ffd700`, animation `bkGoldBlink`) si < 80%, rouge clignotant rapide si > 80%
-    - Lien "Recherche" aussi en dore clignotant
-    - Mis a jour en temps reel via JS `_updateSearchQuota(data)` apres chaque recherche
-    - Compteur PHP initial lu depuis `logs/.search_limits.php` au chargement de index.php
-  - **Message limite atteinte** : fonction JS `_buildLimitMsg(data)` — bloc XXL (icone 70px, titre 28px rouge, bordure rouge)
-  - Whitelist : Google, Hostinger, localhost, bots/curl → illimite
+### Rate limiting recherches — `core/search_limit.php` (source de verite unique)
+- **Anonyme (non connecte)** : **decouverte gratuite de 60 s** des l'arrivee sur le site (cookie `bk_anon_t0` pose par index.php). Passe ce delai, **toute recherche est bloquee** (`reason='trial'`) jusqu'a connexion/inscription. La navigation reste possible (limite anti-scraping 20 pages/jour, separee).
+- **Connecte sans abonnement** : **5 recherches/jour** + **30 min de delai entre 2 recherches**
+  - **Super admin** (`bk_sa_token`) / cle API `bk_key` : illimite, aucun cooldown
+  - **Abonne Argent/Or/Platine** (`search_limit = -1`) : illimite, aucun cooldown
+  - **Abonne Bronze** : quota du plan (ex 2000/jour), aucun cooldown
+  - **Whitelist** (Google, Hostinger, localhost, bots/curl) : ignoree (illimite)
+- **Fonctions** : `bkSearchLimit($conn, $consume)` (consomme si `$consume=true`, sinon lecture seule) + `bkSlFields($sl)` (champs JSON standard pour les reponses)
+  - `bkSearchLimit` retourne `{ blocked, reason: 'daily'|'cooldown'|'trial'|'', used, limit, remaining, cooldown_remaining, cooldown_total, anon_trial, trial_remaining, trial_total, unlimited, logged, is_sa }`
+  - Appelee par : `api/search.php`, `api/clubs.php` (si `nom`), `api/villes.php` (si `nom`), `api/quota.php`, badge nav `index.php`
+- **Cookie anonyme** : `bk_anon_t0` = timestamp d'arrivee, pose par index.php (1 an, ne se reinitialise pas chaque jour → blocage persistant)
+- **Fichier compteur** (connectes uniquement) : `logs/.search_limits.php` — `{ "_date": "Y-m-d", "<ip>": { "c": <nb jour>, "t": <ts derniere recherche> } }`, reset quotidien auto
+- **Reponse blocage** (HTTP 429) : `{ success:false, limit_reached:true, reason, ... }` + champs `bkSlFields()`
+- **Badge nav** : `<span id="searchQuota">` — anonyme : decompte `⏳ MM:SS` de la decouverte puis `🔒 Connexion` ; connecte : `N/5` ou decompte cooldown `⏳ MM:SS`
+  - JS : `_bkStartTrial()` / `_bkStartCooldown()` / `_bkShowQuota()` / `_bkFmtTime()` / `_updateSearchQuota(data)` / `_refreshSearchQuota()`
+  - Decompte relance au chargement via `data-trial` ou `data-cooldown` du badge (rendu PHP initial)
+- **Messages** : JS `_buildLimitMsg(data)` — 3 variantes : `trial` (decouverte terminee + CTA connexion), `cooldown` (decompte + CTA `/tarifs`), limite journaliere atteinte
 - **Admin login** (`api/auth/login.php`) : **5 tentatives/jour** par IP, blocage 24h apres 5 echecs
   - Fichier : `logs/.admin_attempts.php` (JSON protege par die())
   - **Whitelist illimitee** : Google (66.249.*, 66.102.*, 64.233.*, 72.14.*, 74.125.*, 209.85.*, 216.239.*, 35.*, 34.*), Hostinger (153.92.*, 31.170.*, 185.201.*), localhost (127.0.0.1, ::1)
@@ -439,9 +441,9 @@ html += '</div>';
 - **IPs whitelistees ne sont PAS loguees** (early return dans `logIp()`)
 
 ### Anti-scraping (protection pages)
-- **Limite** : 10 pages/jour max pour les visiteurs anonymes
+- **Limite** : 20 pages/jour max pour les visiteurs anonymes
 - **Compteur** : `logs/.page_limits.php` — compteurs journaliers par IP (JSON protege par die())
-- **Apres 10 pages** : redirection vers `login.php?limit=1` (message "Connectez-vous avec Google pour continuer")
+- **Apres 20 pages** : redirection vers `login.php?limit=1` (message "Connectez-vous avec Google pour continuer")
 - **Whitelist illimitee** : Google, Hostinger, localhost (meme prefixes que admin login)
 - **Utilisateurs connectes illimites** : cookie `bk_token` ou `bk_sa_token` → pas de limite
 - **Implementation** : IIFE anonyme dans index.php apres `logIp()`, avant le contenu

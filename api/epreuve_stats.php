@@ -5,6 +5,8 @@
  * Retourne: records, medailles, podiums, top clubs, top villes, niveaux, selections, evolution
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/../core/visibility.php';
+$_isAdminInt = isAdminViewing() ? 1 : 0;
 
 $nom = trim($_GET['nom'] ?? '');
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -51,9 +53,9 @@ if ($filterCat !== '')  $filterWhere .= " AND a.categorie_athlete = '" . $conn->
 
 // Total athletes avec records (avec filtres)
 if ($filterWhere !== '') {
-    $res = $conn->query("SELECT COUNT(DISTINCT ar.id_athlete) as c FROM athlete_records ar JOIN athletes a ON a.id_athlete = ar.id_athlete WHERE ar.id_epreuve = $eid $filterWhere");
+    $res = $conn->query("SELECT COUNT(DISTINCT ar.id_athlete) as c FROM athlete_records ar JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) WHERE ar.id_epreuve = $eid $filterWhere");
     $totalAthletes = $res ? (int) $res->fetch_assoc()['c'] : 0;
-    $res = $conn->query("SELECT COUNT(*) as c FROM athlete_records ar JOIN athletes a ON a.id_athlete = ar.id_athlete WHERE ar.id_epreuve = $eid $filterWhere");
+    $res = $conn->query("SELECT COUNT(*) as c FROM athlete_records ar JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) WHERE ar.id_epreuve = $eid $filterWhere");
     $totalRecords = $res ? (int) $res->fetch_assoc()['c'] : 0;
 } else {
     $res = $conn->query("SELECT COUNT(DISTINCT id_athlete) as c FROM athlete_records WHERE id_epreuve = $eid");
@@ -67,7 +69,7 @@ $parSexe = [];
 $res = $conn->query("
     SELECT a.sexe_athlete, COUNT(DISTINCT a.id_athlete) as c
     FROM athlete_records ar
-    JOIN athletes a ON a.id_athlete = ar.id_athlete
+    JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE ar.id_epreuve = $eid
     GROUP BY a.sexe_athlete ORDER BY c DESC
 ");
@@ -80,7 +82,7 @@ $parCategorie = [];
 $res = $conn->query("
     SELECT a.categorie_athlete, COUNT(DISTINCT a.id_athlete) as c
     FROM athlete_records ar
-    JOIN athletes a ON a.id_athlete = ar.id_athlete
+    JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE ar.id_epreuve = $eid AND a.categorie_athlete != ''
     GROUP BY a.categorie_athlete ORDER BY c DESC
 ");
@@ -93,7 +95,7 @@ $nationalites = [];
 $res = $conn->query("
     SELECT a.nationalite_athlete, COUNT(DISTINCT a.id_athlete) as c
     FROM athlete_records ar
-    JOIN athletes a ON a.id_athlete = ar.id_athlete
+    JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE ar.id_epreuve = $eid AND a.nationalite_athlete IS NOT NULL AND a.nationalite_athlete != ''
     GROUP BY a.nationalite_athlete ORDER BY c DESC
 ");
@@ -114,7 +116,7 @@ $res = $conn->query("
             WHERE ares.id_athlete = ar.id_athlete AND ares.id_epreuve = ar.id_epreuve
               AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != '') as niveaux
     FROM athlete_records ar
-    JOIN athletes a ON a.id_athlete = ar.id_athlete
+    JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     LEFT JOIN athlete_clubs ac ON ac.id_athlete = a.id_athlete
     LEFT JOIN clubs c ON c.id_club = ac.id_club
     WHERE ar.id_epreuve = $eid $filterWhere
@@ -157,7 +159,7 @@ $res = $conn->query("
            a.nom_complet_athlete, a.athlete_id_externe,
            co.nom_competition, v.nom_ville
     FROM athlete_medailles am
-    JOIN athletes a ON a.id_athlete = am.id_athlete
+    JOIN athletes a ON a.id_athlete = am.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     LEFT JOIN competitions co ON co.id_competition = am.id_competition
     LEFT JOIN villes v ON v.id_ville = am.id_ville
     WHERE am.id_epreuve = $eid

@@ -3,1450 +3,1421 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Documentation Technique — Bokonzi v2.0</title>
+<title>Documentation Technique — Bokonzi</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
+:root {
+    --bg-body: #0a0e17;
+    --bg-card: #0d1117;
+    --bg-code: #131a28;
+    --bg-hover: #1e2a3a;
+    --border: #1e2a3a;
+    --border-hi: #2d3a4a;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --text-dim: #5a6580;
+    --accent: #00d4ff;
+    --accent-2: #6c5ce7;
+    --green: #3fb950;
+    --orange: #f59e0b;
+    --rose: #f85149;
+    --fuchsia: #c026d3;
+}
+html { scroll-behavior: smooth; }
 body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: #0a0e17;
-    color: #c9d1d9;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg-body);
+    color: var(--text);
     line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
 }
 
-/* ========== SIDEBAR ========== */
+/* ===== SIDEBAR ===== */
 .sidebar {
     position: fixed;
     top: 0; left: 0; bottom: 0;
-    width: 280px;
-    background: #0d1117;
-    border-right: 1px solid #1e2a3a;
+    width: 290px;
+    background: var(--bg-card);
+    border-right: 1px solid var(--border);
     overflow-y: auto;
-    padding: 20px 0;
+    padding: 22px 0;
     z-index: 100;
 }
-.sidebar-logo {
-    padding: 10px 20px 20px;
-    border-bottom: 1px solid #1e2a3a;
-    margin-bottom: 12px;
-}
-.sidebar-logo h1 { color: #00d4ff; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-.sidebar-logo p { color: #5a6580; font-size: 12px; margin-top: 4px; }
+.sidebar::-webkit-scrollbar { width: 8px; }
+.sidebar::-webkit-scrollbar-track { background: var(--bg-card); }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 4px; }
 
-.sidebar-section { padding: 6px 20px; }
-.sidebar-section-title {
-    color: #8b949e;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-bottom: 6px;
-    margin-top: 12px;
-}
+.sidebar-logo { padding: 4px 22px 18px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.sidebar-logo h1 { color: var(--accent); font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.sidebar-logo p { color: var(--text-dim); font-size: 12px; margin-top: 4px; }
+.sidebar-logo .ver { display:inline-block; margin-top:6px; padding:2px 8px; background: var(--accent-2); color:#fff; border-radius: 12px; font-size:10px; font-weight:700; letter-spacing:0.5px; }
+
+.sidebar nav { padding: 0 12px; }
 .sidebar a {
     display: block;
-    color: #8b949e;
+    padding: 8px 14px;
+    color: var(--text-muted);
     text-decoration: none;
-    padding: 5px 20px;
-    font-size: 13px;
+    font-size: 13.5px;
+    border-radius: 6px;
+    margin-bottom: 2px;
     transition: all 0.15s;
-    border-left: 2px solid transparent;
 }
-.sidebar a:hover {
-    color: #fff;
-    background: #161b22;
-    border-left-color: #a78bfa;
-}
-.sidebar a.sub { padding-left: 36px; font-size: 12px; color: #6b7280; }
-.sidebar a.sub:hover { color: #c9d1d9; }
+.sidebar a:hover { background: var(--bg-hover); color: var(--text); }
+.sidebar a.active { background: var(--accent-2); color: #fff; font-weight: 600; }
+.sidebar .num { display:inline-block; width:22px; color: var(--text-dim); font-size:11px; font-weight:700; }
+.sidebar a:hover .num, .sidebar a.active .num { color: var(--text); }
+.sidebar a.active .num { color: #fff; }
+.sidebar-divider { padding: 14px 22px 6px; color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
 
-/* ========== MAIN ========== */
-.main {
-    margin-left: 280px;
-    padding: 40px 50px 80px;
-    max-width: 1100px;
+/* ===== MAIN ===== */
+.main { margin-left: 290px; padding: 50px 60px 100px; max-width: 1100px; }
+@media (max-width: 1100px) { .main { padding: 40px 30px 80px; } }
+@media (max-width: 800px) {
+    .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid var(--border); }
+    .main { margin-left: 0; padding: 30px 20px 80px; }
 }
 
-/* ========== HEADINGS ========== */
+h1 { font-size: 36px; color: var(--text); font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+h1 .grad { background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.subtitle { color: var(--text-muted); font-size: 16px; margin-bottom: 40px; }
+.subtitle .kv { display:inline-block; margin-right:18px; }
+.subtitle .kv b { color: var(--text); }
+
 h2 {
-    font-size: 28px;
-    color: #fff;
-    margin-top: 50px;
-    margin-bottom: 8px;
+    font-size: 26px;
+    color: var(--accent);
+    margin-top: 56px;
+    margin-bottom: 18px;
     padding-bottom: 10px;
-    border-bottom: 2px solid #a78bfa40;
+    border-bottom: 2px solid var(--border);
+    font-weight: 700;
     scroll-margin-top: 20px;
 }
-h2 .emoji { margin-right: 8px; }
-h3 {
-    font-size: 19px;
-    color: #a78bfa;
-    margin-top: 30px;
-    margin-bottom: 8px;
-    scroll-margin-top: 20px;
-}
-h4 {
-    font-size: 15px;
-    color: #60a5fa;
-    margin-top: 20px;
-    margin-bottom: 6px;
-}
-p { margin-bottom: 12px; }
+h2 .num { color: var(--text-dim); font-size: 18px; margin-right: 10px; font-weight: 600; }
+h3 { font-size: 19px; color: var(--text); margin-top: 32px; margin-bottom: 12px; font-weight: 700; }
+h4 { font-size: 15px; color: var(--accent-2); margin-top: 22px; margin-bottom: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* ========== CODE ========== */
+p { margin-bottom: 14px; color: var(--text); }
+ul, ol { padding-left: 22px; margin-bottom: 14px; }
+ul li, ol li { margin-bottom: 6px; color: var(--text); }
+strong, b { color: var(--text); font-weight: 700; }
+em { color: var(--text-muted); }
+
+a { color: var(--accent); text-decoration: none; transition: color 0.15s; }
+a:hover { color: var(--accent-2); text-decoration: underline; }
+
+/* Code blocks */
 code {
-    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-    background: #161b22;
+    background: var(--bg-code);
+    color: #ffd866;
     padding: 2px 7px;
     border-radius: 4px;
+    font-family: 'Fira Code', 'Consolas', monospace;
     font-size: 13px;
-    color: #e6db74;
+    border: 1px solid var(--border);
 }
 pre {
-    background: #0d1117;
-    border: 1px solid #1e2a3a;
+    background: var(--bg-code);
+    border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 18px;
+    padding: 18px 22px;
     overflow-x: auto;
-    margin: 12px 0 18px;
-    font-family: 'Cascadia Code', 'Fira Code', monospace;
-    font-size: 13px;
+    margin: 14px 0 22px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 13.5px;
     line-height: 1.6;
+    position: relative;
+}
+pre code {
+    background: none;
+    padding: 0;
+    border: none;
     color: #c9d1d9;
 }
-pre .kw { color: #ff79c6; }
-pre .fn { color: #50fa7b; }
-pre .str { color: #f1fa8c; }
-pre .cm { color: #6272a4; }
-pre .var { color: #bd93f9; }
-pre .num { color: #fbbf24; }
+pre .kw { color: #ff7b72; }
+pre .str { color: #a5d6ff; }
+pre .com { color: #6e7681; font-style: italic; }
+pre .num { color: #79c0ff; }
+pre .fn { color: #d2a8ff; }
 
-/* ========== TABLES ========== */
+/* Tables */
 table {
     width: 100%;
     border-collapse: collapse;
-    margin: 12px 0 20px;
-    font-size: 13px;
+    margin: 14px 0 22px;
+    background: var(--bg-card);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    font-size: 14px;
+}
+th, td {
+    padding: 11px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
 }
 th {
-    background: #161b22;
-    color: #a78bfa;
-    text-align: left;
-    padding: 10px 14px;
-    font-size: 12px;
+    background: var(--bg-hover);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 12.5px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 2px solid #1e2a3a;
 }
-td {
-    padding: 8px 14px;
-    border-bottom: 1px solid #1e2a3a20;
-    vertical-align: top;
-}
-tr:hover td { background: #161b2240; }
-.type { color: #fbbf24; font-family: monospace; font-size: 12px; }
-.pk { color: #34d399; font-weight: 700; }
-.fk { color: #60a5fa; }
-.required { color: #f87171; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(108, 92, 231, 0.05); }
+td code { font-size: 12.5px; }
 
-/* ========== BADGES ========== */
-.badge {
+/* Boxes (info, warning, danger) */
+.box {
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 18px 0;
+    border-left: 4px solid;
+    background: rgba(0, 212, 255, 0.05);
+}
+.box-info { border-color: var(--accent); background: rgba(0, 212, 255, 0.05); }
+.box-warn { border-color: var(--orange); background: rgba(245, 158, 11, 0.05); }
+.box-danger { border-color: var(--rose); background: rgba(248, 81, 73, 0.05); }
+.box-ok { border-color: var(--green); background: rgba(63, 185, 80, 0.05); }
+.box b:first-child { display: block; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+.box-info b:first-child { color: var(--accent); }
+.box-warn b:first-child { color: var(--orange); }
+.box-danger b:first-child { color: var(--rose); }
+.box-ok b:first-child { color: var(--green); }
+
+/* Pills */
+.pill {
     display: inline-block;
     padding: 2px 10px;
-    border-radius: 20px;
+    border-radius: 12px;
     font-size: 11px;
     font-weight: 700;
+    letter-spacing: 0.4px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
-.badge-get { background: #34d39920; color: #34d399; border: 1px solid #34d39940; }
-.badge-post { background: #60a5fa20; color: #60a5fa; border: 1px solid #60a5fa40; }
-.badge-put { background: #fbbf2420; color: #fbbf24; border: 1px solid #fbbf2440; }
-.badge-delete { background: #f8717120; color: #f87171; border: 1px solid #f8717140; }
-.badge-seo { background: #a78bfa20; color: #a78bfa; border: 1px solid #a78bfa40; }
+.pill-blue { background: rgba(0, 212, 255, 0.15); color: var(--accent); }
+.pill-violet { background: rgba(108, 92, 231, 0.15); color: var(--accent-2); }
+.pill-orange { background: rgba(245, 158, 11, 0.15); color: var(--orange); }
+.pill-rose { background: rgba(248, 81, 73, 0.15); color: var(--rose); }
+.pill-green { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+.pill-fuchsia { background: rgba(192, 38, 211, 0.15); color: var(--fuchsia); }
 
-/* ========== LEVEL BADGES ========== */
-.niv-badge {
+/* Niveaux color demos */
+.niv {
     display: inline-block;
-    padding: 2px 8px;
+    padding: 3px 10px;
     border-radius: 6px;
     font-size: 11px;
     font-weight: 700;
-    margin: 1px 2px;
+    margin-right: 4px;
+    border: 1px solid;
 }
-.niv-d { background: #f9731620; color: #f97316; border: 1px solid #f9731640; }
-.niv-r { background: #0891b220; color: #0891b2; border: 1px solid #0891b240; }
-.niv-n { background: #e11d4820; color: #e11d48; border: 1px solid #e11d4840; }
-.niv-i { background: #c026d320; color: #c026d3; border: 1px solid #c026d340; }
+.niv-D { background: #f9731620; border-color: #f97316; color: #fb923c; }
+.niv-R { background: #0891b220; border-color: #0891b2; color: #22d3ee; }
+.niv-N { background: #e11d4820; border-color: #e11d48; color: #fb7185; }
+.niv-I { background: #c026d320; border-color: #c026d3; color: #e879f9; }
 
-/* ========== API CARD ========== */
-.api-card {
-    background: #0d1117;
-    border: 1px solid #1e2a3a;
-    border-radius: 10px;
-    padding: 18px;
-    margin: 12px 0 18px;
-}
-.api-card .url {
-    font-family: monospace;
-    font-size: 14px;
-    color: #e6db74;
-    margin-left: 10px;
-}
-.api-card .desc { color: #8b949e; font-size: 13px; margin-top: 8px; }
-.api-param { margin-top: 10px; }
-.api-param span { color: #bd93f9; font-family: monospace; font-size: 13px; }
-.api-param .opt { color: #6b7280; font-style: italic; font-size: 12px; }
-
-/* ========== FLOW DIAGRAM ========== */
-.flow {
-    background: #0d1117;
-    border: 1px solid #1e2a3a;
-    border-radius: 10px;
-    padding: 24px;
-    margin: 16px 0 20px;
-    font-family: monospace;
-    font-size: 13px;
-    line-height: 1.8;
-    white-space: pre;
-    overflow-x: auto;
-}
-.flow .step { color: #a78bfa; font-weight: 700; }
-.flow .arrow { color: #34d399; }
-.flow .file { color: #fbbf24; }
-.flow .data { color: #60a5fa; }
-
-/* ========== TREE ========== */
-.tree {
-    background: #0d1117;
-    border: 1px solid #1e2a3a;
-    border-radius: 10px;
-    padding: 20px;
-    margin: 12px 0 18px;
-    font-family: monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    white-space: pre;
-    overflow-x: auto;
-}
-.tree .dir { color: #60a5fa; font-weight: 700; }
-.tree .new { color: #34d399; }
-.tree .comment { color: #6b7280; }
-
-/* ========== INFO BOX ========== */
-.info {
-    background: #60a5fa10;
-    border: 1px solid #60a5fa30;
-    border-radius: 8px;
-    padding: 14px 18px;
-    margin: 12px 0;
-    font-size: 13px;
-}
-.info strong { color: #60a5fa; }
-.warn {
-    background: #fbbf2410;
-    border: 1px solid #fbbf2430;
-    border-radius: 8px;
-    padding: 14px 18px;
-    margin: 12px 0;
-    font-size: 13px;
-}
-.warn strong { color: #fbbf24; }
-.success {
-    background: #34d39910;
-    border: 1px solid #34d39930;
-    border-radius: 8px;
-    padding: 14px 18px;
-    margin: 12px 0;
-    font-size: 13px;
-}
-.success strong { color: #34d399; }
-
-/* ========== STATS ROW ========== */
-.stats-row {
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
-    margin: 16px 0 20px;
-}
-.stat-box {
-    padding: 16px 24px;
-    border-radius: 10px;
-    text-align: center;
-    min-width: 130px;
-}
-.stat-box .val { font-size: 26px; font-weight: 800; }
-.stat-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; opacity: .7; }
-
-/* ========== FEATURE CARD ========== */
-.feature-grid {
+/* Stats grid */
+.stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 14px;
-    margin: 16px 0 20px;
+    margin: 22px 0 28px;
 }
-.feature-card {
-    background: #0d1117;
-    border: 1px solid #1e2a3a;
-    border-radius: 10px;
-    padding: 18px;
+.stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: all 0.2s;
 }
-.feature-card .icon { font-size: 24px; margin-bottom: 8px; }
-.feature-card h4 { color: #fff; margin-top: 0; font-size: 14px; }
-.feature-card p { color: #8b949e; font-size: 12px; margin-bottom: 0; }
+.stat-card:hover { border-color: var(--accent-2); transform: translateY(-2px); }
+.stat-card .label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; }
+.stat-card .value { font-size: 28px; font-weight: 800; color: var(--accent); margin-top: 4px; }
 
-/* ========== RESPONSIVE ========== */
-@media (max-width: 900px) {
-    .sidebar { display: none; }
-    .main { margin-left: 0; padding: 20px; }
+/* Toolbar / search */
+.toolbar { position: sticky; top: 0; z-index: 50; padding: 8px 0 12px; margin-bottom: 6px; background: var(--bg-body); }
+.toolbar input {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 14px;
+    border-radius: 10px;
+    outline: none;
+    transition: border 0.15s;
+}
+.toolbar input:focus { border-color: var(--accent); }
+
+/* Footer */
+footer {
+    margin-top: 80px;
+    padding-top: 30px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
 }
 </style>
 </head>
 <body>
 
-<!-- ======================== SIDEBAR ======================== -->
-<nav class="sidebar">
+<aside class="sidebar">
     <div class="sidebar-logo">
         <h1>BOKONZI</h1>
-        <p>Documentation Technique v2.0</p>
+        <p>Doc technique <span class="ver">v3 — Avril 2026</span></p>
     </div>
+    <nav>
+        <div class="sidebar-divider">Architecture</div>
+        <a href="#sec-1"><span class="num">1</span>Architecture globale</a>
+        <a href="#sec-2"><span class="num">2</span>Base de donnees</a>
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">Vue d'ensemble</div>
-        <a href="#overview">Presentation</a>
-        <a href="#stack">Stack technique</a>
-        <a href="#structure">Structure du projet</a>
-    </div>
+        <div class="sidebar-divider">Backend</div>
+        <a href="#sec-3"><span class="num">3</span>API REST (36 endpoints)</a>
+        <a href="#sec-4"><span class="num">4</span>Authentification</a>
+        <a href="#sec-5"><span class="num">5</span>Securite, rate limiting, logs</a>
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">Base de donnees</div>
-        <a href="#bdd">Schema BDD (20 tables)</a>
-        <a href="#bdd-ref" class="sub">Tables de reference</a>
-        <a href="#bdd-main" class="sub">Table athletes</a>
-        <a href="#bdd-data" class="sub">Tables de donnees</a>
-        <a href="#bdd-auth" class="sub">Tables auth</a>
-    </div>
+        <div class="sidebar-divider">Frontend</div>
+        <a href="#sec-6"><span class="num">6</span>Structure index.php</a>
+        <a href="#sec-7"><span class="num">7</span>Pages et composants</a>
+        <a href="#sec-8"><span class="num">8</span>Theme clair / sombre / auto</a>
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">API</div>
-        <a href="#api">Endpoints (21)</a>
-        <a href="#api-auth" class="sub">Authentification</a>
-        <a href="#api-athletes" class="sub">Athletes & Recherche</a>
-        <a href="#api-stats" class="sub">Statistiques</a>
-        <a href="#api-ref" class="sub">Donnees reference</a>
-        <a href="#api-perfs" class="sub">Performances</a>
-    </div>
+        <div class="sidebar-divider">Scraping</div>
+        <a href="#sec-9"><span class="num">9</span>Pipeline complet</a>
+        <a href="#sec-10"><span class="num">10</span>AthleteScraper et insertion</a>
+        <a href="#sec-11"><span class="num">11</span>Orchestrateur et controle</a>
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">Scraping</div>
-        <a href="#scraping">Pipeline de scraping</a>
-        <a href="#scraping-flow" class="sub">Flux de donnees</a>
-        <a href="#scraping-classes" class="sub">Classes PHP</a>
-        <a href="#scraping-tools" class="sub">Outils scraping</a>
-    </div>
+        <div class="sidebar-divider">Admin & systemes</div>
+        <a href="#sec-12"><span class="num">12</span>Panel admin et outils</a>
+        <a href="#sec-13"><span class="num">13</span>Cache systeme</a>
+        <a href="#sec-14"><span class="num">14</span>SEO et monetisation</a>
+        <a href="#sec-15"><span class="num">15</span>Profil masque & signalement</a>
+        <a href="#sec-16"><span class="num">16</span>Search tracking</a>
+        <a href="#sec-17"><span class="num">17</span>Systeme contact</a>
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">Core</div>
-        <a href="#core">Modules core (7)</a>
-        <a href="#auth-flow">Authentification</a>
-        <a href="#cache">Systeme de cache</a>
-    </div>
+        <div class="sidebar-divider">Reference</div>
+        <a href="#sec-18"><span class="num">18</span>Patterns recurrents</a>
+        <a href="#sec-19"><span class="num">19</span>Deploiement</a>
+        <a href="#sec-20"><span class="num">20</span>Historique changements</a>
+    </nav>
+</aside>
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">SEO & Referencement</div>
-        <a href="#seo">SEO avance</a>
-        <a href="#seo-meta" class="sub">Meta & Schema.org</a>
-        <a href="#seo-sitemap" class="sub">Sitemap XML</a>
-        <a href="#seo-robots" class="sub">robots.txt</a>
-        <a href="#seo-titles" class="sub">Titres dynamiques</a>
-        <a href="#qrcodes">QR Codes dynamiques</a>
-    </div>
+<main class="main">
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">Frontend</div>
-        <a href="#frontend">Architecture frontend</a>
-        <a href="#frontend-pages" class="sub">Pages (9)</a>
-        <a href="#frontend-dashboard" class="sub">Dashboard (8 sections)</a>
-        <a href="#frontend-niveaux" class="sub">Niveaux de competition</a>
-        <a href="#frontend-autogen" class="sub">Textes auto-generes</a>
-        <a href="#frontend-css" class="sub">CSS</a>
-        <a href="#frontend-nav" class="sub">Navigation</a>
-        <a href="#frontend-js" class="sub">Fonctions JS</a>
-    </div>
+<h1>Documentation <span class="grad">technique Bokonzi</span></h1>
+<p class="subtitle">
+    <span class="kv"><b>URL :</b> bokonzi.com</span>
+    <span class="kv"><b>Stack :</b> PHP 8 / MySQL / vanilla JS</span>
+    <span class="kv"><b>Version :</b> Avril 2026</span>
+</p>
 
-    <div class="sidebar-section">
-        <div class="sidebar-section-title">Admin</div>
-        <a href="#admin">Outils admin</a>
-        <a href="#security">Securite</a>
-        <a href="#deploy">Deploiement</a>
-    </div>
-</nav>
+<div class="toolbar"><input type="text" id="searchInput" placeholder="Rechercher dans la documentation (Ctrl+K)..."></div>
 
-<!-- ======================== MAIN ======================== -->
-<div class="main">
-
-<!-- ==================== VUE D'ENSEMBLE ==================== -->
-<h2 id="overview"><span class="emoji">&#128218;</span> Presentation</h2>
-
-<p><strong>Bokonzi</strong> est une plateforme complete de donnees d'athletisme francais. Elle collecte les donnees de <code>athle.fr</code> pour 300 000+ athletes, les stocke en base de donnees MySQL, et les expose via une API REST et un dashboard interactif avec graphiques, comparaisons, fiches detaillees, biographies auto-generees, QR codes dynamiques et SEO avance.</p>
-
-<p><strong>URL de production :</strong> <code>https://bokonzi.com</code></p>
-
-<div class="stats-row">
-    <div class="stat-box" style="background:#60a5fa10;border:1px solid #60a5fa25;">
-        <div class="val" style="color:#60a5fa;">300k+</div>
-        <div class="label">Athletes</div>
-    </div>
-    <div class="stat-box" style="background:#a78bfa10;border:1px solid #a78bfa25;">
-        <div class="val" style="color:#a78bfa;">20</div>
-        <div class="label">Tables BDD</div>
-    </div>
-    <div class="stat-box" style="background:#34d39910;border:1px solid #34d39925;">
-        <div class="val" style="color:#34d399;">21</div>
-        <div class="label">Endpoints API</div>
-    </div>
-    <div class="stat-box" style="background:#fbbf2410;border:1px solid #fbbf2425;">
-        <div class="val" style="color:#fbbf24;">38</div>
-        <div class="label">Foreign Keys</div>
-    </div>
-    <div class="stat-box" style="background:#f9731610;border:1px solid #f9731625;">
-        <div class="val" style="color:#f97316;">7.3k</div>
-        <div class="label">Lignes index.php</div>
-    </div>
-    <div class="stat-box" style="background:#e11d4810;border:1px solid #e11d4825;">
-        <div class="val" style="color:#e11d48;">660+</div>
-        <div class="label">Sous-sitemaps</div>
-    </div>
+<div class="stats-grid">
+    <div class="stat-card"><div class="label">Lignes de code</div><div class="value">~61 000</div></div>
+    <div class="stat-card"><div class="label">Athletes</div><div class="value">~300 000</div></div>
+    <div class="stat-card"><div class="label">Tables MySQL</div><div class="value">29</div></div>
+    <div class="stat-card"><div class="label">Endpoints API</div><div class="value">36</div></div>
+    <div class="stat-card"><div class="label">Pages</div><div class="value">11</div></div>
+    <div class="stat-card"><div class="label">Fonctions JS</div><div class="value">~375</div></div>
 </div>
 
-<div class="feature-grid">
-    <div class="feature-card">
-        <div class="icon">&#128202;</div>
-        <h4>Dashboard analytique</h4>
-        <p>8 sections, 12+ graphiques Chart.js, 5 recherches live, theme sombre professionnel</p>
-    </div>
-    <div class="feature-card">
-        <div class="icon">&#128269;</div>
-        <h4>Recherche avancee</h4>
-        <p>12 filtres combinables, recherche debounced, resultats pagines avec niveaux colores</p>
-    </div>
-    <div class="feature-card">
-        <div class="icon">&#128100;</div>
-        <h4>Fiches detaillees</h4>
-        <p>Profils athletes, clubs, epreuves, villes avec biographies auto-generees</p>
-    </div>
-    <div class="feature-card">
-        <div class="icon">&#128200;</div>
-        <h4>Comparaison</h4>
-        <p>Comparaison multi-athletes et multi-clubs avec graphiques et resume textuel</p>
-    </div>
-    <div class="feature-card">
-        <div class="icon">&#127760;</div>
-        <h4>SEO avance</h4>
-        <p>Schema.org JSON-LD, Open Graph, Twitter Cards, sitemap XML dynamique, QR codes</p>
-    </div>
-    <div class="feature-card">
-        <div class="icon">&#128268;</div>
-        <h4>Scraping parallele</h4>
-        <p>7 athletes x 3 pages en parallele via curl_multi, ~3.5 jours pour 300k athletes</p>
-    </div>
+<!-- ============ SECTION 1 ============ -->
+<h2 id="sec-1"><span class="num">01.</span> Architecture globale</h2>
+
+<h3>Stack technique</h3>
+<ul>
+    <li><b>Backend</b> : PHP 8+ natif (<em>pas de framework</em>), MySQL via mysqli</li>
+    <li><b>Frontend</b> : HTML/CSS/JS vanilla, Chart.js 4.4.7, Three.js (CDN)</li>
+    <li><b>Serveur</b> : Apache (XAMPP local, Hostinger prod)</li>
+    <li><b>Local</b> : <code>C:\xampp\htdocs\BK\</code> &nbsp;|&nbsp; <b>Prod</b> : bokonzi.com</li>
+</ul>
+
+<h3>Flux de donnees</h3>
+<pre><code>athle.fr (HTML brut)
+   │ curl_multi (7 athletes × 3 pages = 21 req parallel)
+   ▼
+scraping/ (Pipeline)
+   │ AthleteScraper.php (parsing)
+   │ insert_athle.php (insertion)
+   ▼
+MySQL (29 tables, ~300 000 athletes)
+   │
+   ▼
+api/*.php (36 endpoints, cache JSON 24h)
+   │ apiCall() (cURL interne)
+   ▼
+index.php (~10 800 lignes, 11 pages)
+   ▼
+Browser</code></pre>
+
+<h3>Repartition du code</h3>
+<table>
+    <thead><tr><th>Type</th><th>Lignes</th><th>%</th></tr></thead>
+    <tbody>
+        <tr><td>PHP (backend + templates)</td><td><code>51 131</code></td><td>84 %</td></tr>
+        <tr><td>JavaScript (frontend)</td><td><code>5 723</code></td><td>9.4 %</td></tr>
+        <tr><td>HTML</td><td><code>1 660</code></td><td>2.7 %</td></tr>
+        <tr><td>CSS</td><td><code>1 128</code></td><td>1.9 %</td></tr>
+        <tr><td>JSON / Config</td><td><code>1 188</code></td><td>2 %</td></tr>
+        <tr><td><b>TOTAL</b></td><td><code>~61 000</code></td><td>100 %</td></tr>
+    </tbody>
+</table>
+
+<!-- ============ SECTION 2 ============ -->
+<h2 id="sec-2"><span class="num">02.</span> Base de donnees (29 tables)</h2>
+
+<h3>Tables de reference</h3>
+<pre><code><span class="kw">athletes</span> (
+    id_athlete INT PK AUTO_INCREMENT,
+    athlete_id_externe INT UNIQUE,    <span class="com">-- ID athle.fr</span>
+    nom_1_athlete, nom_2_athlete, nom_complet_athlete,
+    date_naissance_athlete, annee_naissance_athlete,
+    id_ville_naissance INT FK,
+    taille_cm_athlete, poids_kg_athlete,
+    categorie_athlete VARCHAR,         <span class="com">-- SE, ES, JU, CA, MI, BE, V1...</span>
+    sexe_athlete CHAR(1),              <span class="com">-- M ou F</span>
+    nationalite_athlete VARCHAR(3),
+    licence_athlete VARCHAR,
+    visible TINYINT DEFAULT 1          <span class="com">-- 0 = profil masque</span>
+)
+
+clubs       (id_club PK, nom_club UNIQUE, departement, region)
+epreuves    (id_epreuve PK, nom_epreuve, sexe_epreuve)
+villes      (id_ville PK, nom_ville, pays, departement, region)
+competitions(id_competition PK, nom_competition)
+categories  (id_categorie PK, code_categorie, age_min, age_max)
+nationalites(id_nationalite PK, code_nationalite UNIQUE)</code></pre>
+
+<h3>Tables donnees athletes (9)</h3>
+<table>
+    <thead><tr><th>Table</th><th>Cle metier</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td><code>athlete_clubs</code></td><td>id_athlete + id_club + annee_debut/fin</td><td>Periodes membership</td></tr>
+        <tr><td><code>athlete_records</code></td><td>id_athlete + id_epreuve + perf + date</td><td>Records personnels</td></tr>
+        <tr><td><code>athlete_resultats</code></td><td>id_athlete + id_epreuve + niveau_resultat</td><td>D / R / N / I</td></tr>
+        <tr><td><code>athlete_medailles</code></td><td>type_medaille + id_competition</td><td>or / argent / bronze / autre</td></tr>
+        <tr><td><code>athlete_podiums</code></td><td>rang_podium + id_epreuve</td><td>Top 3</td></tr>
+        <tr><td><code>athlete_selections</code></td><td>id_competition + id_epreuve</td><td>Equipe France</td></tr>
+        <tr><td><code>athlete_progressions</code></td><td>id_epreuve + annee + perf</td><td>Evolution annuelle</td></tr>
+        <tr><td><code>athlete_niveaux</code></td><td>code_niveau + points_niveau</td><td>Qualifications</td></tr>
+        <tr><td><code>athlete_niv_perfs</code></td><td>id_niveau + id_epreuve</td><td>Perfs par niveau</td></tr>
+    </tbody>
+</table>
+
+<h3>Niveaux de competition</h3>
+<p>
+    <span class="niv niv-D">D1</span><span class="niv niv-D">D8</span> Departemental
+    <span class="niv niv-R">R1</span><span class="niv niv-R">R6</span> Regional
+    <span class="niv niv-N">N1</span><span class="niv niv-N">N4</span> National
+    <span class="niv niv-I">IE</span><span class="niv niv-I">IR</span> International
+</p>
+<p><b>Hierarchie</b> : IE(100) > IR(99) > N1(90)..N4(86) > R1(80)..R6(75) > D1(70)..D8(63)</p>
+
+<h3>Tables systeme (10)</h3>
+<table>
+    <thead><tr><th>Table</th><th>Role</th></tr></thead>
+    <tbody>
+        <tr><td><code>users</code></td><td>Comptes utilisateurs (google_id, role)</td></tr>
+        <tr><td><code>user_sessions</code></td><td>Tokens 64 chars, TTL 30j</td></tr>
+        <tr><td><code>logs</code></td><td>Tracking activite (page_view, clicks, errors)</td></tr>
+        <tr><td><code>athlete_follows</code></td><td>Suivi athletes (UK: email + athlete)</td></tr>
+        <tr><td><code>club_follows</code></td><td>Suivi clubs (UK: email + club)</td></tr>
+        <tr><td><code>email_subscribers</code></td><td>Newsletter + PDF</td></tr>
+        <tr><td><code>contact_messages</code></td><td>Messages contact confirmes</td></tr>
+        <tr><td><code>contact_confirm_tokens</code></td><td>Tokens confirmation 24h TTL</td></tr>
+        <tr><td><code>password_resets</code></td><td>Tokens reset mdp 1h TTL</td></tr>
+        <tr><td><code>search_tracking</code></td><td>Recherches/consultations (5 type, 3 source)</td></tr>
+        <tr><td><code>profile_reports</code></td><td>Signalements (5 motifs, status)</td></tr>
+        <tr><td><code>profile_hide_tokens</code></td><td>Tokens retrait self-service 48h</td></tr>
+    </tbody>
+</table>
+
+<div class="box box-warn">
+    <b>CRITIQUE — Double systeme d'IDs athletes</b>
+    <p style="margin:0;">
+        <code>athlete_id_externe</code> = ID athle.fr (URL <code>?id=</code>, dashboard)<br>
+        <code>id_athlete</code> = PK auto-increment MySQL interne<br>
+        L'API <code>athlete.php</code> accepte <code>?id=</code> (externe) ou <code>?id_athlete=</code> (interne).<br>
+        <b>Toujours</b> utiliser <code>athlete_id_externe</code> dans les URLs publiques.
+    </p>
 </div>
 
-<h3 id="stack">Stack technique</h3>
+<h3>Cles etrangeres</h3>
+<ul>
+    <li><code>athlete_*</code> &rarr; <code>athletes</code> : <span class="pill pill-rose">ON DELETE CASCADE</span></li>
+    <li>vers epreuves / villes / clubs / competitions / categories : <span class="pill pill-blue">ON DELETE SET NULL</span></li>
+</ul>
+
+<!-- ============ SECTION 3 ============ -->
+<h2 id="sec-3"><span class="num">03.</span> BACKEND — API REST (36 endpoints)</h2>
+
+<h3>Configuration commune (<code>api/config.php</code>)</h3>
+<ul>
+    <li>Headers JSON + CORS (<code>Access-Control-Allow-Origin: *</code>)</li>
+    <li>Connexion BDD via <code>core/db.php</code></li>
+    <li><code>core/auth.php</code> charge automatiquement &rarr; <code>getCurrentUser()</code> dispo</li>
+    <li><code>jsonResponse($data, $code)</code> — encode JSON + exit</li>
+    <li>Constante <code>BK_API_KEY</code> pour bypass cache et reset vues</li>
+</ul>
+
+<h3>Endpoints donnees</h3>
 <table>
-    <tr><th>Composant</th><th>Technologie</th><th>Details</th></tr>
-    <tr><td>Backend</td><td>PHP 8+ (vanilla, pas de framework)</td><td>~7300 lignes pour le dashboard seul</td></tr>
-    <tr><td>Base de donnees</td><td>MySQL (mysqli) — Hostinger</td><td>20 tables, 38 FK, 300k+ athletes</td></tr>
-    <tr><td>Frontend</td><td>JavaScript vanilla + Chart.js 4.4.7</td><td>Pas de framework JS (React, Vue, etc.)</td></tr>
-    <tr><td>CSS</td><td>Custom dark theme (common.css + dashboard.css)</td><td>Theme sombre #0a0e17, accent cyan #00d4ff</td></tr>
-    <tr><td>Serveur</td><td>Apache (XAMPP local / Hostinger prod)</td><td>Constante BK_BASE pour les chemins</td></tr>
-    <tr><td>Scraping</td><td>curl_multi (7 athletes x 3 pages)</td><td>21 requetes paralleles par batch</td></tr>
-    <tr><td>Cache</td><td>Fichiers JSON (TTL 24h)</td><td>Protege par .htaccess, lecture locale</td></tr>
-    <tr><td>Auth</td><td>Sessions token + cookies HttpOnly (bcrypt)</td><td>64 chars hex, expire 30 jours</td></tr>
-    <tr><td>SEO</td><td>Schema.org JSON-LD, Open Graph, Twitter Cards</td><td>Sitemap XML dynamique (660+ sous-sitemaps)</td></tr>
-    <tr><td>QR Codes</td><td>api.qrserver.com (generation a la volee)</td><td>Pas de stockage local</td></tr>
+    <thead><tr><th>Endpoint</th><th>But</th><th>Cache</th></tr></thead>
+    <tbody>
+        <tr><td><code>athlete.php</code></td><td>Profil complet (<code>?id=</code> / <code>?id_athlete=</code> / <code>?licence=</code>)</td><td>24h</td></tr>
+        <tr><td><code>search.php</code></td><td>Recherche multi-criteres (12 filtres)</td><td>24h</td></tr>
+        <tr><td><code>liste.php</code></td><td>Liste paginee (8 ordres de tri)</td><td>24h-7j</td></tr>
+        <tr><td><code>clubs.php</code> / <code>club_stats.php</code></td><td>Liste / Stats club</td><td>24h</td></tr>
+        <tr><td><code>epreuves.php</code> / <code>epreuve_stats.php</code></td><td>Liste / Stats epreuve</td><td>24h</td></tr>
+        <tr><td><code>villes.php</code> / <code>ville_stats.php</code></td><td>Liste / Stats ville</td><td>24h</td></tr>
+        <tr><td><code>classement.php</code></td><td>Classement par epreuve</td><td><span class="pill pill-rose">0</span></td></tr>
+        <tr><td><code>stats.php</code></td><td>Stats globales (<code>?detail=1&top=N</code>)</td><td>24h</td></tr>
+        <tr><td><code>top_searched.php</code></td><td>Top consultes (1j/7j/30j/365j)</td><td>10min</td></tr>
+        <tr><td><code>similar.php</code></td><td>Profils similaires (algo bareme FFA)</td><td>24h</td></tr>
+    </tbody>
 </table>
 
-<!-- ==================== STRUCTURE ==================== -->
-<h3 id="structure">Structure du projet</h3>
-
-<div class="tree"><span class="dir">BK/</span>
-<span class="dir">  index.php</span>              <span class="comment">&#8592; Dashboard principal (~7300 lignes, 8 sections)</span>
-  login.php              <span class="comment">&#8592; Connexion</span>
-  register.php           <span class="comment">&#8592; Inscription</span>
-  panel.php              <span class="comment">&#8592; Tour de controle admin</span>
-  nav.php                <span class="comment">&#8592; Navigation partagee (BK_BASE)</span>
-  common.css             <span class="comment">&#8592; Styles communs (6.6 Ko)</span>
-  dashboard.css          <span class="comment">&#8592; Styles dashboard (14 Ko)</span>
-<span class="new">  sitemap.php</span>            <span class="comment">&#8592; Sitemap XML dynamique (index + sous-sitemaps)</span>
-<span class="new">  robots.txt</span>             <span class="comment">&#8592; Directives pour robots Google</span>
-<span class="new">  google3c52...html</span>      <span class="comment">&#8592; Verification Google Search Console</span>
-<span class="dir">
-  core/</span>                    <span class="comment">&#8592; 7 fichiers</span>
-    credentials.php      <span class="comment">&#8592; Identifiants BDD (centralises)</span>
-    db.php               <span class="comment">&#8592; Connexion mysqli ($conn, utf8mb4)</span>
-    auth.php             <span class="comment">&#8592; Authentification (9 fonctions)</span>
-    paths.php            <span class="comment">&#8592; Constante BK_BASE (local vs prod)</span>
-<span class="new">    seo.php</span>              <span class="comment">&#8592; SEO : meta, OG, Twitter, JSON-LD, BreadcrumbList</span>
-    insert_athle.php     <span class="comment">&#8592; Insertion BDD depuis scraping (cache memoire)</span>
-    dbCheck_athle.php    <span class="comment">&#8592; Creation schema (20 tables + 38 FK)</span>
-<span class="dir">
-  scraping/</span>                <span class="comment">&#8592; 5 fichiers</span>
-    scrape_functions.php <span class="comment">&#8592; scrapeParallel() partagee</span>
-    scraper.php          <span class="comment">&#8592; Scraping principal (batch 7, auto-refresh)</span>
-    check_sync.php       <span class="comment">&#8592; Verif + scraping absents (2 phases)</span>
-    check_athletes.php   <span class="comment">&#8592; Verif src/ vs BDD</span>
-    import_bdd.php       <span class="comment">&#8592; Import fichiers JSON en BDD</span>
-<span class="dir">
-  pages/</span>                   <span class="comment">&#8592; 9 fichiers</span>
-    recherche_live.php   <span class="comment">&#8592; Recherche instantanee</span>
-    global_athlete.php   <span class="comment">&#8592; Fiche athlete complete (SEO + QR)</span>
-    classement.php       <span class="comment">&#8592; Classement par epreuve</span>
-    performances.php     <span class="comment">&#8592; Saisie manuelle (auth requise)</span>
-    profil.php           <span class="comment">&#8592; Profil public partageable (SEO + QR)</span>
-    recherche.php        <span class="comment">&#8592; Recherche dans les fichiers</span>
-    exemples.php         <span class="comment">&#8592; Exemples d'utilisation API</span>
-    test_api.php         <span class="comment">&#8592; Test des endpoints</span>
-    athlete.php          <span class="comment">&#8592; Affichage JSON brut</span>
-<span class="dir">
-  api/</span>                     <span class="comment">&#8592; 21 endpoints REST (JSON)</span>
-<span class="dir">  admin/</span>                   <span class="comment">&#8592; Setup BDD, reset, drop, cache</span>
-<span class="dir">  Class/</span>                   <span class="comment">&#8592; DatabaseHandler + AthleteScraper + 30 utilitaires</span>
-<span class="dir">  src/</span>                     <span class="comment">&#8592; 300k+ fichiers JSON scrapes (1 par athlete)</span>
-<span class="dir">  cache/</span>                   <span class="comment">&#8592; Cache API (TTL 24h, protege .htaccess)</span>
-<span class="dir">  logs/</span>                    <span class="comment">&#8592; Logs analytics JSON</span>
-<span class="dir">  docs/</span>                    <span class="comment">&#8592; Documentation technique</span></div>
-
-<!-- ==================== BASE DE DONNEES ==================== -->
-<h2 id="bdd"><span class="emoji">&#128450;</span> Base de donnees</h2>
-
-<p>20 tables, 38 cles etrangeres. La BDD est auto-creee par <code>admin/setup_bdd.php</code> + <code>core/dbCheck_athle.php</code>. Toutes les suppressions d'athletes declenchent un CASCADE automatique sur les 9 tables enfants.</p>
-
-<h3 id="bdd-ref">Tables de reference</h3>
-<p>Tables de lookup uniques — jamais de doublons grace aux contraintes UNIQUE. Ces tables sont partagees par tous les athletes.</p>
-
-<h4>villes</h4>
+<h3>Endpoints utilisateurs (<code>api/auth/</code>)</h3>
 <table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_ville</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>nom_ville</td><td class="type">VARCHAR(150)</td><td>UNIQUE (avec pays_ville)</td></tr>
-    <tr><td>pays_ville</td><td class="type">CHAR(3)</td><td>DEFAULT ''</td></tr>
-    <tr><td>departement_ville</td><td class="type">VARCHAR(100)</td><td>DEFAULT ''</td></tr>
-    <tr><td>region_ville</td><td class="type">VARCHAR(100)</td><td>DEFAULT ''</td></tr>
+    <thead><tr><th>Endpoint</th><th>Methode</th><th>But</th></tr></thead>
+    <tbody>
+        <tr><td><code>login.php</code></td><td>POST</td><td>Login email+mdp ou Super Admin</td></tr>
+        <tr><td><code>register.php</code></td><td>POST</td><td>Inscription manuelle</td></tr>
+        <tr><td><code>google_login.php</code></td><td>GET</td><td>Init OAuth Google (state CSRF)</td></tr>
+        <tr><td><code>google_callback.php</code></td><td>GET</td><td>Echange code &rarr; creation/lien user</td></tr>
+        <tr><td><code>forgot_password.php</code> / <code>reset_password.php</code></td><td>POST</td><td>Reset mdp via token</td></tr>
+        <tr><td><code>confirm_hide.php</code></td><td>GET</td><td>Confirme retrait profil (token 48h)</td></tr>
+        <tr><td><code>confirm_contact.php</code></td><td>GET</td><td>Confirme envoi message contact (24h)</td></tr>
+        <tr><td><code>me.php</code> / <code>logout.php</code></td><td>GET / POST</td><td>Statut auth / deconnexion</td></tr>
+    </tbody>
 </table>
 
-<h4>clubs</h4>
+<h3>Endpoints actions</h3>
 <table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_club</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>nom_club</td><td class="type">VARCHAR(200)</td><td>UNIQUE</td></tr>
-    <tr><td>departement_club</td><td class="type">VARCHAR(100)</td><td>DEFAULT ''</td></tr>
-    <tr><td>region_club</td><td class="type">VARCHAR(100)</td><td>DEFAULT ''</td></tr>
+    <thead><tr><th>Endpoint</th><th>But</th></tr></thead>
+    <tbody>
+        <tr><td><code>contact.php</code></td><td>POST = demande envoi (email confirm) / GET admin</td></tr>
+        <tr><td><code>report.php</code></td><td>POST = signalement / GET admin (hide/show/resolve/delete)</td></tr>
+        <tr><td><code>follow.php</code></td><td>POST toggle athlete/club / GET status</td></tr>
+        <tr><td><code>subscribe.php</code></td><td>POST collecte email newsletter/PDF</td></tr>
+        <tr><td><code>performances.php</code></td><td>CRUD perfs manuelles (auth requise)</td></tr>
+        <tr><td><code>log.php</code></td><td>POST batch BDD / GET lecture (admin)</td></tr>
+        <tr><td><code>search_track.php</code></td><td>POST tracking recherche/consultation (sendBeacon)</td></tr>
+    </tbody>
 </table>
 
-<h4>epreuves</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_epreuve</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>nom_epreuve</td><td class="type">VARCHAR(100)</td><td>UNIQUE</td></tr>
-    <tr><td>sexe_epreuve</td><td class="type">CHAR(1)</td><td>DEFAULT ''</td></tr>
-</table>
+<h3>Endpoint cle : <code>search.php</code></h3>
+<p><b>12 filtres</b> : <code>nom</code>, <code>nom1</code>, <code>nom2</code>, <code>club</code>, <code>categorie</code>, <code>sexe</code>, <code>nationalite</code>, <code>epreuve</code>, <code>ville</code>, <code>competition</code>, <code>medaille</code>, <code>annee</code>, <code>licence</code>, <code>page</code>, <code>limit</code></p>
+<ul>
+    <li>Au moins 1 filtre requis</li>
+    <li>Recherche multi-mots ordre libre (split + LIKE %x% AND chained)</li>
+    <li>Exclut clubs &gt;5000 athletes (sauf filtre club explicite)</li>
+    <li>Detection temps vs distance pour tri (REGEXP nom epreuve)</li>
+</ul>
 
-<h4>competitions</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_competition</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>nom_competition</td><td class="type">VARCHAR(300)</td><td>UNIQUE</td></tr>
-</table>
-
-<h4>categories</h4>
-<p>Pre-remplie avec les 12 categories FFA standard : EA (Eveil Athletique), PO (Poussin), BE (Benjamin), MI (Minime), CA (Cadet), JU (Junior), ES (Espoir), SE (Senior), V1-V4 (Veterans).</p>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_categorie</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>code_categorie</td><td class="type">VARCHAR(5)</td><td>UNIQUE</td></tr>
-    <tr><td>nom_categorie</td><td class="type">VARCHAR(50)</td><td></td></tr>
-    <tr><td>age_min</td><td class="type">TINYINT UNSIGNED</td><td></td></tr>
-    <tr><td>age_max</td><td class="type">TINYINT UNSIGNED</td><td></td></tr>
-</table>
-
-<h4>nationalites</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_nationalite</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>code_nationalite</td><td class="type">CHAR(3)</td><td>UNIQUE (ISO 3166)</td></tr>
-    <tr><td>nom_nationalite</td><td class="type">VARCHAR(100)</td><td>DEFAULT ''</td></tr>
-</table>
-
-<!-- ATHLETES -->
-<h3 id="bdd-main">Table principale : athletes</h3>
-<p>Table centrale — 300 000+ lignes. Chaque athlete a un <code>athlete_id_externe</code> unique (l'ID sur athle.fr). Toutes les tables de donnees sont liees a cette table par FK avec ON DELETE CASCADE.</p>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_athlete</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>athlete_id_externe</td><td class="type">INT UNSIGNED</td><td>UNIQUE (ID athle.fr)</td></tr>
-    <tr><td>nom_1 / nom_2 / nom_3 / nom_4</td><td class="type">VARCHAR(100)</td><td>Decomposition du nom</td></tr>
-    <tr><td>nom_complet_athlete</td><td class="type">VARCHAR(200)</td><td></td></tr>
-    <tr><td>date_naissance_athlete</td><td class="type">DATE</td><td></td></tr>
-    <tr><td>annee_naissance_athlete</td><td class="type">SMALLINT UNSIGNED</td><td></td></tr>
-    <tr><td class="fk">id_ville_naissance</td><td class="type">INT UNSIGNED</td><td>FK &#8594; villes (SET NULL)</td></tr>
-    <tr><td>taille_cm / poids_kg</td><td class="type">SMALLINT UNSIGNED</td><td></td></tr>
-    <tr><td>categorie_athlete</td><td class="type">VARCHAR(10)</td><td>Code FFA (SE, JU, CA...)</td></tr>
-    <tr><td>sexe_athlete</td><td class="type">CHAR(1)</td><td>M / F</td></tr>
-    <tr><td>nationalite_athlete</td><td class="type">CHAR(3)</td><td>Code ISO (FRA, MAR, SEN...)</td></tr>
-    <tr><td class="fk">id_nationalite</td><td class="type">INT UNSIGNED</td><td>FK &#8594; nationalites (SET NULL)</td></tr>
-    <tr><td>licence_athlete</td><td class="type">VARCHAR(20)</td><td>Numero de licence FFA</td></tr>
-    <tr><td>date_creation_athlete</td><td class="type">TIMESTAMP</td><td>DEFAULT CURRENT_TIMESTAMP</td></tr>
-</table>
-
-<!-- DATA TABLES -->
-<h3 id="bdd-data">Tables de donnees (liees aux athletes)</h3>
-
-<p>Toutes ces tables ont une <code class="fk">FK &#8594; athletes(id_athlete) ON DELETE CASCADE</code>. La suppression d'un athlete supprime automatiquement toutes ses donnees associees.</p>
-
-<h4>athlete_clubs</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_athlete_club</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete</td><td class="type">INT UNSIGNED</td><td>FK &#8594; athletes (CASCADE)</td></tr>
-    <tr><td class="fk">id_club</td><td class="type">INT UNSIGNED</td><td>FK &#8594; clubs (CASCADE)</td></tr>
-    <tr><td>annee_debut / annee_fin</td><td class="type">SMALLINT</td><td></td></tr>
-</table>
-
-<h4>athlete_medailles</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_medaille</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete</td><td class="type">INT UNSIGNED</td><td>FK &#8594; athletes</td></tr>
-    <tr><td>type_medaille</td><td class="type">ENUM('or','argent','bronze','autre')</td><td></td></tr>
-    <tr><td>annee_medaille</td><td class="type">SMALLINT</td><td></td></tr>
-    <tr><td class="fk">id_competition, id_epreuve, id_ville</td><td class="type">INT UNSIGNED</td><td>FK &#8594; tables ref</td></tr>
-</table>
-
-<h4>athlete_records</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_record</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete, id_epreuve, id_categorie, id_club, id_ville</td><td class="type">INT UNSIGNED</td><td>FK &#8594; tables ref</td></tr>
-    <tr><td>performance_record</td><td class="type">VARCHAR</td><td>Formate (ex: 10"52)</td></tr>
-    <tr><td>performance_brut_record</td><td class="type">VARCHAR</td><td>Brut (ex: 10.52)</td></tr>
-    <tr><td>date_record</td><td class="type">DATE</td><td></td></tr>
-    <tr><td>ligue_dept_record</td><td class="type">VARCHAR(50)</td><td></td></tr>
-</table>
-
-<h4>athlete_progressions</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_progression</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete, id_epreuve, id_categorie, id_club, id_ville</td><td class="type">INT UNSIGNED</td><td>FK</td></tr>
-    <tr><td>annee_progression</td><td class="type">SMALLINT</td><td></td></tr>
-    <tr><td>performance_progression / performance_brut</td><td class="type">VARCHAR</td><td></td></tr>
-    <tr><td>vent_progression</td><td class="type">VARCHAR(10)</td><td></td></tr>
-    <tr><td>date_progression</td><td class="type">DATE</td><td></td></tr>
-    <tr><td>rang_perf_progression</td><td class="type">SMALLINT</td><td></td></tr>
-</table>
-
-<h4>athlete_resultats</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_resultat</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete, id_epreuve, id_ville</td><td class="type">INT UNSIGNED</td><td>FK</td></tr>
-    <tr><td>annee_resultat, date_resultat</td><td class="type">SMALLINT / DATE</td><td></td></tr>
-    <tr><td>performance_resultat / performance_brut</td><td class="type">VARCHAR</td><td></td></tr>
-    <tr><td>vent_resultat</td><td class="type">VARCHAR(10)</td><td></td></tr>
-    <tr><td>tour_resultat</td><td class="type">VARCHAR(30)</td><td>Serie, Finale, etc.</td></tr>
-    <tr><td>place_resultat</td><td class="type">TINYINT</td><td></td></tr>
-    <tr><td>niveau_resultat</td><td class="type">VARCHAR(10)</td><td>N1, Reg, Dep...</td></tr>
-    <tr><td>points_resultat</td><td class="type">SMALLINT</td><td></td></tr>
-</table>
-
-<h4>athlete_podiums</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_podium</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete, id_epreuve, id_ville</td><td class="type">INT UNSIGNED</td><td>FK</td></tr>
-    <tr><td>annee_podium</td><td class="type">SMALLINT</td><td></td></tr>
-    <tr><td>niveau_competition</td><td class="type">VARCHAR(30)</td><td></td></tr>
-    <tr><td>rang_podium</td><td class="type">TINYINT</td><td>1, 2, 3</td></tr>
-    <tr><td>performance_podium / performance_brut</td><td class="type">VARCHAR</td><td></td></tr>
-</table>
-
-<h4>athlete_selections</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_selection</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete, id_competition, id_epreuve</td><td class="type">INT UNSIGNED</td><td>FK</td></tr>
-    <tr><td>type_selection</td><td class="type">VARCHAR(20)</td><td></td></tr>
-    <tr><td>date_selection</td><td class="type">DATE</td><td></td></tr>
-    <tr><td>duree_jours / age_selection</td><td class="type">SMALLINT / TINYINT</td><td></td></tr>
-    <tr><td>classement_selection</td><td class="type">TINYINT</td><td></td></tr>
-    <tr><td>performance_selection / performance_brut</td><td class="type">VARCHAR</td><td></td></tr>
-</table>
-
-<h4>athlete_niveaux + athlete_niv_perfs</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_niveau</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_athlete, id_club</td><td class="type">INT UNSIGNED</td><td>FK</td></tr>
-    <tr><td>annee_niveau</td><td class="type">SMALLINT</td><td>UNIQUE (id_athlete, annee)</td></tr>
-    <tr><td>code_niveau</td><td class="type">VARCHAR(10)</td><td>D1-D8, R1-R6, N1-N4, IE, IR</td></tr>
-    <tr><td>points_niveau</td><td class="type">SMALLINT</td><td></td></tr>
-</table>
-<p>Chaque niveau a des sous-performances dans <code>athlete_niv_perfs</code> (<code class="fk">FK &#8594; athlete_niveaux ON DELETE CASCADE</code>).</p>
-
-<!-- AUTH TABLES -->
-<h3 id="bdd-auth">Tables authentification</h3>
-
-<h4>users</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_user</td><td class="type">INT UNSIGNED AUTO_INCREMENT</td><td>PRIMARY KEY</td></tr>
-    <tr><td>email</td><td class="type">VARCHAR(255)</td><td>UNIQUE</td></tr>
-    <tr><td>password_hash</td><td class="type">VARCHAR(255)</td><td>bcrypt</td></tr>
-    <tr><td>nom, prenom</td><td class="type">VARCHAR(100)</td><td></td></tr>
-    <tr><td>role</td><td class="type">ENUM('athlete','coach','club','admin')</td><td>DEFAULT 'athlete'</td></tr>
-    <tr><td class="fk">id_athlete</td><td class="type">INT UNSIGNED</td><td>FK &#8594; athletes (SET NULL)</td></tr>
-</table>
-
-<h4>user_sessions</h4>
-<table>
-    <tr><th>Colonne</th><th>Type</th><th>Contrainte</th></tr>
-    <tr><td class="pk">id_session</td><td class="type">INT UNSIGNED</td><td>PRIMARY KEY</td></tr>
-    <tr><td class="fk">id_user</td><td class="type">INT UNSIGNED</td><td>FK &#8594; users (CASCADE)</td></tr>
-    <tr><td>token</td><td class="type">VARCHAR(64)</td><td>UNIQUE (hex 32 bytes)</td></tr>
-    <tr><td>expire_at</td><td class="type">DATETIME</td><td>+30 jours</td></tr>
-</table>
-
-<h4>coach_athletes + athlete_perfs_manuelles</h4>
-<p><code>coach_athletes</code> : liaison many-to-many (coach &#8596; athlete). <code>athlete_perfs_manuelles</code> : saisie manuelle de performances par les utilisateurs connectes (epreuve, performance, date, lieu, notes).</p>
-
-
-<!-- ==================== API ==================== -->
-<h2 id="api"><span class="emoji">&#128640;</span> API REST</h2>
-
-<p>21 endpoints JSON. Tous retournent <code>{"success": true/false, ...}</code>. CORS active (Allow-Origin: *). Cache fichier JSON avec TTL 24h sur les endpoints lourds.</p>
-
-<div class="info"><strong>Base URL :</strong> <code>https://bokonzi.com/api/</code> (prod) ou <code>/BK/api/</code> (local)</div>
-
-<!-- AUTH API -->
-<h3 id="api-auth">Authentification (4 endpoints)</h3>
-
-<div class="api-card">
-    <span class="badge badge-post">POST</span>
-    <span class="url">/api/auth/login.php</span>
-    <div class="desc">Connexion — retourne un token + cookie HttpOnly (30 jours)</div>
-    <div class="api-param">Params (JSON body) : <span>email</span>, <span>password</span></div>
-    <div class="api-param">Response : <code>{ success, token, user: { id_user, email, nom, prenom, role, id_athlete } }</code></div>
+<div class="box box-warn">
+    <b>Rate limiting</b>
+    <p style="margin:0;">
+        Anonymes : <code>BK_SEARCH_LIMIT_ANON = 100/jour</code><br>
+        Connectes : <code>BK_SEARCH_LIMIT_LOGGED = 500/jour</code><br>
+        Super admin : illimite (whitelist Google, Hostinger, localhost)
+    </p>
 </div>
 
-<div class="api-card">
-    <span class="badge badge-post">POST</span>
-    <span class="url">/api/auth/register.php</span>
-    <div class="desc">Inscription — cree le compte + auto-login</div>
-    <div class="api-param">Params : <span>email</span>, <span>password</span> (8+ chars), <span>nom</span>, <span>prenom</span>, <span>role</span> <span class="opt">(athlete|coach|club)</span></div>
-    <div class="api-param">Response : <code>201 Created { success, token, user }</code></div>
-</div>
+<h3>Endpoint cle : <code>club_stats.php</code></h3>
+<p>Filtre universel <code>$athFilter</code> applique aux ~30 requetes SQL :</p>
+<pre><code><span class="kw">$athFilter</span> = <span class="str">" AND ac.id_athlete IN (
+    SELECT _af.id_athlete FROM athletes _af
+    WHERE _af.nationalite_athlete = '...' AND ...
+)"</span>;</code></pre>
+<p><b>UNION records + progressions</b> pour onglet Epreuves : <code>athlete_records</code> ne contient qu'1 record perso, donc UNION avec <code>athlete_progressions</code> (qui a <code>id_club</code> direct) pour donnees completes.</p>
 
-<div class="api-card">
-    <span class="badge badge-post">POST</span>
-    <span class="url">/api/auth/logout.php</span>
-    <div class="desc">Deconnexion — supprime la session en BDD + efface le cookie</div>
-</div>
+<!-- ============ SECTION 4 ============ -->
+<h2 id="sec-4"><span class="num">04.</span> BACKEND — Authentification</h2>
 
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/auth/me.php</span>
-    <div class="desc">Utilisateur courant — verifie le cookie de session</div>
-    <div class="api-param">Response : <code>{ success, authenticated: true/false, user }</code></div>
-</div>
+<h3>Connexion via Google OAuth uniquement</h3>
+<p>Plus de formulaire email+mdp pour les utilisateurs. Bouton <em>Se connecter avec Google</em> sur <code>login.php</code> et <code>register.php</code>.</p>
 
-<!-- ATHLETES API -->
-<h3 id="api-athletes">Athletes & Recherche (3 endpoints)</h3>
+<h3>Flux Google OAuth 2.0</h3>
+<pre><code>login.php
+   │ clic "Se connecter avec Google"
+   ▼
+api/auth/google_login.php
+   │ genere state CSRF en session
+   │ redirect Google avec client_id + state
+   ▼
+Google (consentement)
+   │ redirect vers callback avec code + state
+   ▼
+api/auth/google_callback.php
+   │ verifie state CSRF
+   │ echange code → access_token (POST cote serveur)
+   │ recupere profil (email, nom, google_id)
+   │ si email existe : lie google_id au compte
+   │ sinon : cree user (role=athlete, oauth_provider=google)
+   │ createSession() → cookie bk_token (30j)
+   ▼
+index.php (connecte)</code></pre>
 
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/athlete.php</span>
-    <div class="desc">Profil complet d'un athlete — 10 categories : identite, clubs, medailles, records, progressions, resultats, podiums, selections, niveaux + sous-performances</div>
-    <div class="api-param">Params : <span>?id=</span> (athlete_id_externe athle.fr) ou <span>?id_athlete=</span> (ID interne BDD)</div>
-    <div class="api-param">Cache : 24h fichier JSON</div>
-</div>
+<h3>Sessions</h3>
+<ul>
+    <li>Token : 64 chars hex via <code>bin2hex(random_bytes(32))</code></li>
+    <li>Cookie : <code>bk_token</code> (httpOnly, sameSite=Lax, TTL 30j)</li>
+    <li>Stockage : table <code>user_sessions</code></li>
+    <li>Validation : <code>getCurrentUser()</code> dans <code>core/auth.php</code></li>
+</ul>
 
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/search.php</span>
-    <div class="desc">Recherche avancee multi-criteres (12 filtres combinables)</div>
-    <div class="api-param">Filtres : <span>?nom=</span> <span>?nom1=</span> <span>?nom2=</span> <span>?club=</span> <span>?categorie=</span> <span>?sexe=</span> <span>?nationalite=</span> <span>?epreuve=</span> <span>?ville=</span> <span>?competition=</span> <span>?medaille=</span> <span>?annee=</span> <span>?licence=</span></div>
-    <div class="api-param">Pagination : <span>?page=</span> <span>?limit=</span> <span class="opt">(max 100)</span></div>
-    <div class="api-param">Retourne aussi : <code>niveaux[]</code> et <code>top_records[]</code> (top 5) par athlete</div>
-</div>
+<h3>Roles</h3>
+<p><span class="pill pill-blue">athlete</span> (defaut) <span class="pill pill-violet">coach</span> <span class="pill pill-orange">club</span> <span class="pill pill-rose">admin</span></p>
+<p>Verification : <code>requireAuth()</code>, <code>requireRole('admin')</code></p>
 
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/liste.php</span>
-    <div class="desc">Liste paginee de tous les athletes avec tri</div>
-    <div class="api-param">Tri : <span>?ordre=</span> <span class="opt">nom | date | id | recent | medailles | podiums | selections | records</span></div>
-    <div class="api-param">Pagination : <span>?page=</span> <span>?limit=</span> <span class="opt">(max 100, defaut 50)</span></div>
-</div>
+<h3>Super Admin (separe)</h3>
+<ul>
+    <li>Login via <code>login.php</code> en utilisant credentials BDD</li>
+    <li>Detection : <code>api/auth/login.php</code> compare avec <code>core/credentials.php</code></li>
+    <li>Cookie : <code>bk_sa_token</code> (7 jours)</li>
+    <li>Stockage : <code>logs/.sa_sessions.php</code> (JSON proteges <code>die()</code>)</li>
+    <li>Acces : <code>admin/panel.php</code> (16 sections)</li>
+    <li>Rate limit : 5 tentatives/jour par IP, blocage 24h</li>
+</ul>
 
-<!-- STATS API -->
-<h3 id="api-stats">Statistiques & Classements (4 endpoints)</h3>
+<!-- ============ SECTION 5 ============ -->
+<h2 id="sec-5"><span class="num">05.</span> BACKEND — Securite, rate limiting, logging</h2>
 
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/stats.php</span>
-    <div class="desc">Statistiques globales — totaux + top performers + distributions. Cache 24h (10min pour detail).</div>
-    <div class="api-param">Params : <span>?detail=1</span> <span class="opt">(ajoute tops clubs/epreuves/villes, repartitions)</span>, <span>?top=N</span> <span class="opt">(defaut 50, max 200)</span>, <span>?nocache=1</span> <span class="opt">(force recalcul)</span></div>
-</div>
-
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/classement.php</span>
-    <div class="desc">Classement des athletes par epreuve — tries par meilleure performance</div>
-    <div class="api-param">Params : <span>?epreuve=ID</span> <span class="required">(requis)</span>, <span>?categorie=</span> <span>?sexe=</span> <span>?annee=</span> <span>?limit=</span> <span>?offset=</span></div>
-</div>
-
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/club_stats.php</span>
-    <div class="desc">Statistiques detaillees d'un club — athletes, repartitions, epreuves paginees, medailles, podiums, top athletes, evolution</div>
-    <div class="api-param">Params : <span>?id=</span> ou <span>?nom=</span> <span class="required">(requis)</span>, <span>?ep=</span> <span class="opt">(page epreuves)</span></div>
-</div>
-
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/ville_stats.php</span>
-    <div class="desc">Statistiques detaillees d'une ville — athletes, repartitions, epreuves, clubs, medailles, podiums, records pagines, selections, progressions, evolution 15 ans</div>
-    <div class="api-param">Params : <span>?nom=</span> <span class="required">(requis)</span></div>
-</div>
-
-<!-- EPREUVES API -->
-<h3 id="api-ref">Donnees de reference (6 endpoints)</h3>
-
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/epreuve_stats.php</span>
-    <div class="desc">Statistiques detaillees d'une epreuve — records pagines classes, repartitions, medailles, podiums, top clubs/villes, niveaux, evolution. Cache 24h.</div>
-    <div class="api-param">Params : <span>?nom=</span> <span class="required">(requis)</span>, <span>?page=</span> <span>?limit=</span> <span class="opt">(max 100)</span>, <span>?sexe=</span> <span>?categorie=</span></div>
-</div>
-
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/epreuve_records.php</span>
-    <div class="desc">Top 50 records pour une epreuve — avec athlete, categorie, sexe, nationalite, club, niveaux</div>
-    <div class="api-param">Params : <span>?nom=</span> <span class="required">(requis)</span></div>
-</div>
-
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="url">/api/clubs.php</span>
-    <span class="url">/api/epreuves.php</span>
-    <span class="url">/api/villes.php</span>
-    <span class="url">/api/competitions.php</span>
-    <div class="desc">Listes paginables avec recherche par nom et comptage d'athletes. Clubs retournent aussi <code>top_niveaux</code> (top 3).</div>
-    <div class="api-param">Params communs : <span>?nom=</span> <span>?page=</span> <span>?limit=</span> <span>?has_athletes=1</span></div>
-</div>
-
-<!-- PERFS API -->
-<h3 id="api-perfs">Performances manuelles (1 endpoint)</h3>
-
-<div class="api-card">
-    <span class="badge badge-get">GET</span>
-    <span class="badge badge-post">POST</span>
-    <span class="badge badge-put">PUT</span>
-    <span class="badge badge-delete">DELETE</span>
-    <span class="url">/api/performances.php</span>
-    <div class="desc">CRUD performances manuelles — authentification requise pour POST/PUT/DELETE, seul l'auteur peut modifier/supprimer</div>
-    <div class="api-param">GET : <span>?id_athlete=</span></div>
-    <div class="api-param">POST/PUT : <code>{ id_athlete, id_epreuve, performance_brut, performance, date_perf, lieu, notes }</code></div>
-</div>
-
-
-<!-- ==================== SCRAPING ==================== -->
-<h2 id="scraping"><span class="emoji">&#128268;</span> Pipeline de scraping</h2>
-
-<h3 id="scraping-flow">Flux de donnees</h3>
-
-<div class="flow"><span class="step">1. SOURCE</span>
-   athle.fr/athletes/{id}/bilans
-   athle.fr/athletes/{id}/records
-   athle.fr/athletes/{id}/selections
-        <span class="arrow">|</span>
-        <span class="arrow">v</span>  curl_multi (7 athletes x 3 pages = 21 requetes paralleles)
-<span class="step">2. TELECHARGEMENT</span>
-   <span class="file">scraping/scrape_functions.php</span> &#8594; scrapeParallel()
-   Retourne : [athleteId &#8594; [bilans &#8594; html, records &#8594; html, selections &#8594; html]]
-        <span class="arrow">|</span>
-        <span class="arrow">v</span>  AthleteScraper (parsing HTML)
-<span class="step">3. EXTRACTION</span>
-   <span class="file">Class/AthleteScraper.php</span>
-   9 sections extraites : identite, clubs, medailles, selections,
-   progressions, records, podiums, resultats, niveaux
-        <span class="arrow">|</span>
-        <span class="arrow">v</span>  Sauvegarde double
-<span class="step">4. STOCKAGE</span>
-   <span class="data">JSON</span> &#8594; src/{athleteId}.php (fichier statique avec headers PHP)
-   <span class="data">BDD</span>  &#8594; insertAthleteData() via core/insert_athle.php
-          Cache memoire des tables de reference (0 SELECT pour villes/clubs/epreuves connus)
-        <span class="arrow">|</span>
-        <span class="arrow">v</span>
-<span class="step">5. API + SEO</span>
-   Les endpoints API lisent la BDD + cache fichier JSON (24h TTL)
-   Le module <span class="file">core/seo.php</span> lit directement les fichiers src/ pour le SEO (~1ms)
-   Les pages frontend appellent l'API pour afficher les donnees</div>
-
-<h3 id="scraping-classes">Classes PHP</h3>
-
-<h4>AthleteScraper (56 Ko)</h4>
+<h3>Rate limiting (3 niveaux)</h3>
 <table>
-    <tr><th>Methode</th><th>Description</th></tr>
-    <tr><td><code>__construct($input)</code></td><td>Accepte un ID numerique ou une URL athle.fr complete</td></tr>
-    <tr><td><code>scrapeAll()</code></td><td>Orchestre le telechargement + extraction de toutes les sections</td></tr>
-    <tr><td><code>fetchAllPages()</code></td><td>Telecharge bilans + records + selections en parallele (curl_multi)</td></tr>
-    <tr><td><code>extractIdentite()</code></td><td>Parse nom, date naissance, ville, categorie, sexe, nationalite, taille, poids, licence</td></tr>
-    <tr><td><code>extractClubs()</code></td><td>Historique des clubs avec annees debut/fin</td></tr>
-    <tr><td><code>extractMedailles()</code></td><td>Medailles (or, argent, bronze, autre) avec epreuve, competition, lieu</td></tr>
-    <tr><td><code>extractProgressions()</code></td><td>Meilleures performances annuelles par epreuve (brut + formate, date, lieu, vent)</td></tr>
-    <tr><td><code>extractRecords()</code></td><td>Records personnels par epreuve et categorie</td></tr>
-    <tr><td><code>extractResultats()</code></td><td>Resultats de competitions (date, epreuve, perf, place, tour, points, vent)</td></tr>
-    <tr><td><code>extractPodiums()</code></td><td>Podiums (rang 1/2/3, niveau, performance, epreuve)</td></tr>
-    <tr><td><code>extractSelections()</code></td><td>Selections equipe nationale/regionale</td></tr>
-    <tr><td><code>extractNiveaux()</code></td><td>Niveaux annuels (code D/R/N/I, points, sous-performances)</td></tr>
-    <tr><td><code>toArray()</code></td><td>Exporte toutes les donnees en tableau associatif PHP</td></tr>
+    <thead><tr><th>Cible</th><th>Limite</th><th>Stockage</th></tr></thead>
+    <tbody>
+        <tr><td>Recherches (search.php)</td><td>100/jour anonymes &middot; 500/jour connectes &middot; illimite admin</td><td><code>logs/.search_limits.php</code></td></tr>
+        <tr><td>Login admin</td><td>5 tentatives/jour, blocage 24h</td><td><code>logs/.admin_attempts.php</code></td></tr>
+        <tr><td>Anti-scraping (anonymes)</td><td>10 pages/jour</td><td><code>logs/.page_limits.php</code></td></tr>
+        <tr><td>Contact</td><td>3 demandes/jour par IP</td><td><code>contact_confirm_tokens</code></td></tr>
+        <tr><td>Signalement</td><td>3/jour par IP, 1/email/24h par athlete</td><td><code>profile_reports</code></td></tr>
+    </tbody>
 </table>
 
-<h4>DatabaseHandler (63 Ko)</h4>
+<div class="box box-info">
+    <b>Whitelist illimitee</b>
+    <p style="margin:0;">Google (<code>66.249.*</code>, <code>66.102.*</code>, <code>64.233.*</code>, <code>72.14.*</code>, <code>74.125.*</code>, <code>209.85.*</code>, <code>216.239.*</code>, <code>35.*</code>, <code>34.*</code>), Hostinger (<code>153.92.*</code>, <code>31.170.*</code>, <code>185.201.*</code>), localhost (<code>127.0.0.1</code>, <code>::1</code>).</p>
+</div>
+
+<h3>Badge nav search quota</h3>
+<ul>
+    <li><code>&lt;span id="searchQuota"&gt;N/500&lt;/span&gt;</code> a cote du lien Recherche</li>
+    <li><b>Dore clignotant</b> (<code>#ffd700</code>, animation <code>bkGoldBlink</code>) si &lt; 80%</li>
+    <li><b>Rouge clignotant rapide</b> si &gt; 80%</li>
+    <li>Mis a jour temps reel via <code>_updateSearchQuota(data)</code> apres chaque recherche</li>
+</ul>
+
+<h3>Logging — 2 systemes paralleles</h3>
+<h4>Logging BDD (JS &rarr; MySQL)</h4>
+<ul>
+    <li>API : <code>api/log.php</code> (POST batch, GET lecture filtree)</li>
+    <li>Stockage : table <code>logs</code></li>
+    <li>JS : batch toutes les 2s + sendBeacon au beforeunload</li>
+    <li>Donnees : IP CloudFlare, UA, sid, <b>uid</b> (id_user si connecte), page, action, detail, screen, lang, referrer, duree</li>
+    <li>Visualisation : <code>admin/logs.php</code> (acces restreint a <code>luvumbu.n@gmail.com</code>)</li>
+</ul>
+
+<h4>Logging IP universel (PHP &rarr; fichier JSON)</h4>
+<ul>
+    <li>Moteur : <code>core/ip_logger.php</code> (<code>logIp()</code>)</li>
+    <li>Stockage : <code>logs/ip_track_YYYY-MM.php</code> (JSON proteges)</li>
+    <li>Rotation mensuelle automatique</li>
+    <li>Donnees IP : count, first/last, dernieres 100 requetes, UA</li>
+    <li>Donnees globales : total_visits, daily, dernieres 500 requetes</li>
+    <li>Viewer : <code>logs/ip_view.php</code> (auth email whitelist)</li>
+</ul>
+
+<!-- ============ SECTION 6 ============ -->
+<h2 id="sec-6"><span class="num">06.</span> FRONTEND — Structure de <code>index.php</code></h2>
+
+<h3>Reperes de lignes (~10 800 lignes total)</h3>
 <table>
-    <tr><th>Methode</th><th>Description</th></tr>
-    <tr><td><code>__construct($db, $user, $pass)</code></td><td>Connexion mysqli avec charset utf8mb4</td></tr>
-    <tr><td><code>create_table($name, $cols)</code></td><td>Creation de table avec IF NOT EXISTS</td></tr>
-    <tr><td><code>addForeignKey(...)</code></td><td>Ajout FK avec ON DELETE / ON UPDATE configurables</td></tr>
-    <tr><td><code>select_custom_safe($sql)</code></td><td>Requete SELECT securisee avec prepared statements</td></tr>
-    <tr><td><code>getAllTables()</code></td><td>Liste des tables existantes dans la BDD</td></tr>
-    <tr><td><code>closeConnection()</code></td><td>Ferme la connexion mysqli</td></tr>
+    <thead><tr><th>Section</th><th>Lignes</th><th>Contenu</th></tr></thead>
+    <tbody>
+        <tr><td>PHP utils + apiCall()</td><td><code>1-55</code></td><td>dateFR(), apiCall(), require db.php</td></tr>
+        <tr><td>SEO dynamique</td><td><code>137-250</code></td><td>Titles, OG, Twitter, JSON-LD</td></tr>
+        <tr><td>Anti-flash + bouton theme</td><td><code>628-760</code></td><td>localStorage, menu deroulant</td></tr>
+        <tr><td>JS theme (bkSetTheme...)</td><td><code>940-1010</code></td><td>Apply, toggle, interval auto</td></tr>
+        <tr><td>Page Accueil</td><td><code>475-810</code></td><td>Stats, podium 3D, top consultes</td></tr>
+        <tr><td>Page Athletes</td><td><code>810-1027</code></td><td>Top 100 IA/IB</td></tr>
+        <tr><td>Page Recherche</td><td><code>1027-1540</code></td><td>12 filtres + barre live</td></tr>
+        <tr><td>Page Profil</td><td><code>1540-2510</code></td><td>Header, records, niveaux, bio</td></tr>
+        <tr><td>Page Villes</td><td><code>2710-4120</code></td><td>Detail (PHP serveur)</td></tr>
+        <tr><td>Page Comparer</td><td><code>4120-4250</code></td><td>Panier + URLs partageables</td></tr>
+        <tr><td>Page Tuto</td><td><code>4250-4575</code></td><td>8 etapes IntersectionObserver</td></tr>
+        <tr><td>Page Contact dediee</td><td><code>10515-10580</code></td><td>+ bloc rouge retrait</td></tr>
+        <tr><td>JavaScript global</td><td><code>4800-fin</code></td><td>~375 fonctions</td></tr>
+    </tbody>
 </table>
 
-<h4>Fonctions partagees (core/insert_athle.php)</h4>
+<h3>11 pages principales</h3>
 <table>
-    <tr><th>Fonction</th><th>Description</th></tr>
-    <tr><td><code>loadRefCache($conn)</code></td><td>Pre-charge toutes les tables de reference en memoire (villes, clubs, epreuves, competitions, categories, nationalites). Elimine les SELECT repetitifs pendant l'insertion en masse.</td></tr>
-    <tr><td><code>cachedGetOrInsertId(...)</code></td><td>Cherche d'abord dans le cache memoire, puis INSERT IGNORE si absent. Retourne l'ID.</td></tr>
-    <tr><td><code>insertAthleteData($scraper, $conn, &$cache)</code></td><td>Insertion complete : cree l'athlete + insere dans les 9 tables enfants en une transaction</td></tr>
+    <thead><tr><th>Page</th><th>URL</th><th>Description</th></tr></thead>
+    <tbody>
+        <tr><td>Accueil</td><td><code>?page=accueil</code></td><td>Stats globales, podium 3D, top consultes</td></tr>
+        <tr><td>Athletes</td><td><code>?page=athletes</code></td><td>Top 100 IA/IB sur 7 epreuves</td></tr>
+        <tr><td>Recherche</td><td><code>?page=recherche</code></td><td>12 filtres + select nationalites BDD</td></tr>
+        <tr><td>Profil</td><td><code>?page=profil&id=X</code></td><td>Fiche complete + bio auto-generee</td></tr>
+        <tr><td>Clubs</td><td><code>?page=clubs</code></td><td>Liste + panneau detail 5 onglets</td></tr>
+        <tr><td>Epreuves</td><td><code>?page=epreuves</code></td><td>Liste + panneau detail 4 onglets</td></tr>
+        <tr><td>Villes</td><td><code>?page=villes&open=X</code></td><td>Liste + detail (filtres niv/nat/ans)</td></tr>
+        <tr><td>Comparer</td><td><code>?page=comparer&ids=X,Y</code></td><td>Panier ou URLs partageables</td></tr>
+        <tr><td>Tuto</td><td><code>?page=tuto</code></td><td>8 sections animees</td></tr>
+        <tr><td>Contact</td><td><code>?page=contact</code></td><td>Page contact dediee</td></tr>
+        <tr><td>Mon Espace</td><td><code>?page=espace</code></td><td>Athletes/clubs suivis, historique</td></tr>
+    </tbody>
 </table>
 
-<h3 id="scraping-tools">Outils de scraping</h3>
+<!-- ============ SECTION 7 ============ -->
+<h2 id="sec-7"><span class="num">07.</span> FRONTEND — Pages et composants</h2>
 
+<h3>Page Accueil (refonte 2026-04-13)</h3>
+<ul>
+    <li><b>4 stat cards</b> pleine largeur (Athletes, Clubs, Epreuves, Villes)</li>
+    <li><b>Stade 3D CSS</b> : piste rectangle + 2 demi-cercles, terrain foot, 8 couloirs, tribunes, rotation 90s/tour</li>
+    <li><b>Top Consultes</b> : 4 onglets periode (Jour/Sem/Mois/Annee), pagination 10/page, donnees <code>top_searched.php</code></li>
+    <li><b>Podium 3D Three.js</b> : 3 marches or/argent/bronze + medailles flottantes + sol piste rouge + particules dorees (CDN <code>three@0.160.0</code>)</li>
+    <li>Auto-refresh top consultes toutes les 60s</li>
+</ul>
+
+<h3>Panneau detail club (composant JS reutilisable)</h3>
+<p>Present sur 3 pages (Accueil, Clubs, Recherche) avec systeme de suffixes (<code>''</code>, <code>'Accueil'</code>).</p>
+
+<h4>Fonctions cles</h4>
+<pre><code><span class="fn">_openClubPanel</span>(url, suffix)        <span class="com">// Ouvre le panneau</span>
+<span class="fn">_closeClubPanel</span>(suffix)
+<span class="fn">_fillClubPanel</span>(data, suffix)
+<span class="fn">_renderClubTab</span>(tab, suffix)
+<span class="fn">loadClubRecPage</span>(page, suffix)        <span class="com">// Records pagines</span>
+<span class="fn">loadClubEpPage</span>(page, suffix)         <span class="com">// Epreuves paginees</span>
+<span class="fn">_clubFilterParams</span>(d)                 <span class="com">// &nationalite=X&sexe=Y&categorie=Z</span></code></pre>
+
+<h4>5 onglets</h4>
+<ol>
+    <li><b>Epreuves</b> (50/page) — Records club par discipline, badges niveaux, filtres avances</li>
+    <li><b>Nationalites</b> — Repartition + charts cliquables</li>
+    <li><b>Records</b> (10/page) — Records personnels des athletes</li>
+    <li><b>Stats</b> — Charts sexe/cat/evo + medailles/podiums/selections + courbes niveaux</li>
+    <li><b>Resume</b> — Texte auto-genere (<code>_buildResumeText</code>, ~300 lignes, 18 paragraphes conditionnels, 3 modes : Global/Annee/Comparer)</li>
+</ol>
+
+<h4>Filtres avances onglet Epreuves</h4>
+<ol>
+    <li>Mode : Records club / Personnels (server-side <code>?perso=1</code>)</li>
+    <li>Discipline : client-side multi-select (<code>window['_clubDiscFilter' + s]</code>)</li>
+    <li>Niveaux : client-side multi-select D1-D8/R1-R6/N1-N4/IE/IR</li>
+    <li>Annee : server-side, mode <b>Filtrer</b> (1 annee) ou <b>Comparer</b> (2-5 annees, fetch parallele)</li>
+</ol>
+
+<h3>Page Profil — Tout cliquable</h3>
+<ul>
+    <li>Header : sexe / categorie / nationalite &rarr; recherche</li>
+    <li>Lieu naissance &rarr; <code>?page=villes&open=X</code></li>
+    <li>Clubs cliquables (attention : <code>rtrim($club, '* ')</code> car <code>*</code> retourne par API)</li>
+    <li><b>Bio auto-generee</b> (<code>buildAthleteBio</code>, ~500 lignes JS) : 18 paragraphes conditionnels, filtrable annees via checkboxes</li>
+    <li><b>Donnees masquees</b> : date_naissance, annee_naissance, licence retournent null (conservees en BDD)</li>
+    <li>ID athle.fr : lien cliquable vers athle.fr/athletes/{id}/bilans</li>
+    <li>Disclaimer popup : 2s 1ere visite, immediat refresh</li>
+</ul>
+
+<h3>Page Comparer — URLs partageables</h3>
 <table>
-    <tr><th>Outil</th><th>Fichier</th><th>Description</th></tr>
-    <tr>
-        <td><strong>Scraper principal</strong></td>
-        <td><code>scraping/scraper.php</code></td>
-        <td>Scrape tous les athletes de <code>nom_et_liens</code>. Batch de 7, pause 1s, TIME_LIMIT 25s, auto-refresh. Genere <code>src/{id}.php</code> + insere en BDD. Skip les athletes deja presents dans src/.</td>
-    </tr>
-    <tr>
-        <td><strong>Check & Sync</strong></td>
-        <td><code>scraping/check_sync.php</code></td>
-        <td><strong>Phase 1 :</strong> verifie les 300k URLs de <code>nom_et_liens</code> &#8594; genere <code>absents2.json</code>. <strong>Phase 2 :</strong> scrape automatiquement les absents (meme logique batch de 7).</td>
-    </tr>
-    <tr>
-        <td><strong>Check Athletes BDD</strong></td>
-        <td><code>scraping/check_athletes.php</code></td>
-        <td>Verifie si les fichiers <code>src/{id}.php</code> existent pour chaque athlete en BDD. Genere <code>absents.json</code>.</td>
-    </tr>
-    <tr>
-        <td><strong>Import BDD</strong></td>
-        <td><code>scraping/import_bdd.php</code></td>
-        <td>Lit les fichiers JSON dans <code>src/</code> et les insere en BDD un par un avec auto-refresh pour gerer les gros volumes.</td>
-    </tr>
+    <thead><tr><th>Format</th><th>Exemple</th></tr></thead>
+    <tbody>
+        <tr><td>Panier localStorage</td><td><code>bk_cmp_athletes</code> / <code>bk_cmp_clubs</code></td></tr>
+        <tr><td>IDs externes</td><td><code>?page=comparer&ids=548525,2643370</code></td></tr>
+        <tr><td>Numeros de licence</td><td><code>?page=comparer&licences=131980,1586918</code></td></tr>
+        <tr><td>Clubs (URL-encoded)</td><td><code>?page=comparer&clubs=ES%20MASSY,BORDEAUX</code></td></tr>
+        <tr><td>Mix</td><td><code>?page=comparer&ids=X&licences=Y&clubs=Z</code></td></tr>
+    </tbody>
+</table>
+<p><b>Auto-compare</b> : si URL params, charge donnees + lance comparaison auto. Priorite : URL params &gt; localStorage.</p>
+
+<h3>Pattern 3-tables (CONVENTION OBLIGATOIRE)</h3>
+<pre><code><span class="kw">&lt;div</span> class=<span class="str">"table-wrap"</span><span class="kw">&gt;</span>
+  <span class="kw">&lt;table</span> class=<span class="str">"bk-table"</span><span class="kw">&gt;&lt;tr&gt;&lt;th&gt;</span>...<span class="kw">&lt;/th&gt;&lt;/tr&gt;&lt;/table&gt;</span>  <span class="com">&lt;!-- header --&gt;</span>
+  <span class="kw">&lt;table</span> class=<span class="str">"bk-table"</span><span class="kw">&gt;</span><span class="com">&lt;!-- data --&gt;</span><span class="kw">&lt;/table&gt;</span>
+  <span class="kw">&lt;table</span> class=<span class="str">"bk-table"</span><span class="kw">&gt;&lt;tr&gt;&lt;th&gt;</span>...<span class="kw">&lt;/th&gt;&lt;/tr&gt;&lt;/table&gt;</span>  <span class="com">&lt;!-- footer --&gt;</span>
+<span class="kw">&lt;/div&gt;</span></code></pre>
+
+<!-- ============ SECTION 8 ============ -->
+<h2 id="sec-8"><span class="num">08.</span> FRONTEND — Theme clair / sombre / auto</h2>
+
+<div class="box box-info">
+    <b>Nouveau (2026-04-30)</b>
+    <p style="margin:0;">3 modes : <span class="pill pill-orange">light</span> <span class="pill pill-violet">dark</span> <span class="pill pill-blue">auto</span> (sombre 21h-6h). Defaut nouveaux visiteurs : <b>auto</b>.</p>
+</div>
+
+<h3>Architecture</h3>
+<ul>
+    <li>Variables CSS sur <code>:root</code> (couleurs, spacing, radius, shadows)</li>
+    <li><code>body.p2-light</code> reassigne les variables &rarr; tous composants suivent automatiquement</li>
+</ul>
+
+<h3>3 modes</h3>
+<table>
+    <thead><tr><th>Mode</th><th>Comportement</th><th>Couleurs</th></tr></thead>
+    <tbody>
+        <tr><td><code>light</code></td><td>Toujours clair</td><td>Papier creme <code>#f4ede0</code> + brand cognac <code>#6b4f2c</code> + texte noir</td></tr>
+        <tr><td><code>dark</code></td><td>Toujours sombre</td><td>Fond <code>#0d1117</code> + brand violet + texte clair</td></tr>
+        <tr><td><code>auto</code></td><td><b>Sombre 21h - 6h</b>, clair sinon</td><td>Bascule selon <code>new Date().getHours()</code></td></tr>
+    </tbody>
 </table>
 
-<div class="warn"><strong>Performance :</strong> 7 athletes en parallele x 3 pages = 21 requetes simultanees. Pause 1s entre chaque batch. ~3.5 jours pour 300k athletes (vs 17 jours en sequentiel).</div>
+<h3>Stockage localStorage</h3>
+<ul>
+    <li><code>bk_theme_mode</code> = <code>'light'</code> | <code>'dark'</code> | <code>'auto'</code></li>
+    <li><code>bk_p2_light</code> = <code>'1'</code> (light) | <code>'0'</code> (dark) — <em>legacy, tenu en sync</em></li>
+</ul>
 
+<h3>Bouton flottant + menu</h3>
+<ul>
+    <li>Bouton <code>#bkLightFloat</code> fixed bottom-right (44x44, rond, soleil/lune)</li>
+    <li>Click ouvre menu deroulant <code>#bkThemeMenu</code> avec 3 options</li>
+    <li>Click exterieur ferme le menu</li>
+    <li>Mode actif surligne (<code>.is-active</code>)</li>
+</ul>
 
-<!-- ==================== CORE ==================== -->
-<h2 id="core"><span class="emoji">&#9881;</span> Modules core</h2>
+<h3>Anti-flash (3 emplacements)</h3>
+<pre><code>(<span class="kw">function</span>(){ <span class="kw">try</span> {
+    <span class="kw">var</span> mode = localStorage.<span class="fn">getItem</span>(<span class="str">'bk_theme_mode'</span>);
+    <span class="kw">if</span> (mode === <span class="kw">null</span>) {
+        <span class="kw">var</span> legacy = localStorage.<span class="fn">getItem</span>(<span class="str">'bk_p2_light'</span>);
+        mode = (legacy === <span class="kw">null</span>) ? <span class="str">'auto'</span> : (legacy === <span class="str">'1'</span> ? <span class="str">'light'</span> : <span class="str">'dark'</span>);
+    }
+    <span class="kw">var</span> isLight;
+    <span class="kw">if</span> (mode === <span class="str">'auto'</span>) {
+        <span class="kw">var</span> h = <span class="kw">new</span> <span class="fn">Date</span>().<span class="fn">getHours</span>();
+        isLight = !(h &gt;= <span class="num">21</span> || h &lt; <span class="num">6</span>);
+    } <span class="kw">else</span> {
+        isLight = (mode === <span class="str">'light'</span>);
+    }
+    <span class="kw">if</span> (isLight) document.body.classList.<span class="fn">add</span>(<span class="str">'p2-light'</span>);
+} <span class="kw">catch</span>(e){} })();</code></pre>
+<p>Emplacements : <code>index.php:630-644</code>, <code>index.php:3834-3848</code>, <code>index.php:5900-5915</code></p>
 
-<p>7 fichiers qui fournissent les services essentiels de l'application.</p>
+<h3>Re-application periodique (mode auto)</h3>
+<ul>
+    <li><code>setInterval(..., 60000)</code> toutes les 60s</li>
+    <li><code>visibilitychange</code> au retour de l'onglet</li>
+    <li>Synchronisation des boutons <code>.p2-light-toggle</code></li>
+</ul>
 
+<!-- ============ SECTION 9 ============ -->
+<h2 id="sec-9"><span class="num">09.</span> SCRAPING — Pipeline complet</h2>
+
+<h3>Vue d'ensemble</h3>
+<pre><code>nom_et_liens (table BDD avec URLs athle.fr)
+   │ scraping/scraper.php (orchestrateur, batch 7, 25s/cycle)
+   ▼
+scrapeParallel($athleteIds)
+   │ scraping/scrape_functions.php
+   │ curl_multi : 7 athletes × 3 pages = 21 req parallel
+   │ URLs : /bilans, /records, /selections
+   │ timeout 15s, UA Mozilla
+   ▼
+{athleteId =&gt; {bilans, records, selections}}
+   │ foreach athleteId
+   ▼
+new AthleteScraper($id)         <span class="com">// Class/AthleteScraper.php (56 KB)</span>
+   │ parsing HTML → donnees structurees
+   ▼
+Donnees structurees (identite, clubs, medailles, ...)
+   │ json_encode → src/{id}.php (avec headers PHP)
+   │ insertAthleteData($scraper, $conn, $cache)
+   ▼
+core/insert_athle.php
+   │ loadRefCache : 6 tables ref en memoire (0 SELECT repetitif)
+   │ cachedGetOrInsertId : INSERT IGNORE + lookup
+   │ DELETE CASCADE enfants si athlete existe
+   ▼
+9 tables MySQL renseignees</code></pre>
+
+<h3>Performances</h3>
 <table>
-    <tr><th>Fichier</th><th>Role</th><th>Details</th></tr>
-    <tr><td><code>core/credentials.php</code></td><td>Source unique des identifiants BDD</td><td><code>$dbname</code>, <code>$username</code>, <code>$password</code> — un seul endroit a modifier</td></tr>
-    <tr><td><code>core/db.php</code></td><td>Connexion mysqli</td><td>Cree <code>$conn</code>, charset utf8mb4, erreur 500 si echec</td></tr>
-    <tr><td><code>core/auth.php</code></td><td>9 fonctions authentification</td><td>hashPassword, verifyPassword, generateToken, createSession, getCurrentUser, requireAuth, requireAuthApi, requireRole, logout</td></tr>
-    <tr><td><code>core/paths.php</code></td><td>Constante BK_BASE</td><td><code>/BK</code> en local, <code>''</code> en prod. Liens absolus depuis tout sous-dossier.</td></tr>
-    <tr><td><code>core/seo.php</code></td><td><strong>Generation SEO avancee</strong></td><td>Meta description, canonical, Open Graph (7+), Twitter Cards (4), Schema.org JSON-LD (Person + BreadcrumbList). 2 modes : <code>seoFromSrcFile()</code> (rapide, ~1ms) ou <code>generateAthleteSEO()</code> (API). 35+ nationalites supportees.</td></tr>
-    <tr><td><code>core/insert_athle.php</code></td><td>Insertion BDD scraping</td><td>loadRefCache() + cachedGetOrInsertId() + insertAthleteData() — cache memoire pour 0 SELECT repetitif</td></tr>
-    <tr><td><code>core/dbCheck_athle.php</code></td><td>Creation schema BDD</td><td>20 tables + 38 FK, idempotent (CREATE IF NOT EXISTS)</td></tr>
+    <thead><tr><th>Mode</th><th>Vitesse</th><th>Total 300k</th></tr></thead>
+    <tbody>
+        <tr><td>Sequentiel (~2s/athlete)</td><td>1 athlete = ~2s</td><td>~17 jours</td></tr>
+        <tr><td><b>Parallele curl_multi (7x)</b></td><td>7 athletes (21 pages) en ~3s</td><td><b>~3.5 jours</b></td></tr>
+    </tbody>
 </table>
 
-<!-- AUTH FLOW -->
-<h3 id="auth-flow">Flux d'authentification</h3>
-
-<div class="flow"><span class="step">INSCRIPTION</span>
-  register.php &#8594; POST /api/auth/register.php
-  <span class="arrow">&#8594;</span> Validation (email unique, password 8+ chars, role)
-  <span class="arrow">&#8594;</span> password_hash(bcrypt)
-  <span class="arrow">&#8594;</span> INSERT users
-  <span class="arrow">&#8594;</span> createSession() &#8594; INSERT user_sessions (token 64 hex chars, expire +30j)
-  <span class="arrow">&#8594;</span> Set cookie <span class="data">bk_token</span> (HttpOnly, SameSite=Lax, 30 jours)
-  <span class="arrow">&#8594;</span> Redirect index.php
-
-<span class="step">CONNEXION</span>
-  login.php &#8594; POST /api/auth/login.php
-  <span class="arrow">&#8594;</span> SELECT user by email
-  <span class="arrow">&#8594;</span> password_verify(bcrypt)
-  <span class="arrow">&#8594;</span> createSession() &#8594; token + cookie
-  <span class="arrow">&#8594;</span> Redirect index.php
-
-<span class="step">VERIFICATION (chaque page)</span>
-  Cookie <span class="data">bk_token</span> &#8594; getCurrentUser($conn)
-  <span class="arrow">&#8594;</span> SELECT user_sessions WHERE token = ? AND expire_at > NOW()
-  <span class="arrow">&#8594;</span> JOIN users &#8594; retourne {id_user, email, nom, prenom, role, id_athlete}
-
-<span class="step">DECONNEXION</span>
-  POST /api/auth/logout.php
-  <span class="arrow">&#8594;</span> DELETE FROM user_sessions WHERE token = ?
-  <span class="arrow">&#8594;</span> Clear cookie (expires = past)</div>
-
-<!-- CACHE -->
-<h3 id="cache">Systeme de cache</h3>
-
-<p>Cache fichier JSON dans <code>/cache/</code> avec TTL de 24h. Protege par <code>.htaccess</code> (Deny from all). La fonction <code>apiCall()</code> de <code>index.php</code> verifie le cache local AVANT tout appel HTTP.</p>
-
+<h3>Fichiers et roles</h3>
 <table>
-    <tr><th>Endpoint</th><th>Cle cache</th><th>TTL</th></tr>
-    <tr><td>/api/athlete.php</td><td><code>athlete_</code> + md5(id)</td><td>24h</td></tr>
-    <tr><td>/api/search.php</td><td><code>search_</code> + md5(filtres)</td><td>24h</td></tr>
-    <tr><td>/api/stats.php</td><td><code>stats_base.json</code></td><td>24h (10min pour detail)</td></tr>
-    <tr><td>/api/liste.php</td><td><code>liste_</code> + md5(page+limit+ordre)</td><td>24h</td></tr>
-    <tr><td>/api/clubs.php</td><td><code>clubs_</code> + md5(params)</td><td>24h</td></tr>
-    <tr><td>/api/epreuves.php</td><td><code>epreuves_</code> + md5(params)</td><td>24h</td></tr>
-    <tr><td>/api/villes.php</td><td><code>villes_</code> + md5(params)</td><td>24h</td></tr>
-    <tr><td>/api/club_stats.php</td><td><code>clubstats_</code> + md5(params)</td><td>24h</td></tr>
-    <tr><td>/api/ville_stats.php</td><td><code>villestats_</code> + md5(params)</td><td>24h</td></tr>
-    <tr><td>/api/epreuve_stats.php</td><td><code>ep_</code> + md5(params)</td><td>24h</td></tr>
-    <tr><td>/api/classement.php</td><td>md5(epreuve+categorie+sexe+annee)</td><td>24h</td></tr>
+    <thead><tr><th>Fichier</th><th>Role</th></tr></thead>
+    <tbody>
+        <tr><td><code>scraping/scrape_functions.php</code></td><td>Telechargement parallele curl_multi</td></tr>
+        <tr><td><code>Class/AthleteScraper.php</code></td><td>Parsing HTML athle.fr &rarr; donnees</td></tr>
+        <tr><td><code>core/insert_athle.php</code></td><td>Insertion BDD optimisee</td></tr>
+        <tr><td><code>core/dbCheck_athle.php</code></td><td>Schema BDD (creation tables + FK)</td></tr>
+        <tr><td><code>scraping/scraper.php</code></td><td>Orchestrateur principal</td></tr>
+        <tr><td><code>scraping/import_bdd.php</code></td><td>Import fichiers <code>src/*.php</code> &rarr; BDD</td></tr>
+        <tr><td><code>scraping/check_sync.php</code></td><td>Verif + scrape absents (2 phases)</td></tr>
+        <tr><td><code>scraping/check_athletes.php</code></td><td>Audit completude</td></tr>
+    </tbody>
 </table>
 
-<pre><span class="cm">// Logique de cache (dans chaque endpoint)</span>
-<span class="var">$cacheFile</span> = <span class="str">"cache/athlete_"</span> . <span class="fn">md5</span>(<span class="var">$id</span>) . <span class="str">".json"</span>;
-<span class="kw">if</span> (<span class="fn">file_exists</span>(<span class="var">$cacheFile</span>) && (<span class="fn">time</span>() - <span class="fn">filemtime</span>(<span class="var">$cacheFile</span>)) < <span class="num">86400</span>) {
-    <span class="cm">// Cache hit &#8594; retour immediat (0 SQL, 0 HTTP)</span>
-    <span class="kw">echo</span> <span class="fn">file_get_contents</span>(<span class="var">$cacheFile</span>);
-    <span class="kw">exit</span>;
+<!-- ============ SECTION 10 ============ -->
+<h2 id="sec-10"><span class="num">10.</span> SCRAPING — AthleteScraper et insertion BDD</h2>
+
+<h3><code>Class/AthleteScraper.php</code></h3>
+<p><b>Constructeur</b> : <code>new AthleteScraper($id)</code> accepte ID entier ou URL complete.</p>
+
+<h4>Proprietes publiques (apres extraction)</h4>
+<ul>
+    <li><code>$identite</code> (nom, prenom, sexe, naissance, nationalite, club actuel, taille, poids, licence)</li>
+    <li><code>$clubs[]</code> (annee_debut, annee_fin, club)</li>
+    <li><code>$medailles[]</code>, <code>$selections[]</code>, <code>$progressions[]</code></li>
+    <li><code>$records[]</code>, <code>$podiums[]</code>, <code>$resultats[]</code></li>
+    <li><code>$niveaux[]</code> + niveau_perfs[]</li>
+</ul>
+
+<h4>Methodes d'extraction</h4>
+<p>Parsing HTML via regex + DOMDocument : <code>extractIdentite()</code>, <code>extractClubs()</code>, <code>extractMedailles()</code>, <code>extractSelections()</code>, <code>extractProgressions()</code>, <code>extractRecords()</code>, <code>extractPodiums()</code>, <code>extractResultats()</code>, <code>extractNiveaux()</code></p>
+
+<h3>Methode statique : <code>performanceToInt($perf)</code></h3>
+<p>Convertit perf texte en centiemes (temps) ou centimetres (distances). 7 patterns testes dans l'ordre :</p>
+<table>
+    <thead><tr><th>Pattern</th><th>Exemple</th><th>Resultat</th></tr></thead>
+    <tbody>
+        <tr><td><code>Xh Y'ZZ''CC</code></td><td><code>1h23'45''12</code></td><td><code>(1*3600+23*60+45)*100+12</code></td></tr>
+        <tr><td><code>X'YY''CC</code></td><td><code>3'43''65</code></td><td><code>(3*60+43)*100+65</code></td></tr>
+        <tr><td><code>X'YY</code></td><td><code>12'09</code></td><td><code>(12*60+9)*100</code></td></tr>
+        <tr><td><code>XX''CC</code></td><td><code>10''48</code></td><td><code>1048</code></td></tr>
+        <tr><td><code>XmYY</code></td><td><code>6m30</code></td><td><code>630</code></td></tr>
+        <tr><td><code>X.YY</code></td><td><code>7.34</code></td><td><code>734</code></td></tr>
+        <tr><td><code>XXXX</code></td><td><code>734</code></td><td><code>73400</code></td></tr>
+    </tbody>
+</table>
+
+<div class="box box-danger">
+    <b>ATTENTION — Padding dixiemes</b>
+    <p>Quand 1 seul chiffre apres <code>''</code>, <code>m</code>, ou <code>.</code>, c'est un <b>dixieme</b>. <code>str_pad($digit, 2, '0', STR_PAD_RIGHT)</code> : <code>'9'</code> &rarr; <code>'90'</code>.</p>
+    <p style="margin:0;">
+        <b>Sans padding (BUG)</b> : <code>10''9</code> &rarr; <code>1009</code> (10.09s, faux)<br>
+        <b>Avec padding (CORRECT)</b> : <code>10''9</code> &rarr; <code>1090</code> (10.9s)
+    </p>
+</div>
+
+<p>Script de correction BDD : <code>admin/fix_perf_int.php</code> (dry run sans param, <code>?go</code> execute correction SQL : <code>FLOOR(perf/100)*100 + MOD(perf,100)*10</code>).</p>
+
+<h3>insertAthleteData (<code>core/insert_athle.php</code>)</h3>
+<pre><code><span class="kw">function</span> <span class="fn">insertAthleteData</span>($scraper, $conn, &amp;$cache) {
+    <span class="com">// 1. Charge les 6 tables ref en memoire (1 fois)</span>
+    <span class="com">// 2. cachedGetOrInsertId : lookup cache → INSERT IGNORE → SELECT</span>
+    <span class="com">// 3. Insertion 9 sections (athletes + 8 enfants)</span>
+    <span class="com">// 4. Si athlete existe : DELETE CASCADE enfants → re-INSERT</span>
+    <span class="com">// 5. Batch INSERT : 1 query par section (multi-rows VALUES)</span>
+}</code></pre>
+
+<div class="box box-ok">
+    <b>Optimisation</b>
+    <p style="margin:0;">6 SELECT vers ref tables economises par athlete. Sur 300k athletes : <b>1.8M queries economisees</b>.</p>
+</div>
+
+<!-- ============ SECTION 11 ============ -->
+<h2 id="sec-11"><span class="num">11.</span> SCRAPING — Orchestrateur et controle</h2>
+
+<h3>Orchestrateur principal (<code>scraping/scraper.php</code>)</h3>
+<ul>
+    <li><b>URL</b> : <code>https://bokonzi.com/scraping/scraper.php</code></li>
+    <li><b>Constantes</b> : <code>$TIME_LIMIT = 25s</code>, <code>$PARALLEL = 7</code></li>
+    <li><b>Auto-refresh</b> : <code>header("Refresh: 1")</code> &rarr; nouveau cycle apres 25s</li>
+</ul>
+
+<h3>Controle Start / Stop (flag fichier)</h3>
+<table>
+    <thead><tr><th>Action</th><th>Effet</th></tr></thead>
+    <tbody>
+        <tr><td><b>DEMARRER</b></td><td>Cree <code>scraping_running.flag</code> &rarr; la boucle tourne</td></tr>
+        <tr><td><b>ARRETER</b></td><td>Supprime le flag &rarr; arret propre au prochain cycle</td></tr>
+        <tr><td><b>Persistant</b></td><td>Le flag survit a la fermeture du navigateur</td></tr>
+        <tr><td><b>Fin auto</b></td><td>Flag supprime quand tous les athletes traites</td></tr>
+    </tbody>
+</table>
+
+<h3>Workflow par cycle (25s max)</h3>
+<ol>
+    <li>Charge URLs depuis <code>nom_et_liens</code> &rarr; cache <code>urls_cache.json</code></li>
+    <li>Charge tous les <code>athlete_id_externe</code> deja en BDD &rarr; <code>$existingAthletes[]</code> (skip)</li>
+    <li>Boucle batch : collecte 7 athletes non-existants</li>
+    <li><code>scrapeParallel()</code> &rarr; telecharge 21 pages parallel</li>
+    <li>Pour chaque : <code>AthleteScraper</code> &rarr; extraction &rarr; JSON <code>src/{id}.php</code> &rarr; BDD</li>
+    <li>Echecs &rarr; <code>failed.json</code></li>
+    <li>Progression &rarr; <code>progress.txt</code> + session</li>
+    <li>Verifie flag &rarr; reload ou stop</li>
+</ol>
+
+<h3>Mode test manuel</h3>
+<table>
+    <thead><tr><th>Param</th><th>Effet</th></tr></thead>
+    <tbody>
+        <tr><td><code>?test_url=ID</code></td><td>Scrape 1 athlete (test isole)</td></tr>
+        <tr><td><code>?test_url=URL</code></td><td>Idem avec URL complete</td></tr>
+        <tr><td><code>&skip_bdd</code></td><td>Test sans insertion</td></tr>
+        <tr><td><code>&force</code></td><td>Re-insertion meme si deja en BDD</td></tr>
+    </tbody>
+</table>
+
+<h3>Fichiers de progression</h3>
+<table>
+    <thead><tr><th>Fichier</th><th>Contenu</th></tr></thead>
+    <tbody>
+        <tr><td><code>progress.txt</code></td><td>ID courant scraper principal</td></tr>
+        <tr><td><code>progress_absents.txt</code></td><td>ID courant check_sync phase 2</td></tr>
+        <tr><td><code>urls_cache.json</code></td><td>Cache table <code>nom_et_liens</code></td></tr>
+        <tr><td><code>failed.json</code></td><td>Athletes echoues</td></tr>
+        <tr><td><code>absents.json</code></td><td>Fichiers <code>src/</code> manquants</td></tr>
+        <tr><td><code>src/{id}.php</code></td><td>1 fichier JSON par athlete (avec header PHP <code>die()</code>)</td></tr>
+    </tbody>
+</table>
+
+<h3>Admin remote (<code>admin/remote_check.php</code>)</h3>
+<p>API JSON pour superviser le scraping a distance :</p>
+<ul>
+    <li><code>?action=scrape_status</code> : total_urls, total_bdd, restants, pct</li>
+    <li><code>?action=test_scrape&id=123</code> : scrape 1 test</li>
+    <li><code>?action=count</code> : compteurs toutes tables</li>
+    <li><code>?action=columns&table=X</code> : schema d'une table</li>
+</ul>
+
+<!-- ============ SECTION 12 ============ -->
+<h2 id="sec-12"><span class="num">12.</span> ADMIN — Panel et outils</h2>
+
+<h3>Acces panel (<code>admin/panel.php</code>)</h3>
+<ul>
+    <li>Auth : cookie <code>bk_sa_token</code> (super admin) ou credentials BDD</li>
+    <li>Login : <code>login.php</code> (input type="text") &rarr; compare avec <code>core/credentials.php</code></li>
+</ul>
+
+<h3>17 sections du panel</h3>
+<table>
+    <thead><tr><th>#</th><th>Section</th><th>Notes</th></tr></thead>
+    <tbody>
+        <tr><td>1</td><td>Overview</td><td>Compteurs toutes tables</td></tr>
+        <tr><td>2</td><td>Requetes temps reel</td><td>Logs en direct</td></tr>
+        <tr><td>3</td><td>Logs BDD</td><td>30 derniers, URLs cliquables</td></tr>
+        <tr><td>4</td><td>Activite horaire</td><td>Distribution 0-23h</td></tr>
+        <tr><td>5</td><td>Top IPs</td><td>Plus actives</td></tr>
+        <tr><td>6</td><td>Users</td><td>Gestion comptes</td></tr>
+        <tr><td>11</td><td>Actions rapides</td><td>Reset vues athletes/clubs</td></tr>
+        <tr><td>12</td><td>Analytics Vues</td><td>Tabs, charts, tri, filtre, drawer</td></tr>
+        <tr><td>13</td><td>IPs bloquees & bannies</td><td>Bouton debannir</td></tr>
+        <tr><td>14</td><td>Messages contact</td><td>Lu / non-lu / supprimer (alerte violette pulsante)</td></tr>
+        <tr><td>15</td><td>Search Tracking</td><td>8 KPI + chart 14j + 7 tabs + reset + IPs ignorees</td></tr>
+        <tr><td>16</td><td>Courrier non confirme</td><td>Tokens not used + badge EXPIRE</td></tr>
+        <tr><td>17</td><td>Profils comportementaux</td><td>Users &gt;1 connexion, phrase auto-generee, badge fuchsia self-profile</td></tr>
+    </tbody>
+</table>
+
+<h3>Section 15 — Search Tracking (detaille)</h3>
+<ul>
+    <li><b>8 KPI</b> : total, aujourd'hui, 7j, 30j, IPs uniques, taux succes, IPs ignorees, derniere</li>
+    <li><b>Chart 14j</b> : Chart.js bar stacked, 5 datasets (athlete/club/epreuve/ville/general)</li>
+    <li><b>7 onglets</b> : Recherches, Athletes, Clubs, Entites, IPs, Horaire, Sources</li>
+    <li><b>Reset</b> : athletes / clubs / tout (confirm JS)</li>
+</ul>
+
+<h3>Outils admin</h3>
+<table>
+    <thead><tr><th>Fichier</th><th>Role</th></tr></thead>
+    <tbody>
+        <tr><td><code>admin/panel.php</code></td><td>Dashboard 16+ sections</td></tr>
+        <tr><td><code>admin/setup_bdd.php</code></td><td>Creation BDD + tables</td></tr>
+        <tr><td><code>admin/clear_cache.php</code></td><td>Vider cache (<code>?prefix=</code> cible)</td></tr>
+        <tr><td><code>admin/cache_urls.php</code></td><td>Pre-generation cache</td></tr>
+        <tr><td><code>admin/fix_perf_int.php</code></td><td>Correction INT perfs (<code>?go</code> execute)</td></tr>
+        <tr><td><code>admin/logs.php</code></td><td>Visualisation logs (acces restreint)</td></tr>
+        <tr><td><code>admin/remote_check.php</code></td><td>API JSON admin distant</td></tr>
+        <tr><td><code>admin/test_mail.php</code></td><td>Test envoi mail</td></tr>
+    </tbody>
+</table>
+
+<div class="box box-warn">
+    <b>Fichiers dangereux SUPPRIMES</b>
+    <p style="margin:0;">
+        <code>admin/drop_all.php</code> — supprimait toutes les tables<br>
+        <code>admin/reset.php</code> — truncate toutes les donnees
+    </p>
+</div>
+
+<!-- ============ SECTION 13 ============ -->
+<h2 id="sec-13"><span class="num">13.</span> Cache systeme</h2>
+
+<h3>Mecanisme</h3>
+<ol>
+    <li>Cle MD5 a partir de tous les parametres</li>
+    <li>Verifie <code>cache/[prefix]_[md5].json</code> &lt; 24h</li>
+    <li>Si oui : retourne cache directement</li>
+    <li>Sinon : execute SQL, encode JSON, ecrit fichier, retourne</li>
+</ol>
+
+<h3>Prefixes et TTL</h3>
+<table>
+    <thead><tr><th>Prefixe</th><th>Endpoint</th><th>TTL</th></tr></thead>
+    <tbody>
+        <tr><td><code>athlete_</code></td><td>athlete.php</td><td>24h</td></tr>
+        <tr><td><code>search_</code></td><td>search.php</td><td>24h</td></tr>
+        <tr><td><code>clubstats_</code></td><td>club_stats.php</td><td>24h</td></tr>
+        <tr><td><code>villestats_</code></td><td>ville_stats.php</td><td>24h</td></tr>
+        <tr><td><code>ep_</code></td><td>epreuve_stats.php</td><td>24h</td></tr>
+        <tr><td><code>liste_</code></td><td>liste.php</td><td>24h (7j random)</td></tr>
+        <tr><td><code>topsearched_</code></td><td>top_searched.php</td><td><b>10min</b></td></tr>
+    </tbody>
+</table>
+
+<h3>Invalidation</h3>
+<ul>
+    <li><b>Tout</b> : <code>https://bokonzi.com/admin/clear_cache.php</code></li>
+    <li><b>Cible</b> : <code>?prefix=clubstats</code></li>
+    <li><b>Bypass</b> : <code>?nocache=1</code></li>
+</ul>
+
+<div class="box box-warn">
+    <b>APRES VIDAGE</b>
+    <p style="margin:0;">Appeler <code>stats.php?detail=1&top=30</code> pour regenerer <code>stats_detail_30.json</code>. Sinon top clubs/athletes vide sur l'accueil.</p>
+</div>
+
+<!-- ============ SECTION 14 ============ -->
+<h2 id="sec-14"><span class="num">14.</span> SEO et monetisation</h2>
+
+<h3>SEO</h3>
+<ul>
+    <li><b>Titres dynamiques</b> par page (<code>index.php:137-170</code>)</li>
+    <li><b>Canonical URLs</b> + Open Graph + Twitter Cards <code>summary_large_image</code></li>
+    <li><b>JSON-LD</b> : WebSite + SportsOrganization + BreadcrumbList (index), Person + BreadcrumbList (seo.php profils)</li>
+    <li><b>Sitemap dynamique</b> : <code>sitemap.php</code> (toutes pages + clubs + epreuves + villes + athletes pagines 500/page)</li>
+    <li><b>OG Image</b> : <code>generate_og_image.html</code> (canvas 1200x630)</li>
+    <li><b>noindex</b> : pages comparer, tuto, profil 404</li>
+</ul>
+
+<h3>Monetisation</h3>
+<ul>
+    <li><b>GTM</b> : Google Tag Manager <code>GTM-KPNTVXDF</code></li>
+    <li><b>AdSense</b> : <code>ca-pub-7899923856846249</code></li>
+    <li><b>ads.txt</b> : a la racine</li>
+</ul>
+
+<h3>Disclaimer legal (2026-04-13)</h3>
+<ul>
+    <li><b>Bandeau accueil</b> : encadre orange sous H1</li>
+    <li><b>Popup page Athletes</b> : 2s 1ere visite, immediat refresh</li>
+    <li><b>Popup page Profil</b> : meme comportement</li>
+    <li><b>Footer texte legal</b> : 7 paragraphes (independance, sources publiques, droit retrait, signalement)</li>
+    <li><b>Reset visiteurs</b> : changer suffixe <code>_v3</code> &rarr; <code>_v4</code></li>
+</ul>
+
+<!-- ============ SECTION 15 ============ -->
+<h2 id="sec-15"><span class="num">15.</span> Profil masque & signalement</h2>
+
+<h3>Colonne visibilite</h3>
+<p><code>athletes.visible</code> TINYINT default 1. Si 0 &rarr; profil masque publiquement.</p>
+
+<h3>5 motifs (modal Signaler)</h3>
+<ul>
+    <li><code>retrait</code> : self-removal flow declenche si email fourni</li>
+    <li><code>donnees_incorrectes</code></li>
+    <li><code>usurpation</code></li>
+    <li><code>vie_privee</code></li>
+    <li><code>autre</code></li>
+</ul>
+
+<h3>Self-removal par email (motif "retrait")</h3>
+<ol>
+    <li>User choisit motif "retrait" + email</li>
+    <li>Email confirmation envoye (bouton "Oui, masquer mon profil")</li>
+    <li><b>Au clic</b> : <code>api/auth/confirm_hide.php?token=X</code> &rarr; <code>visible=0</code> + vider cache + page succes verte</li>
+    <li><b>Sans clic</b> : signalement enregistre, traite manuellement (1-30 jours)</li>
+</ol>
+
+<div class="box box-warn">
+    <b>Anti-abus (silencieux)</b>
+    <p style="margin:0;">1 email = 1 profil masque max (tout temps confondus). Si deja utilise &rarr; signalement enregistre normalement mais pas de lien envoye.</p>
+</div>
+
+<h3>Comportement profil masque (visible=0)</h3>
+<table>
+    <thead><tr><th>Type user</th><th>Comportement</th></tr></thead>
+    <tbody>
+        <tr><td>Non-connectes</td><td>Page "Ce profil n'est plus disponible" (icone + lien retour)</td></tr>
+        <tr><td>Admin (<code>bk_sa_token</code>)</td><td>Profil visible avec bandeau rouge "Profil masque — Inaccessible publiquement"</td></tr>
+        <tr><td>API <code>athlete.php</code></td><td>Retourne <code>visible: false</code>. Admin force avec <code>?_all=1</code></td></tr>
+    </tbody>
+</table>
+
+<h3>Message rouge "Retirer son profil soi-meme" (2026-04-30)</h3>
+<p>Bloc rouge prominent (border 2-3px, font-weight 800, uppercase) present a 6 emplacements :</p>
+<table>
+    <thead><tr><th>Emplacement</th><th>Quand visible</th></tr></thead>
+    <tbody>
+        <tr><td>Footer index.php — section "Signaler un profil"</td><td><b>Toujours visible</b></td></tr>
+        <tr><td>Overlay contact (ovContactWrap)</td><td>Ouverture du formulaire</td></tr>
+        <tr><td><code>pages/profil.php</code> formulaire contact</td><td>Ouverture du formulaire</td></tr>
+        <tr><td><code>core/ip_logger.php</code> page de blocage</td><td>Ouverture du formulaire</td></tr>
+        <tr><td>Page <code>?page=contact</code> (haut)</td><td><b>Toujours visible</b> (3px border, 22px)</td></tr>
+    </tbody>
+</table>
+
+<h3>Liste 5 etapes</h3>
+<ol>
+    <li>Allez sur votre profil d'athlete</li>
+    <li>Cliquez sur <b>Signaler ce profil</b></li>
+    <li>Motif : <b>Je souhaite retirer mon profil</b></li>
+    <li>Indiquez votre email</li>
+    <li><span style="color:var(--green)">Profil masque <b>immediatement</b></span></li>
+</ol>
+
+<!-- ============ SECTION 16 ============ -->
+<h2 id="sec-16"><span class="num">16.</span> Search tracking</h2>
+
+<h3>Table <code>search_tracking</code></h3>
+<pre><code>id_search PK,
+ip,
+query_text,
+search_type ENUM(<span class="str">'athlete'</span>, <span class="str">'club'</span>, <span class="str">'epreuve'</span>, <span class="str">'ville'</span>, <span class="str">'general'</span>),
+source ENUM(<span class="str">'live_search'</span>, <span class="str">'page_view'</span>, <span class="str">'panel_open'</span>),
+entity_id, entity_name,
+result_count, page,
+created_at</code></pre>
+<p>6 index : <code>idx_st_type</code>, <code>idx_st_source</code>, <code>idx_st_created</code>, <code>idx_st_ip</code>, <code>idx_st_entity</code>, <code>idx_st_query</code></p>
+
+<h3>Sources de tracking</h3>
+
+<h4>1. JS sendBeacon &rarr; <code>api/search_track.php</code></h4>
+<ul>
+    <li><code>liveSearch()</code> : debounce 2s apres derniere frappe</li>
+    <li><code>_openClubPanel()</code> : type=club, source=panel_open</li>
+    <li><code>openEpreuveDetail()</code> : type=epreuve, source=panel_open</li>
+    <li>Helper JS : <code>_trackSearch(params)</code> + <code>_trackTimer</code></li>
+</ul>
+
+<h4>2. PHP INSERT direct dans <code>index.php</code></h4>
+<ul>
+    <li>Page profil athlete : INSERT type=athlete, source=page_view</li>
+    <li>Page recherche <code>?club=X</code> : INSERT type=club, source=page_view</li>
+</ul>
+
+<h3>API search_track.php</h3>
+<ul>
+    <li>POST : JSON body <code>{ q, type, source, entity_id, entity_name, results, pg }</code></li>
+    <li>Fallback <code>$_POST</code></li>
+    <li>IP CloudFlare/proxy</li>
+    <li><b>Nettoyage probabiliste</b> : 1% chance de DELETE &gt; 90 jours</li>
+    <li>Retour <code>{ ok: true }</code> (leger pour sendBeacon)</li>
+</ul>
+
+<h3>IPs ignorees</h3>
+<ul>
+    <li>Fichier : <code>logs/.st_ignored_ips.php</code> (<code>&lt;?php die(); ?&gt;</code> + JSON)</li>
+    <li>Structure : <code>{"1.2.3.4": {"added":"2026-03-02","label":"Mon IP"}}</code></li>
+    <li>Impact : queries <code>WHERE ip NOT IN (...)</code></li>
+    <li>Actions panel : <code>ignore_ip</code> / <code>unignore_ip</code> / <code>reset_tracking</code></li>
+</ul>
+
+<!-- ============ SECTION 17 ============ -->
+<h2 id="sec-17"><span class="num">17.</span> Systeme de contact (avec confirmation)</h2>
+
+<h3>Flux</h3>
+<ol>
+    <li>User remplit formulaire (nom, <b>email obligatoire</b>, message)</li>
+    <li>POST &rarr; <code>api/contact.php</code> cree token dans <code>contact_confirm_tokens</code> (24h TTL)</li>
+    <li>Email envoye au user avec lien "Confirmer et envoyer mon message"</li>
+    <li><b>Sans clic</b> : message non transmis a l'admin</li>
+    <li><b>Au clic</b> : <code>api/auth/confirm_contact.php?token=X</code> &rarr; insert <code>contact_messages</code> + notif admin</li>
+</ol>
+
+<h3>4 formulaires contact</h3>
+<table>
+    <thead><tr><th>Emplacement</th><th>ID input</th></tr></thead>
+    <tbody>
+        <tr><td>Footer <code>index.php</code></td><td><code>fcEmail</code></td></tr>
+        <tr><td>Overlay <code>index.php</code></td><td><code>ovEmail</code></td></tr>
+        <tr><td><code>pages/profil.php</code></td><td><code>pubEmail</code></td></tr>
+        <tr><td><code>core/ip_logger.php</code> page de blocage</td><td><code>cEmail</code></td></tr>
+    </tbody>
+</table>
+
+<h3>Page Contact dediee</h3>
+<p><code>?page=contact</code> : page complete avec gros bloc rouge "Retirer son profil" en haut + formulaire <code>contactPageForm</code>.</p>
+
+<h3>Admin</h3>
+<ul>
+    <li>Cookie <code>bk_sa_token</code> requis</li>
+    <li>GET <code>?mark_read=ID</code> / <code>?delete=ID</code> / <code>?unban_ip=X</code></li>
+    <li>Section 14 du panel : alerte violette pulsante si non lu</li>
+    <li>Section 16 : courrier non confirme (tokens not used)</li>
+</ul>
+
+<!-- ============ SECTION 18 ============ -->
+<h2 id="sec-18"><span class="num">18.</span> Patterns recurrents</h2>
+
+<h3>Batch query niveaux (eviter N+1)</h3>
+<pre><code><span class="kw">$athIds</span> = <span class="fn">array_map</span>(<span class="kw">fn</span>($a) =&gt; $a[<span class="str">'id_athlete'</span>], $athletes);
+<span class="kw">$idsList</span> = <span class="fn">implode</span>(<span class="str">','</span>, $athIds);
+<span class="kw">$nRes</span> = $conn-&gt;<span class="fn">query</span>(<span class="str">"SELECT id_athlete, code_niveau FROM athlete_niveaux WHERE id_athlete IN ($idsList)"</span>);
+<span class="com">// grouper par id_athlete et assigner</span></code></pre>
+
+<h3>Subquery niveaux pour records</h3>
+<pre><code>(SELECT GROUP_CONCAT(DISTINCT ares.niveau_resultat ORDER BY ares.niveau_resultat SEPARATOR <span class="str">','</span>)
+ FROM athlete_resultats ares
+ WHERE ares.id_athlete = r.id_athlete AND ares.id_epreuve = r.id_epreuve
+   AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != <span class="str">''</span>) as niveaux</code></pre>
+
+<h3>API call depuis index.php</h3>
+<pre><code><span class="kw">$data</span> = <span class="fn">apiCall</span>(<span class="str">"$BASE_API/endpoint.php?"</span> . <span class="fn">http_build_query</span>($params));
+<span class="com">// $BASE_API = "https://bokonzi.com/api"</span></code></pre>
+
+<h3>Chart.js</h3>
+<pre><code><span class="kw">new</span> <span class="fn">Chart</span>(document.<span class="fn">getElementById</span>(<span class="str">'canvasId'</span>), {
+    type: <span class="str">'doughnut'</span>,
+    data: { labels: [...], datasets: [{ data: [...], backgroundColor: [...] }] },
+    options: { responsive: <span class="kw">true</span>, plugins: { legend: { labels: { color: <span class="str">'#c9d1d9'</span> } } } }
+});</code></pre>
+
+<h3>Pagination</h3>
+<pre><code><span class="kw">$limit</span> = <span class="fn">min</span>(<span class="num">100</span>, <span class="fn">max</span>(<span class="num">1</span>, (<span class="kw">int</span>)($_GET[<span class="str">'limit'</span>] ?? <span class="num">50</span>)));
+<span class="kw">$offset</span> = ($page - <span class="num">1</span>) * $limit;
+<span class="kw">$totalPages</span> = <span class="fn">ceil</span>($total / $limit);</code></pre>
+
+<!-- ============ SECTION 19 ============ -->
+<h2 id="sec-19"><span class="num">19.</span> Deploiement</h2>
+
+<h3>Local &rarr; Production</h3>
+<ul>
+    <li>Local : <code>C:\xampp\htdocs\BK\</code> (XAMPP)</li>
+    <li>Prod : Hostinger (<code>bokonzi.com</code>)</li>
+    <li>Workflow : copie manuelle via file manager Hostinger</li>
+    <li>PHP CLI local : <code>/c/xampp/php/php.exe</code></li>
+</ul>
+
+<h3>Verifications post-deploiement</h3>
+<ol>
+    <li><code>bokonzi.com/api/stats.php</code> &rarr; stats globales OK</li>
+    <li><code>bokonzi.com/?page=accueil</code> &rarr; dashboard charge</li>
+    <li><code>bokonzi.com/admin/clear_cache.php</code> &rarr; vider cache</li>
+    <li>Relancer <code>stats.php?detail=1&top=30</code> apres clear_cache</li>
+</ol>
+
+<h3>Hostinger contraintes</h3>
+<ul>
+    <li>Headers bloques (certains)</li>
+    <li>Loopback sans cookies</li>
+    <li>Verifier colonnes BDD (peut differer de local)</li>
+    <li>Erreurs 500 a logger</li>
+</ul>
+
+<!-- ============ SECTION 20 ============ -->
+<h2 id="sec-20"><span class="num">20.</span> Historique des changements</h2>
+
+<h3>2026-04-30 — Theme auto + bloc rouge contact</h3>
+<ul>
+    <li><b>Theme auto</b> : 3 modes (clair / sombre / auto), defaut auto, sombre 21h-6h</li>
+    <li>Bouton flottant &rarr; menu deroulant 3 options</li>
+    <li>Anti-flash mis a jour (3 emplacements)</li>
+    <li>localStorage : <code>bk_theme_mode</code> (avec migration <code>bk_p2_light</code>)</li>
+    <li>Re-application 60s + visibilitychange</li>
+    <li><b>Message rouge "Retirer son profil"</b> dans 6 emplacements contact</li>
+    <li>5 etapes detaillees, dernier point en vert</li>
+    <li>Doublon footer retire (bloc deja toujours visible au-dessus)</li>
+</ul>
+
+<h3>2026-04-13 — Accueil refonte + Disclaimer</h3>
+<ul>
+    <li>Stade 3D CSS (piste rotative 90s)</li>
+    <li>Podium 3D Three.js (or/argent/bronze + medailles flottantes)</li>
+    <li>Suppression : graph sexe, top 10 clubs/epreuves, athletes random, top villes/epreuves</li>
+    <li>4 stat cards pleine largeur</li>
+    <li>Lien Epreuves retire de la nav</li>
+    <li>Disclaimer : bandeau accueil + popups Athletes/Profil + footer 7 paragraphes</li>
+    <li>Panel section "Courrier non confirme"</li>
+</ul>
+
+<h3>2026-04-09 — Page Athletes refonte</h3>
+<ul>
+    <li>Top 100 IA/IB sur 7 epreuves</li>
+    <li>API <code>liste.php?niveau=&epreuve=</code></li>
+    <li>Panel Section 17 : Profils comportementaux</li>
+</ul>
+
+<h3>2026-04-01 — Panel v2</h3>
+<ul>
+    <li>Sections 3-12 supprimees, recherche live</li>
+    <li>Variables CSS <code>:root</code> dans dashboard.css</li>
+    <li>Police Inter prioritaire</li>
+</ul>
+
+<h3>2026-03 — Rate limiting + tracking</h3>
+<ul>
+    <li>Limites recherches : 100 anonymes / 500 connectes / illimite admin</li>
+    <li>Badge dore clignotant (<code>#ffd700</code>, <code>bkGoldBlink</code>)</li>
+    <li>Search tracking complet (table + 7 tabs admin)</li>
+    <li>Profil masque (<code>visible=0</code>) self-service</li>
+</ul>
+
+<h3>2026-02 — Google OAuth</h3>
+<ul>
+    <li>Connexion uniquement Google (plus de mdp)</li>
+    <li><code>core/oauth_config.php</code> (extensible Facebook/Instagram)</li>
+    <li>Suppression <code>admin/drop_all.php</code> et <code>admin/reset.php</code></li>
+</ul>
+
+<footer>
+    Documentation Bokonzi &mdash; mise a jour le 30 avril 2026<br>
+    <small>bokonzi.com &middot; XAMPP local <code>C:\xampp\htdocs\BK\</code></small>
+</footer>
+
+</main>
+
+<script>
+// Active link based on scroll
+const links = document.querySelectorAll('.sidebar nav a');
+const sections = Array.from(document.querySelectorAll('h2[id]'));
+function updateActive(){
+    const scrollY = window.scrollY + 100;
+    let current = sections[0]?.id;
+    sections.forEach(s => { if (s.offsetTop <= scrollY) current = s.id; });
+    links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + current));
 }
-<span class="cm">// Cache miss &#8594; calculer, sauvegarder, retourner</span>
-<span class="fn">file_put_contents</span>(<span class="var">$cacheFile</span>, <span class="var">$json</span>, <span class="num">LOCK_EX</span>);</pre>
+window.addEventListener('scroll', updateActive, { passive: true });
+updateActive();
+
+// Search filter
+const search = document.getElementById('searchInput');
+search.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    if (!q) {
+        document.querySelectorAll('h2, h3, h4, p, ul, ol, table, pre, .box, .stats-grid').forEach(el => el.style.display = '');
+        links.forEach(l => l.style.display = '');
+        return;
+    }
+    sections.forEach(h2 => {
+        let next = h2.nextElementSibling;
+        let match = h2.textContent.toLowerCase().includes(q);
+        const elements = [];
+        while (next && next.tagName !== 'H2') {
+            elements.push(next);
+            if (next.textContent.toLowerCase().includes(q)) match = true;
+            next = next.nextElementSibling;
+        }
+        h2.style.display = match ? '' : 'none';
+        elements.forEach(el => el.style.display = match ? '' : 'none');
+    });
+});
+
+// Ctrl+K pour focus search
+document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        search.focus();
+    }
+});
+</script>
 
-<div class="info"><strong>Injection directe (page Accueil) :</strong> Si le cache <code>stats_detail_30.json</code> existe, les donnees sont injectees directement en JavaScript via PHP — 0 appel AJAX, affichage instantane.</div>
-
-
-<!-- ==================== SEO ==================== -->
-<h2 id="seo"><span class="emoji">&#127760;</span> SEO & Referencement</h2>
-
-<p>Bokonzi implemente un systeme SEO complet pour que chaque page soit parfaitement comprise par Google et les reseaux sociaux. Le but est de maximiser la visibilite sur les recherches liees a l'athletisme francais.</p>
-
-<h3 id="seo-meta">core/seo.php — Meta & Schema.org</h3>
-
-<p>Ce module genere automatiquement toutes les balises SEO pour les pages athletes. Il supporte 2 modes de fonctionnement :</p>
-
-<table>
-    <tr><th>Mode</th><th>Fonction</th><th>Source</th><th>Vitesse</th><th>Quand ?</th></tr>
-    <tr>
-        <td><strong>Fichier src/</strong></td>
-        <td><code>seoFromSrcFile($id)</code></td>
-        <td>Lecture du fichier <code>src/{id}.php</code></td>
-        <td>~1 ms</td>
-        <td>Si le fichier existe (300k+ fichiers disponibles)</td>
-    </tr>
-    <tr>
-        <td><strong>Donnees API</strong></td>
-        <td><code>generateAthleteSEO($data)</code></td>
-        <td>Donnees deja chargees via l'API</td>
-        <td>0 ms (donnees deja en memoire)</td>
-        <td>Fallback si le fichier src/ n'existe pas</td>
-    </tr>
-</table>
-
-<p><strong>Balises generees :</strong></p>
-
-<table>
-    <tr><th>Type</th><th>Balise</th><th>Contenu</th></tr>
-    <tr><td>SEO</td><td><code>&lt;title&gt;</code></td><td>Nom &#8212; Epreuve | Club &#8212; Bokonzi</td></tr>
-    <tr><td>SEO</td><td><code>&lt;meta description&gt;</code></td><td>Resume : nom, club, categorie, X records, Y medailles, Z selections</td></tr>
-    <tr><td>SEO</td><td><code>&lt;link canonical&gt;</code></td><td>URL unique de reference (evite le contenu duplique)</td></tr>
-    <tr><td>Open Graph</td><td><code>og:title, og:description, og:url</code></td><td>Pour le partage Facebook, LinkedIn</td></tr>
-    <tr><td>Open Graph</td><td><code>og:type, og:site_name</code></td><td>"profile", "Bokonzi"</td></tr>
-    <tr><td>Open Graph</td><td><code>profile:first_name, profile:last_name</code></td><td>Prenom et nom de famille de l'athlete</td></tr>
-    <tr><td>Twitter</td><td><code>twitter:card, twitter:title, twitter:description</code></td><td>Pour le partage sur Twitter/X</td></tr>
-    <tr><td>Twitter</td><td><code>twitter:site</code></td><td>@bokonzi</td></tr>
-    <tr><td>JSON-LD</td><td><code>@type: Person</code></td><td>Nom, prenom, nationalite (35+ pays), naissance, taille, poids, club, medailles (award), description, lien athle.fr (sameAs)</td></tr>
-    <tr><td>JSON-LD</td><td><code>@type: BreadcrumbList</code></td><td>Accueil &#8594; Athletes &#8594; Nom de l'athlete</td></tr>
-</table>
-
-<pre><span class="cm">// Utilisation dans pages/profil.php</span>
-<span class="kw">require_once</span> <span class="fn">dirname</span>(<span class="var">__DIR__</span>) . <span class="str">'/core/seo.php'</span>;
-
-<span class="cm">// Tente d'abord la lecture rapide depuis src/ (~1ms)</span>
-<span class="var">$seo</span> = <span class="fn">seoFromSrcFile</span>(<span class="var">$athleteId</span>, <span class="str">'profil'</span>);
-
-<span class="cm">// Sinon, utilise les donnees API deja chargees</span>
-<span class="kw">if</span> (!<span class="var">$seo</span>) <span class="var">$seo</span> = <span class="fn">generateAthleteSEO</span>(<span class="var">$data</span>, <span class="str">'profil'</span>);
-
-<span class="cm">// Dans &lt;head&gt; :</span>
-<span class="kw">echo</span> <span class="var">$seo</span>[<span class="str">'meta'</span>];   <span class="cm">// meta description + canonical + OG + Twitter</span>
-<span class="kw">echo</span> <span class="var">$seo</span>[<span class="str">'jsonld'</span>]; <span class="cm">// Schema.org Person + BreadcrumbList</span></pre>
-
-<h3 id="seo-titles">Titres dynamiques (index.php)</h3>
-
-<p>Le titre de la page (<code>&lt;title&gt;</code>) et la meta description changent dynamiquement en fonction du contenu affiche :</p>
-
-<table>
-    <tr><th>URL</th><th>Titre genere</th></tr>
-    <tr><td><code>?page=clubs&open=NomClub</code></td><td>NomClub &#8212; Detail Club &#8212; Bokonzi</td></tr>
-    <tr><td><code>?page=epreuves&nom=100m</code></td><td>100m &#8212; Epreuve &#8212; Bokonzi</td></tr>
-    <tr><td><code>?page=villes&nom=Paris</code></td><td>Paris &#8212; Ville &#8212; Bokonzi</td></tr>
-    <tr><td><code>?page=recherche</code></td><td>Recherche Athletes &#8212; Bokonzi</td></tr>
-    <tr><td><code>?page=profil&id=X</code></td><td>Profil Athlete &#8212; Bokonzi</td></tr>
-    <tr><td><code>?page=comparer</code></td><td>Comparer Athletes &#8212; Bokonzi</td></tr>
-    <tr><td>(accueil)</td><td>Bokonzi &#8212; Plateforme d'athletisme francais</td></tr>
-</table>
-
-<h3 id="seo-sitemap">sitemap.php — Sitemap XML dynamique</h3>
-
-<p>Google utilise les sitemaps pour decouvrir et indexer les pages d'un site. Bokonzi genere un sitemap XML dynamique depuis la base de donnees.</p>
-
-<div class="flow"><span class="step">STRUCTURE DU SITEMAP</span>
-
-<span class="file">sitemap.php</span>          &#8594; Sitemap Index (liste tous les sous-sitemaps)
-<span class="file">sitemap.php?page=0</span>   &#8594; Pages principales (accueil, recherche, athletes, classement)
-<span class="file">sitemap.php?page=1</span>   &#8594; Athletes 1 &#8594; 500
-<span class="file">sitemap.php?page=2</span>   &#8594; Athletes 501 &#8594; 1000
-<span class="file">...</span>
-<span class="file">sitemap.php?page=660</span> &#8594; Athletes 329501 &#8594; 330000
-
-<span class="data">Total : 660+ sous-sitemaps x 500 athletes = 330 000+ URLs indexees</span></div>
-
-<div class="info"><strong>Pourquoi 500 par page ?</strong> Google limite a 50 000 URLs / 50 Mo par sitemap. Hostinger coupe la sortie PHP au-dela d'une certaine taille. 500 athletes par sous-sitemap garantit que chaque fichier XML reste petit et complet.</div>
-
-<h3 id="seo-robots">robots.txt</h3>
-
-<p>Le fichier <code>robots.txt</code> indique aux robots de Google quelles pages explorer et lesquelles ignorer :</p>
-
-<pre>User-agent: *
-
-<span class="fn">Allow</span>: /index.php
-<span class="fn">Allow</span>: /pages/
-<span class="fn">Allow</span>: /login.php
-<span class="fn">Allow</span>: /register.php
-
-<span class="cm"># Bloquer les dossiers sensibles et techniques</span>
-<span class="kw">Disallow</span>: /admin/
-<span class="kw">Disallow</span>: /scraping/
-<span class="kw">Disallow</span>: /api/
-<span class="kw">Disallow</span>: /core/
-<span class="kw">Disallow</span>: /cache/
-<span class="kw">Disallow</span>: /logs/
-<span class="kw">Disallow</span>: /archive/
-<span class="kw">Disallow</span>: /Class/
-<span class="kw">Disallow</span>: /src/
-<span class="kw">Disallow</span>: /panel.php
-
-<span class="data">Sitemap</span>: https://bokonzi.com/sitemap.php</pre>
-
-
-<!-- ==================== QR CODES ==================== -->
-<h2 id="qrcodes"><span class="emoji">&#128242;</span> QR Codes dynamiques</h2>
-
-<p>Un QR code est un code-barres 2D que l'on peut scanner avec un telephone pour ouvrir directement une page web. Bokonzi genere des QR codes pour chaque element affiche, sans rien stocker sur le serveur.</p>
-
-<div class="info"><strong>Comment ca marche ?</strong> Les QR codes sont generes a la volee par le service externe <code>api.qrserver.com</code>. Une simple balise <code>&lt;img&gt;</code> avec l'URL de la page en parametre suffit. L'image est creee par le serveur distant et affichee directement dans la page.</div>
-
-<h4>Emplacements des QR codes</h4>
-<table>
-    <tr><th>Page</th><th>Emplacement</th><th>Type</th><th>URL encodee</th></tr>
-    <tr><td><code>pages/profil.php</code></td><td>Bas du profil public</td><td>PHP statique</td><td><code>bokonzi.com/pages/profil.php?id=X</code></td></tr>
-    <tr><td><code>pages/global_athlete.php</code></td><td>Bas de la fiche athlete</td><td>PHP statique</td><td><code>bokonzi.com/pages/global_athlete.php?id=X</code></td></tr>
-    <tr><td><code>index.php</code> (club detail)</td><td>Fin du panneau de detail club</td><td>JS dynamique</td><td><code>bokonzi.com/?page=clubs&open=NomClub</code></td></tr>
-    <tr><td><code>index.php</code> (epreuve detail)</td><td>Fin du panneau de detail epreuve</td><td>JS dynamique</td><td><code>bokonzi.com/?page=epreuves&nom=Epreuve</code></td></tr>
-    <tr><td><code>index.php</code> (ville detail)</td><td>Fin de la fiche ville</td><td>PHP statique</td><td><code>bokonzi.com/?page=villes&open=Ville</code></td></tr>
-    <tr><td><code>index.php</code> (profil)</td><td>Bas de la section profil</td><td>PHP statique</td><td><code>bokonzi.com/?page=profil&id=X</code></td></tr>
-</table>
-
-<pre><span class="cm">// Fonction JavaScript globale pour generer un QR code</span>
-<span class="kw">function</span> <span class="fn">bkQR</span>(<span class="var">url</span>) {
-    <span class="kw">return</span> <span class="str">'&lt;div class="qr-share"&gt;'</span> +
-        <span class="str">'&lt;img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='</span> +
-        <span class="fn">encodeURIComponent</span>(<span class="var">url</span>) +
-        <span class="str">'" alt="QR Code" width="120" height="120"&gt;'</span> +
-        <span class="str">'&lt;div class="qr-label"&gt;Scannez pour partager&lt;/div&gt;&lt;/div&gt;'</span>;
-}
-
-<span class="cm">// En PHP (pages statiques) :</span>
-&lt;img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&amp;data=<span class="var">&lt;?= urlencode($url) ?&gt;</span>"&gt;</pre>
-
-
-<!-- ==================== FRONTEND ==================== -->
-<h2 id="frontend"><span class="emoji">&#127912;</span> Architecture frontend</h2>
-
-<h3 id="frontend-pages">Pages (9 fichiers dans pages/)</h3>
-
-<table>
-    <tr><th>Page</th><th>Fichier</th><th>Description</th><th>API utilisees</th></tr>
-    <tr>
-        <td><strong>Dashboard</strong></td>
-        <td><code>index.php</code></td>
-        <td>Interface complete (~7300 lignes) : 8 sections (accueil, athletes, recherche, profil, clubs, epreuves, villes, comparer). Navigation par <code>?page=</code>. Titres SEO dynamiques. QR codes.</td>
-        <td>Toutes les API via <code>apiCall()</code></td>
-    </tr>
-    <tr>
-        <td><strong>Recherche Live</strong></td>
-        <td><code>pages/recherche_live.php</code></td>
-        <td>Recherche instantanee avec filtres (categories, sexe, nationalite). Resultats en temps reel pendant la saisie.</td>
-        <td><code>search.php</code>, <code>clubs.php</code>, <code>villes.php</code>, <code>epreuves.php</code>, <code>competitions.php</code></td>
-    </tr>
-    <tr>
-        <td><strong>Fiche Athlete</strong></td>
-        <td><code>pages/global_athlete.php</code></td>
-        <td>Profil complet avec toutes les sections + SEO avance (JSON-LD, OG) + QR code. Recherche multi-criteres.</td>
-        <td><code>athlete.php</code>, <code>search.php</code></td>
-    </tr>
-    <tr>
-        <td><strong>Classement</strong></td>
-        <td><code>pages/classement.php</code></td>
-        <td>Classement par epreuve avec filtres categorie/sexe/annee et pagination.</td>
-        <td><code>epreuves.php</code>, <code>classement.php</code></td>
-    </tr>
-    <tr>
-        <td><strong>Performances</strong></td>
-        <td><code>pages/performances.php</code></td>
-        <td>Saisie manuelle de performances (auth requise). CRUD complet, seul l'auteur peut modifier/supprimer.</td>
-        <td><code>performances.php</code>, <code>epreuves.php</code>, <code>search.php</code></td>
-    </tr>
-    <tr>
-        <td><strong>Profil public</strong></td>
-        <td><code>pages/profil.php</code></td>
-        <td>Profil partageable avec SEO complet (core/seo.php), bouton "Copier le lien", QR code en bas.</td>
-        <td><code>athlete.php</code> (via URL absolue)</td>
-    </tr>
-    <tr>
-        <td><strong>Panel admin</strong></td>
-        <td><code>panel.php</code></td>
-        <td>Tour de controle : stats live BDD (nombre d'athletes, clubs, etc.), liens rapides vers scraping/admin/API.</td>
-        <td>Requetes SQL directes</td>
-    </tr>
-    <tr>
-        <td><strong>Exemples API</strong></td>
-        <td><code>pages/exemples.php</code></td>
-        <td>Demonstrations d'utilisation de l'API avec exemples de code et appels en live.</td>
-        <td>Affiche des appels API en live</td>
-    </tr>
-</table>
-
-<h3 id="frontend-dashboard">Dashboard — 8 sections</h3>
-
-<h4>Accueil (<code>?page=accueil</code>)</h4>
-<p>Page d'accueil avec statistiques globales. Chargement en 2 phases : Phase 1 (cache local, instantane) puis Phase 2 (injection directe JS ou AJAX). 8 cartes statistiques + 4 graphiques Chart.js (Doughnut, Bar) + tableaux Top 10 clubs/epreuves + panneau de detail club.</p>
-
-<h4>Athletes (<code>?page=athletes</code>)</h4>
-<p>Liste paginee (50/page) avec tri (nom, recent, ID). 3 graphiques de repartition. Bouton "+" pour panier de comparaison. Recherche live.</p>
-
-<h4>Recherche (<code>?page=recherche</code>)</h4>
-<p><strong>Mode classique :</strong> 12 filtres combinables, 100 resultats/page, colonnes Niveaux (badges colores) et Records (top 5 avec epreuve+performance+niveaux). <strong>Mode epreuve :</strong> classement par performance avec filtres categorie/sexe.</p>
-
-<h4>Profil (<code>?page=profil&id=X</code>)</h4>
-<p>Fiche complete : identite, clubs, medailles, selections, progressions, courbe interactive (selecteur discipline, auto-detection distance/temps), records, podiums, resultats, niveaux, biographie auto-generee, QR code.</p>
-
-<h4>Clubs (<code>?page=clubs</code>)</h4>
-<p>Liste paginee avec top niveaux. Clubs ignorables (masques des graphiques). Panneau de detail club (4 onglets : Epreuves, Nationalites, Records, Resume). QR code dans le detail.</p>
-
-<h4>Epreuves (<code>?page=epreuves</code>)</h4>
-<p>Liste avec graphiques. Panneau de detail epreuve (top 50 records avec badges niveaux). QR code dans le detail.</p>
-
-<h4>Villes (<code>?page=villes</code>)</h4>
-<p>Liste + fiche detail complete. Filtres chainables via URL (<code>&niv=&nat=&ans=</code>). Resume auto-genere (15 paragraphes conditionnels). Medailles, podiums, records, evolution par annee. QR code.</p>
-
-<h4>Comparer (<code>?page=comparer</code>)</h4>
-<p>Comparaison multi-athletes (progression, radar, medailles, resume textuel avec verdict) et multi-clubs (effectifs, categories, medailles, specialisation).</p>
-
-<h3 id="frontend-niveaux">Systeme de coloration des niveaux</h3>
-
-<p>Systeme de badges colores applique dans toute l'application pour identifier visuellement le niveau de competition :</p>
-
-<table>
-    <tr><th>Prefixe</th><th>Niveaux</th><th>Signification</th><th>Couleur</th><th>Exemple</th></tr>
-    <tr><td>D</td><td>D1-D8</td><td>Departemental</td><td style="color:#f97316;">Orange (#f97316)</td><td><span class="niv-badge niv-d">D3</span> <span class="niv-badge niv-d">D5</span></td></tr>
-    <tr><td>R</td><td>R1-R6</td><td>Regional</td><td style="color:#0891b2;">Cyan (#0891b2)</td><td><span class="niv-badge niv-r">R1</span> <span class="niv-badge niv-r">R4</span></td></tr>
-    <tr><td>N</td><td>N1-N4</td><td>National</td><td style="color:#e11d48;">Rose (#e11d48)</td><td><span class="niv-badge niv-n">N1</span> <span class="niv-badge niv-n">N2</span></td></tr>
-    <tr><td>I</td><td>IE, IR</td><td>International</td><td style="color:#c026d3;">Fuchsia (#c026d3)</td><td><span class="niv-badge niv-i">IE</span> <span class="niv-badge niv-i">IR</span></td></tr>
-</table>
-
-<p>Helpers JS : <code>_nivBadge(code)</code> et <code>_nivBadges(arr)</code>. Present dans : records, progressions, selections, epreuve detail, recherche, club epreuves/records, ville athletes/epreuves/clubs/records, clubs listing.</p>
-
-<h3 id="frontend-autogen">Textes auto-generes (4 types)</h3>
-
-<table>
-    <tr><th>Type</th><th>Contexte</th><th>Contenu</th></tr>
-    <tr>
-        <td><strong>Biographie athlete</strong></td>
-        <td>Section Profil</td>
-        <td>Texte fluide avec : nationalite genree (40+ pays), carriere active/terminee/saison unique, clubs avec duree, disciplines et records, medailles, niveaux, podiums, selections. Bouton "Copier le texte".</td>
-    </tr>
-    <tr>
-        <td><strong>Resume club</strong></td>
-        <td>Panneau detail club (onglet Resume)</td>
-        <td>Introduction, effectifs, categories, nationalites, disciplines, records (meilleur par epreuve), medailles, top athletes, detection d'inactivite/saison unique. Bouton "Copier le texte".</td>
-    </tr>
-    <tr>
-        <td><strong>Resume ville</strong></td>
-        <td>Fiche detail ville</td>
-        <td>15 paragraphes conditionnels : presentation, filtres actifs, sexe, categories, nationalites, niveaux, epreuves, clubs, athletes, medailles, podiums, records, selections, progressions, evolution. Bouton "Copier le texte".</td>
-    </tr>
-    <tr>
-        <td><strong>Comparaison</strong></td>
-        <td>Section Comparer</td>
-        <td>Introduction, experience (duree, anciennete), polyvalence, duel epreuve, epreuves communes, medailles, podiums, selections, verdict final (comptage avantages). Gestion 3+ athletes. Bouton "Copier le texte".</td>
-    </tr>
-</table>
-
-<div class="success"><strong>Principe :</strong> Tous les textes sont <strong>conditionnels</strong> — seules les informations presentes dans les donnees sont mentionnees. Si un athlete n'a pas de medailles, le paragraphe medailles n'apparait pas.</div>
-
-<h3 id="frontend-css">CSS</h3>
-
-<table>
-    <tr><th>Fichier</th><th>Taille</th><th>Utilise par</th><th>Contenu</th></tr>
-    <tr>
-        <td><code>common.css</code></td>
-        <td>~6.6 KB</td>
-        <td>panel, check_sync, check_athletes, login, register</td>
-        <td>Reset, body dark (#0a0e17), stats boxes, progress bar + shimmer, log, cards, 5 variantes boutons, formulaires, auth card, grille, separateur</td>
-    </tr>
-    <tr>
-        <td><code>dashboard.css</code></td>
-        <td>~14 KB</td>
-        <td>index.php, global_athlete, profil, classement, performances, recherche_live</td>
-        <td>Layout dashboard, tables, charts, onglets, modals, responsive, panneau club/epreuve/ville, panier comparaison, clubs ignores, badges niveaux (D/R/N/I), biographie (bordure cyan), comparaison (bordure ambre), cartes medailles/podiums, <strong>QR code</strong> (.qr-share), hide-mobile</td>
-    </tr>
-</table>
-
-<h3 id="frontend-nav">Navigation (nav.php)</h3>
-
-<p>Barre fixe en haut, incluse par toutes les pages via <code>include</code>. Utilise <code>BK_BASE</code> (core/paths.php) pour les liens absolus — fonctionne depuis la racine et depuis les sous-dossiers.</p>
-
-<table>
-    <tr><th>Lien</th><th>URL</th><th>Condition</th></tr>
-    <tr><td>Recherche Live</td><td><code>BK_BASE/pages/recherche_live.php</code></td><td>Toujours visible</td></tr>
-    <tr><td>Fiche Athlete</td><td><code>BK_BASE/pages/global_athlete.php</code></td><td>Toujours visible</td></tr>
-    <tr><td>Dashboard</td><td><code>BK_BASE/index.php</code></td><td>Toujours visible</td></tr>
-    <tr><td>Classement</td><td><code>BK_BASE/pages/classement.php</code></td><td>Toujours visible</td></tr>
-    <tr><td>Exemples API</td><td><code>BK_BASE/pages/exemples.php</code></td><td>Toujours visible</td></tr>
-    <tr><td>Performances</td><td><code>BK_BASE/pages/performances.php</code></td><td>Si coach/athlete connecte</td></tr>
-    <tr><td>Connexion</td><td><code>BK_BASE/login.php</code></td><td>Si non connecte</td></tr>
-    <tr><td>Inscription</td><td><code>BK_BASE/register.php</code></td><td>Si non connecte</td></tr>
-    <tr><td>Deconnexion</td><td>POST /api/auth/logout.php</td><td>Si connecte</td></tr>
-</table>
-
-<h3 id="frontend-js">Fonctions JavaScript transversales</h3>
-
-<h4>Panier de comparaison (localStorage)</h4>
-<table>
-    <tr><th>Cle</th><th>Fonctions</th><th>Description</th></tr>
-    <tr><td><code>bk_cmp_athletes</code></td><td><code>getBasketAthletes()</code>, <code>addAthleteToBasket()</code>, <code>removeAthleteFromBasket()</code>, <code>toggleAthleteBasket()</code></td><td>Panier d'athletes a comparer, persistant entre les pages</td></tr>
-    <tr><td><code>bk_cmp_clubs</code></td><td><code>getBasketClubs()</code>, <code>addClubToBasket()</code>, <code>removeClubFromBasket()</code>, <code>toggleClubBasket()</code></td><td>Panier de clubs a comparer</td></tr>
-    <tr><td>(commun)</td><td><code>clearBasket()</code>, <code>updateBasketBadge()</code>, <code>updateAllCmpButtons()</code></td><td>Vider, badge flottant, sync visuelle</td></tr>
-</table>
-
-<h4>Clubs ignores (localStorage)</h4>
-<table>
-    <tr><th>Cle</th><th>Fonctions</th><th>Description</th></tr>
-    <tr><td><code>bk_ignored_clubs</code></td><td><code>getIgnoredClubs()</code>, <code>addIgnoredClub()</code>, <code>removeIgnoredClub()</code>, <code>toggleIgnoreClub()</code></td><td>Masquer des clubs des statistiques et graphiques</td></tr>
-    <tr><td>(effets)</td><td><code>applyIgnoredClubs()</code>, <code>renderIgnoredPanel()</code>, <code>rebuildClubCharts()</code></td><td>Masquer lignes tableau, panneau gestion, recalcul graphiques</td></tr>
-</table>
-
-<h4>Recherche live (5 instances)</h4>
-<p><code>liveSearch(inputId, statusId, resultsId, paginatedId, config)</code> — moteur generique reutilisable avec requetes AJAX debounced, mise en surbrillance et pagination dynamique. Instances : Athletes, Recherche, Clubs, Epreuves, Villes.</p>
-
-<h4>Panneau detail club (3 instances)</h4>
-<p>Fonctions avec suffixe pour supporter 3 instances independantes sur Accueil (<code>''</code>), Clubs (<code>'_cl'</code>), Recherche (<code>'_sr'</code>) :</p>
-<p><code>_openClubPanel()</code>, <code>_closeClubPanel()</code>, <code>_fillClubPanel()</code>, <code>_renderClubTab()</code>, <code>_switchClubTab()</code></p>
-
-<h4>Autres fonctions globales</h4>
-<table>
-    <tr><th>Fonction</th><th>Description</th></tr>
-    <tr><td><code>bkQR(url)</code></td><td>Genere le HTML d'un QR code dynamique via api.qrserver.com</td></tr>
-    <tr><td><code>_nivBadge(code)</code> / <code>_nivBadges(arr)</code></td><td>Genere des badges de niveaux colores (D/R/N/I)</td></tr>
-    <tr><td><code>openEpreuveDetail(name)</code></td><td>Ouvre le panneau de detail epreuve avec records</td></tr>
-    <tr><td><code>buildProfilProgChart(discipline)</code></td><td>Construit la courbe de progression (multi-disciplines ou unique)</td></tr>
-    <tr><td><code>buildComparisonSummary(athletes, epreuve)</code></td><td>Genere le texte de comparaison avec verdict</td></tr>
-    <tr><td><code>escapeHtml(str)</code></td><td>Protection XSS cote client</td></tr>
-</table>
-
-
-<!-- ==================== ADMIN ==================== -->
-<h2 id="admin"><span class="emoji">&#128736;</span> Administration</h2>
-
-<table>
-    <tr><th>Outil</th><th>Fichier</th><th>Description</th></tr>
-    <tr>
-        <td><strong>Setup BDD</strong></td>
-        <td><code>admin/setup_bdd.php</code></td>
-        <td>Cree la BDD si elle n'existe pas, puis les 20 tables + 38 FK. Idempotent (peut etre relance sans risque). Pre-remplit les categories FFA.</td>
-    </tr>
-    <tr>
-        <td><strong>Reset</strong></td>
-        <td><code>admin/reset.php</code></td>
-        <td>Remet le compteur scraping a 0, supprime le cache URLs. Avec <code>?bdd=1</code> : TRUNCATE toutes les tables + re-insere les categories FFA.</td>
-    </tr>
-    <tr>
-        <td><strong>Drop All</strong></td>
-        <td><code>admin/drop_all.php</code></td>
-        <td>DROP TABLE pour les 15 tables du projet. Reset total de la structure BDD.</td>
-    </tr>
-    <tr>
-        <td><strong>Cache URLs</strong></td>
-        <td><code>admin/cache_urls.php</code></td>
-        <td>Regenere <code>urls_cache.json</code> depuis la table <code>nom_et_liens</code>.</td>
-    </tr>
-    <tr>
-        <td><strong>Panel</strong></td>
-        <td><code>panel.php</code></td>
-        <td>Tour de controle : stats live BDD (compteurs temps reel), liens rapides vers scraping/admin/API, progression et echecs.</td>
-    </tr>
-</table>
-
-<!-- SECURITY -->
-<h3 id="security">Securite</h3>
-
-<table>
-    <tr><th>Mesure</th><th>Implementation</th><th>Protection contre</th></tr>
-    <tr><td>Mots de passe</td><td>Hashage bcrypt via <code>password_hash()</code> / <code>password_verify()</code></td><td>Vol de mots de passe si la BDD est compromise</td></tr>
-    <tr><td>Sessions</td><td>Tokens 64 caracteres hex (32 random bytes), expiration 30 jours</td><td>Prediction de sessions</td></tr>
-    <tr><td>Cookies</td><td>Flag <code>HttpOnly</code> + <code>SameSite=Lax</code></td><td>XSS (vol de cookies) + CSRF</td></tr>
-    <tr><td>SQL Injection</td><td>Prepared statements (requetes parametrees) dans toute l'API</td><td>Injection de code SQL malveillant</td></tr>
-    <tr><td>XSS</td><td><code>htmlspecialchars()</code> en PHP, <code>escapeHtml()</code> en JS</td><td>Injection de scripts malveillants</td></tr>
-    <tr><td>CORS</td><td><code>Access-Control-Allow-Origin: *</code></td><td>Configurable selon les besoins</td></tr>
-    <tr><td>Protection fichiers</td><td><code>.htaccess</code> Deny from all dans /cache/ et /logs/</td><td>Acces direct aux fichiers sensibles</td></tr>
-    <tr><td>robots.txt</td><td>Disallow sur /admin/, /api/, /core/, /scraping/, /src/, /cache/, /logs/</td><td>Indexation de pages techniques par Google</td></tr>
-    <tr><td>Acces direct</td><td><code>api/config.php</code> retourne 403 si appele directement</td><td>Exposition de la configuration</td></tr>
-    <tr><td>Roles</td><td><code>requireRole($conn, ['coach', 'admin'])</code></td><td>Acces non autorise aux fonctions sensibles</td></tr>
-</table>
-
-<!-- DEPLOY -->
-<h3 id="deploy">Deploiement</h3>
-
-<table>
-    <tr><th>Environnement</th><th>Detail</th></tr>
-    <tr><td><strong>Local</strong></td><td>XAMPP — <code>C:\xampp\htdocs\BK</code> — URL : <code>http://localhost/BK/</code></td></tr>
-    <tr><td><strong>Production</strong></td><td>Hostinger — <code>https://bokonzi.com/</code></td></tr>
-    <tr><td><strong>BDD</strong></td><td>Hostinger MySQL — <code>u489596434_bokonzi_on</code></td></tr>
-    <tr><td><strong>BK_BASE</strong></td><td><code>/BK</code> en local, <code>''</code> en prod (core/paths.php)</td></tr>
-    <tr><td><strong>SEO</strong></td><td>Google Search Console active, sitemap soumis, verification DNS</td></tr>
-</table>
-
-<div class="info"><strong>Workflow de deploiement :</strong> Developpement local sur XAMPP &#8594; push vers Hostinger via File Manager. La constante <code>BK_BASE</code> gere automatiquement les differences de chemins entre les deux environnements.</div>
-
-<!-- FOOTER -->
-<div style="margin-top:60px;padding-top:20px;border-top:1px solid #1e2a3a;text-align:center;color:#4b5563;font-size:12px;">
-    Documentation technique Bokonzi v2.0 — Generee le 22/02/2026
-</div>
-
-</div><!-- .main -->
 </body>
 </html>

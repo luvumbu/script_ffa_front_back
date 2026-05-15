@@ -5,6 +5,10 @@
  * Retourne: nb athletes, par sexe, par categorie, medailles, top epreuves, top athletes, annees_disponibles
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/../core/visibility.php';
+// Filtre visibilite : si admin, bypass. Sinon, masque les athletes visible=0
+$_isAdminInt = isAdminViewing() ? 1 : 0;
+$_visJoin = " AND (a.visible = 1 OR 1=$_isAdminInt)"; // a inserer apres chaque JOIN athletes a ON ...
 
 $idClub  = intval($_GET['id'] ?? 0);
 $nomClub = trim($_GET['nom'] ?? '');
@@ -143,7 +147,7 @@ $parSexe = [];
 $res = $conn->query("
     SELECT a.sexe_athlete, COUNT(DISTINCT a.id_athlete) as c
     FROM athlete_clubs ac
-    JOIN athletes a ON a.id_athlete = ac.id_athlete
+    JOIN athletes a ON a.id_athlete = ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE ac.id_club = $cid $athFilter $activeFilter
     GROUP BY a.sexe_athlete ORDER BY c DESC
 ");
@@ -156,7 +160,7 @@ $parCategorie = [];
 $res = $conn->query("
     SELECT a.categorie_athlete, COUNT(DISTINCT a.id_athlete) as c
     FROM athlete_clubs ac
-    JOIN athletes a ON a.id_athlete = ac.id_athlete
+    JOIN athletes a ON a.id_athlete = ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE ac.id_club = $cid AND a.categorie_athlete != '' $activeFilter
     GROUP BY a.categorie_athlete ORDER BY c DESC
 ");
@@ -183,7 +187,7 @@ $nationalites = [];
 $res = $conn->query("
     SELECT a.nationalite_athlete, COUNT(DISTINCT a.id_athlete) as c
     FROM athlete_clubs ac
-    JOIN athletes a ON a.id_athlete = ac.id_athlete
+    JOIN athletes a ON a.id_athlete = ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE ac.id_club = $cid AND a.nationalite_athlete IS NOT NULL AND a.nationalite_athlete != '' $activeFilter
     GROUP BY a.nationalite_athlete ORDER BY c DESC
 ");
@@ -308,7 +312,7 @@ if (!empty($epIds)) {
                e.nom_epreuve
         FROM athlete_records ar
         JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter $recMcRec
-        JOIN athletes a ON a.id_athlete = ar.id_athlete
+        JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
         JOIN epreuves e ON e.id_epreuve = ar.id_epreuve
         WHERE ar.id_epreuve IN ($epIdsList2) AND ar.performance_record > 0 $recordFilter
     ");
@@ -324,7 +328,7 @@ if (!empty($epIds)) {
                    a.nom_complet_athlete, a.athlete_id_externe,
                    e.nom_epreuve
             FROM athlete_progressions ap
-            JOIN athletes a ON a.id_athlete = ap.id_athlete
+            JOIN athletes a ON a.id_athlete = ap.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
             JOIN epreuves e ON e.id_epreuve = ap.id_epreuve
             WHERE ap.id_club = $cid AND ap.id_epreuve IN ($epIdsList2) AND ap.performance_progression > 0 $athFilterProg $progFilterYear
         ");
@@ -410,7 +414,7 @@ $res = $conn->query("
                                  ELSE comb.performance_int END ASC
                ) AS rn
         FROM ($recUnionSub) AS comb
-        JOIN athletes a ON a.id_athlete = comb.id_athlete
+        JOIN athletes a ON a.id_athlete = comb.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
         JOIN epreuves e ON e.id_epreuve = comb.id_epreuve
     ) AS ranked
     WHERE ranked.rn = 1
@@ -463,7 +467,7 @@ if ($perfMode === 'perso') {
                   AND ares.niveau_resultat IS NOT NULL AND ares.niveau_resultat != '') as niveaux
         FROM athlete_records ar
         JOIN athlete_clubs ac ON ac.id_athlete = ar.id_athlete AND ac.id_club = $cid $athFilter
-        JOIN athletes a ON a.id_athlete = ar.id_athlete
+        JOIN athletes a ON a.id_athlete = ar.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
         JOIN epreuves e ON e.id_epreuve = ar.id_epreuve
         LEFT JOIN villes v ON v.id_ville = ar.id_ville
         WHERE 1=1 $perfRecFilter
@@ -505,7 +509,7 @@ if ($perfMode === 'perso') {
                ares.niveau_resultat, ares.place_resultat, v.nom_ville
         FROM athlete_resultats ares
         JOIN athlete_clubs ac ON ac.id_athlete = ares.id_athlete AND ac.id_club = $cid $athFilter $mcRes
-        JOIN athletes a ON a.id_athlete = ares.id_athlete
+        JOIN athletes a ON a.id_athlete = ares.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
         JOIN epreuves e ON e.id_epreuve = ares.id_epreuve
         LEFT JOIN villes v ON v.id_ville = ares.id_ville
         WHERE 1=1 $perfAnneeFilter
@@ -549,7 +553,7 @@ $res = $conn->query("
            COUNT(DISTINCT ares.id_resultat) as nb_resultats,
            COUNT(DISTINCT ar.id_record) as nb_records
     FROM athlete_clubs ac
-    JOIN athletes a ON a.id_athlete = ac.id_athlete
+    JOIN athletes a ON a.id_athlete = ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     LEFT JOIN athlete_resultats ares ON ares.id_athlete = a.id_athlete $topAthFilter
         AND (ares.annee_resultat IS NULL OR ares.annee_resultat = 0 OR ares.annee_resultat BETWEEN IFNULL(NULLIF(ac.annee_debut,0),0) AND IFNULL(NULLIF(ac.annee_fin,0),9999))
     LEFT JOIN athlete_records ar ON ar.id_athlete = a.id_athlete
@@ -598,7 +602,7 @@ $res = $conn->query("
     SELECT n.code_niveau, n.points_niveau, a.nom_complet_athlete, n.annee_niveau
     FROM athlete_niveaux n
     JOIN athlete_clubs ac ON ac.id_athlete = n.id_athlete AND ac.id_club = $cid $athFilter $mcNiv
-    JOIN athletes a ON a.id_athlete = n.id_athlete
+    JOIN athletes a ON a.id_athlete = n.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE n.code_niveau IS NOT NULL AND n.code_niveau != '' $niveauFilter
     ORDER BY n.points_niveau DESC
     LIMIT 1
@@ -655,7 +659,7 @@ $selections = [];
 $selFilter = $annee > 0 ? " AND YEAR(s.date_selection) = $annee" : '';
 $res = $conn->query("
     SELECT COUNT(*) as nb_selections, COUNT(DISTINCT s.id_athlete) as nb_athletes_selectionnes,
-           COUNT(DISTINCT s.competition_selection) as nb_competitions
+           COUNT(DISTINCT s.id_competition) as nb_competitions
     FROM athlete_selections s
     JOIN athlete_clubs ac ON ac.id_athlete = s.id_athlete AND ac.id_club = $cid $athFilter $mcSel
     WHERE 1=1 $selFilter
@@ -732,7 +736,7 @@ $res = $conn->query("
     SELECT am.type_medaille, co.nom_competition, e.nom_epreuve, a.nom_complet_athlete, am.annee_medaille
     FROM athlete_medailles am
     JOIN athlete_clubs ac ON ac.id_athlete = am.id_athlete AND ac.id_club = $cid $athFilter $mcMed
-    JOIN athletes a ON a.id_athlete = am.id_athlete
+    JOIN athletes a ON a.id_athlete = am.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     LEFT JOIN competitions co ON co.id_competition = am.id_competition
     LEFT JOIN epreuves e ON e.id_epreuve = am.id_epreuve
     WHERE am.type_medaille IN ('or','argent','bronze') $medailleFilter
@@ -785,7 +789,7 @@ $res = $conn->query("
            COUNT(*) as total
     FROM athlete_medailles am
     JOIN athlete_clubs ac ON ac.id_athlete = am.id_athlete AND ac.id_club = $cid $athFilter $mcMed
-    JOIN athletes a ON a.id_athlete = am.id_athlete
+    JOIN athletes a ON a.id_athlete = am.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE am.type_medaille IN ('or','argent','bronze') $medailleFilter
     GROUP BY am.id_athlete ORDER BY total DESC LIMIT 5
 ");
@@ -848,7 +852,7 @@ $res = $conn->query("
     SELECT DISTINCT a.nom_complet_athlete, a.athlete_id_externe, COUNT(*) as nb_sel
     FROM athlete_selections s
     JOIN athlete_clubs ac ON ac.id_athlete = s.id_athlete AND ac.id_club = $cid $athFilter $mcSel
-    JOIN athletes a ON a.id_athlete = s.id_athlete
+    JOIN athletes a ON a.id_athlete = s.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE 1=1 $selFilter
     GROUP BY s.id_athlete ORDER BY nb_sel DESC LIMIT 5
 ");
@@ -917,27 +921,27 @@ if ($natDetail !== '') {
         $nd = ['code' => strtoupper($nc), 'nb_athletes' => 0, 'par_sexe' => [], 'par_categorie' => [], 'top_epreuves' => [], 'niveaux' => [], 'medailles' => ['or'=>0,'argent'=>0,'bronze'=>0]];
 
         // Nb athletes
-        $r = $conn->query("SELECT COUNT(DISTINCT ac.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $activeFilter");
+        $r = $conn->query("SELECT COUNT(DISTINCT ac.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $activeFilter");
         if ($r) $nd['nb_athletes'] = (int)$r->fetch_assoc()['c'];
 
         // Par sexe
-        $r = $conn->query("SELECT a.sexe_athlete, COUNT(DISTINCT a.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $activeFilter GROUP BY a.sexe_athlete ORDER BY c DESC");
+        $r = $conn->query("SELECT a.sexe_athlete, COUNT(DISTINCT a.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $activeFilter GROUP BY a.sexe_athlete ORDER BY c DESC");
         if ($r) while ($row = $r->fetch_assoc()) $nd['par_sexe'][$row['sexe_athlete'] ?: 'Inconnu'] = (int)$row['c'];
 
         // Par categorie
-        $r = $conn->query("SELECT a.categorie_athlete, COUNT(DISTINCT a.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' AND a.categorie_athlete!='' $activeFilter GROUP BY a.categorie_athlete ORDER BY c DESC");
+        $r = $conn->query("SELECT a.categorie_athlete, COUNT(DISTINCT a.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' AND a.categorie_athlete!='' $activeFilter GROUP BY a.categorie_athlete ORDER BY c DESC");
         if ($r) while ($row = $r->fetch_assoc()) $nd['par_categorie'][$row['categorie_athlete']] = (int)$row['c'];
 
         // Top 5 epreuves
-        $r = $conn->query("SELECT e.nom_epreuve, COUNT(DISTINCT ar.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete JOIN athlete_records ar ON ar.id_athlete=a.id_athlete JOIN epreuves e ON e.id_epreuve=ar.id_epreuve WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $recMcRec $activeFilter GROUP BY e.nom_epreuve ORDER BY c DESC LIMIT 5");
+        $r = $conn->query("SELECT e.nom_epreuve, COUNT(DISTINCT ar.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) JOIN athlete_records ar ON ar.id_athlete=a.id_athlete JOIN epreuves e ON e.id_epreuve=ar.id_epreuve WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $recMcRec $activeFilter GROUP BY e.nom_epreuve ORDER BY c DESC LIMIT 5");
         if ($r) while ($row = $r->fetch_assoc()) $nd['top_epreuves'][] = ['epreuve' => $row['nom_epreuve'], 'nb' => (int)$row['c']];
 
         // Niveaux
-        $r = $conn->query("SELECT n.code_niveau, COUNT(DISTINCT n.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete JOIN athlete_niveaux n ON n.id_athlete=a.id_athlete WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' AND n.code_niveau IS NOT NULL AND n.code_niveau!='' $mcNiv $activeFilter GROUP BY n.code_niveau ORDER BY c DESC");
+        $r = $conn->query("SELECT n.code_niveau, COUNT(DISTINCT n.id_athlete) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) JOIN athlete_niveaux n ON n.id_athlete=a.id_athlete WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' AND n.code_niveau IS NOT NULL AND n.code_niveau!='' $mcNiv $activeFilter GROUP BY n.code_niveau ORDER BY c DESC");
         if ($r) while ($row = $r->fetch_assoc()) $nd['niveaux'][$row['code_niveau']] = (int)$row['c'];
 
         // Medailles
-        $r = $conn->query("SELECT am.type_medaille, COUNT(*) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete JOIN athlete_medailles am ON am.id_athlete=a.id_athlete WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $mcMed $activeFilter GROUP BY am.type_medaille");
+        $r = $conn->query("SELECT am.type_medaille, COUNT(*) as c FROM athlete_clubs ac JOIN athletes a ON a.id_athlete=ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt}) JOIN athlete_medailles am ON am.id_athlete=a.id_athlete WHERE ac.id_club=$cid AND a.nationalite_athlete='$ncEsc' $mcMed $activeFilter GROUP BY am.type_medaille");
         if ($r) while ($row = $r->fetch_assoc()) { if (isset($nd['medailles'][$row['type_medaille']])) $nd['medailles'][$row['type_medaille']] = (int)$row['c']; }
 
         // Meilleur niveau
@@ -1004,6 +1008,45 @@ if (!empty($natCompare)) {
 if ($annee > 0) {
     $response['nb_resultats'] = $nbResultats;
     $response['nb_epreuves']  = $nbEpreuves;
+}
+
+// ============================================================
+//  FILTRE ANNEES : garder uniquement annee en cours + precedente
+// ============================================================
+$__bkMinYear = (int)date('Y') - 1;
+$__bkMaxYear = (int)date('Y');
+
+$__bkYearKeys = ['annee','annee_resultat','annee_medaille','annee_podium','annee_progression','annee_niveau','annee_selection'];
+$__bkFilterByYear = function($items) use ($__bkMinYear, $__bkMaxYear, $__bkYearKeys) {
+    if (!is_array($items)) return $items;
+    $out = [];
+    foreach ($items as $it) {
+        if (!is_array($it)) { $out[] = $it; continue; }
+        $y = null;
+        foreach ($__bkYearKeys as $k) {
+            if (isset($it[$k]) && (int)$it[$k] > 0) { $y = (int)$it[$k]; break; }
+        }
+        if ($y === null && isset($it['date'])) {
+            if (preg_match('/(\d{4})/', (string)$it['date'], $m)) $y = (int)$m[1];
+        }
+        if ($y === null || ($y >= $__bkMinYear && $y <= $__bkMaxYear)) $out[] = $it;
+    }
+    return $out;
+};
+
+// Appliquer le filtre aux tableaux temporels
+foreach (['performances','top_medaille_competitions','resultats_par_annee','niveaux_par_annee','medailles_detail','athletes_selectionnes','top_medaille_athletes','progressions'] as $__k) {
+    if (isset($response[$__k]) && is_array($response[$__k])) {
+        $response[$__k] = array_values($__bkFilterByYear($response[$__k]));
+    }
+}
+
+// Filtrer annees_disponibles
+if (isset($response['annees_disponibles']) && is_array($response['annees_disponibles'])) {
+    $response['annees_disponibles'] = array_values(array_filter($response['annees_disponibles'], function($y) use ($__bkMinYear, $__bkMaxYear) {
+        $y = (int)$y;
+        return $y >= $__bkMinYear && $y <= $__bkMaxYear;
+    }));
 }
 
 $json = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

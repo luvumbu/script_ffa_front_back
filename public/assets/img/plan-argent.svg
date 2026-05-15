@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 170" width="140" height="170" role="img" aria-label="Offre Argent">
+  <defs>
+    <radialGradient id="ag-m" cx="38%" cy="30%" r="82%">
+      <stop offset="0%" stop-color="#f7f8fa"/>
+      <stop offset="55%" stop-color="#c0c4cc"/>
+      <stop offset="100%" stop-color="#6b7280"/>
+    </radialGradient>
+    <linearGradient id="ag-r" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd0d6"/>
+      <stop offset="100%" stop-color="#868b94"/>
+    </linearGradient>
+  </defs>
+  <path d="M48 6 L70 96 L52 88 L40 104 L40 6 Z" fill="url(#ag-r)"/>
+  <path d="M92 6 L70 96 L88 88 L100 104 L100 6 Z" fill="url(#ag-r)" opacity="0.82"/>
+  <circle cx="70" cy="110" r="50" fill="#5b6470"/>
+  <circle cx="70" cy="110" r="47" fill="url(#ag-m)"/>
+  <circle cx="70" cy="110" r="38" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="2.5"/>
+  <circle cx="70" cy="110" r="33" fill="rgba(0,0,0,0.08)"/>
+  <text x="70" y="120" text-anchor="middle" font-size="24" fill="#fff" opacity="0.96" font-family="Arial,Helvetica,sans-serif" letter-spacing="1">&#9733;&#9733;</text>
+  <ellipse cx="54" cy="90" rx="15" ry="9" fill="rgba(255,255,255,0.45)" transform="rotate(-32 54 90)"/>
+</svg>

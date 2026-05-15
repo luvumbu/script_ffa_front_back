@@ -5,6 +5,8 @@
  */
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../core/data_source.php';
+require_once __DIR__ . '/../core/paths.php';
 
 // Acces restreint par email
 $allowedEmails = ['luvumbu.n@gmail.com'];
@@ -13,6 +15,9 @@ if (!$user || !in_array($user['email'], $allowedEmails, true)) {
     header('Location: ../login.php');
     exit;
 }
+
+// Mode de lecture : BDD ou Fichier
+$logsMode = dataSourceMode('logs');
 
 // ============ FILTRES ============
 $filterDate   = $_GET['date'] ?? date('Y-m-d');
@@ -29,62 +34,109 @@ $allowedSort = ['ts', 'ip', 'action', 'page', 'uname', 'sid', 'duration_ms'];
 $sort = in_array($_GET['sort'] ?? '', $allowedSort, true) ? $_GET['sort'] : 'ts';
 $dir  = ($_GET['dir'] ?? 'desc') === 'asc' ? 'ASC' : 'DESC';
 
-// Build WHERE
-$where = [];
-if ($filterDate !== '' && $filterDate !== 'all') {
-    $dateEsc = $conn->real_escape_string(preg_replace('/[^0-9\-]/', '', $filterDate));
-    $where[] = "DATE(ts) = '$dateEsc'";
-}
-if ($filterAction !== '') {
-    $where[] = "action = '" . $conn->real_escape_string($filterAction) . "'";
-}
-if ($filterIp !== '') {
-    $where[] = "ip = '" . $conn->real_escape_string($filterIp) . "'";
-}
-if ($filterPage !== '') {
-    $where[] = "page LIKE '%" . $conn->real_escape_string($filterPage) . "%'";
-}
-if ($filterSid !== '') {
-    $where[] = "sid = '" . $conn->real_escape_string($filterSid) . "'";
-}
-$whereSQL = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
-
-// ============ STATS ============
 $total = 0;
-$res = $conn->query("SELECT COUNT(*) as cnt FROM `logs` $whereSQL");
-if ($res) $total = (int)$res->fetch_assoc()['cnt'];
-
 $totalSessions = 0;
-$res = $conn->query("SELECT COUNT(DISTINCT sid) as cnt FROM `logs` $whereSQL");
-if ($res) $totalSessions = (int)$res->fetch_assoc()['cnt'];
-
 $totalIps = 0;
-$res = $conn->query("SELECT COUNT(DISTINCT ip) as cnt FROM `logs` $whereSQL");
-if ($res) $totalIps = (int)$res->fetch_assoc()['cnt'];
-
 $pageViews = 0;
-$res = $conn->query("SELECT COUNT(*) as cnt FROM `logs` $whereSQL" . ($whereSQL ? " AND " : " WHERE ") . "action='page_view'");
-if ($res) $pageViews = (int)$res->fetch_assoc()['cnt'];
-
-// Stats actions
 $actionsStats = [];
-$res = $conn->query("SELECT action, COUNT(*) as cnt FROM `logs` $whereSQL GROUP BY action ORDER BY cnt DESC");
-if ($res) while ($r = $res->fetch_assoc()) $actionsStats[$r['action']] = (int)$r['cnt'];
-
-// Top IPs
 $topIps = [];
-$res = $conn->query("SELECT ip, COUNT(*) as cnt FROM `logs` $whereSQL GROUP BY ip ORDER BY cnt DESC LIMIT 10");
-if ($res) while ($r = $res->fetch_assoc()) $topIps[$r['ip']] = (int)$r['cnt'];
-
-// Top pages
 $topPages = [];
-$res = $conn->query("SELECT page, COUNT(*) as cnt FROM `logs` $whereSQL GROUP BY page ORDER BY cnt DESC LIMIT 10");
-if ($res) while ($r = $res->fetch_assoc()) $topPages[$r['page']] = (int)$r['cnt'];
-
-// ============ ENTRIES ============
 $entries = [];
-$res = $conn->query("SELECT * FROM `logs` $whereSQL ORDER BY `$sort` $dir LIMIT $limit OFFSET $offset");
-if ($res) while ($row = $res->fetch_assoc()) $entries[] = $row;
+
+if ($logsMode === 'file') {
+    // ─── MODE FICHIER ─────────────────────────────────────
+    // On charge tout en memoire et on filtre/aggregate en PHP.
+    // Convient pour archives raisonnables (< 200 MB). Au dela il faudrait streamer.
+    $all = loadArchive('logs');
+
+    // Filtres en PHP
+    $filtered = array_filter($all, function($r) use ($filterDate, $filterAction, $filterIp, $filterPage, $filterSid) {
+        if ($filterDate !== '' && $filterDate !== 'all') {
+            if (substr($r['ts'] ?? '', 0, 10) !== $filterDate) return false;
+        }
+        if ($filterAction !== '' && ($r['action'] ?? '') !== $filterAction) return false;
+        if ($filterIp !== '' && ($r['ip'] ?? '') !== $filterIp) return false;
+        if ($filterPage !== '' && stripos($r['page'] ?? '', $filterPage) === false) return false;
+        if ($filterSid !== '' && ($r['sid'] ?? '') !== $filterSid) return false;
+        return true;
+    });
+    $filtered = array_values($filtered);
+
+    $total = count($filtered);
+
+    $sidSet = []; $ipSet = [];
+    foreach ($filtered as $r) {
+        $sidSet[$r['sid'] ?? ''] = true;
+        $ipSet[$r['ip'] ?? ''] = true;
+        if (($r['action'] ?? '') === 'page_view') $pageViews++;
+        $a = $r['action'] ?? 'unknown';
+        $actionsStats[$a] = ($actionsStats[$a] ?? 0) + 1;
+        $ip = $r['ip'] ?? '';
+        $topIps[$ip] = ($topIps[$ip] ?? 0) + 1;
+        $pg = $r['page'] ?? '';
+        $topPages[$pg] = ($topPages[$pg] ?? 0) + 1;
+    }
+    $totalSessions = count($sidSet);
+    $totalIps = count($ipSet);
+
+    arsort($actionsStats);
+    arsort($topIps); $topIps = array_slice($topIps, 0, 10, true);
+    arsort($topPages); $topPages = array_slice($topPages, 0, 10, true);
+
+    // Tri puis pagination
+    usort($filtered, function($a, $b) use ($sort, $dir) {
+        $va = $a[$sort] ?? ''; $vb = $b[$sort] ?? '';
+        $cmp = $va <=> $vb;
+        return $dir === 'ASC' ? $cmp : -$cmp;
+    });
+    $entries = array_slice($filtered, $offset, $limit);
+    $whereSQL = ''; // pas utilise
+} else {
+    // ─── MODE BDD (par defaut) ────────────────────────────
+    // Build WHERE
+    $where = [];
+    if ($filterDate !== '' && $filterDate !== 'all') {
+        $dateEsc = $conn->real_escape_string(preg_replace('/[^0-9\-]/', '', $filterDate));
+        $where[] = "DATE(ts) = '$dateEsc'";
+    }
+    if ($filterAction !== '') {
+        $where[] = "action = '" . $conn->real_escape_string($filterAction) . "'";
+    }
+    if ($filterIp !== '') {
+        $where[] = "ip = '" . $conn->real_escape_string($filterIp) . "'";
+    }
+    if ($filterPage !== '') {
+        $where[] = "page LIKE '%" . $conn->real_escape_string($filterPage) . "%'";
+    }
+    if ($filterSid !== '') {
+        $where[] = "sid = '" . $conn->real_escape_string($filterSid) . "'";
+    }
+    $whereSQL = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
+
+    $res = $conn->query("SELECT COUNT(*) as cnt FROM `logs` $whereSQL");
+    if ($res) $total = (int)$res->fetch_assoc()['cnt'];
+
+    $res = $conn->query("SELECT COUNT(DISTINCT sid) as cnt FROM `logs` $whereSQL");
+    if ($res) $totalSessions = (int)$res->fetch_assoc()['cnt'];
+
+    $res = $conn->query("SELECT COUNT(DISTINCT ip) as cnt FROM `logs` $whereSQL");
+    if ($res) $totalIps = (int)$res->fetch_assoc()['cnt'];
+
+    $res = $conn->query("SELECT COUNT(*) as cnt FROM `logs` $whereSQL" . ($whereSQL ? " AND " : " WHERE ") . "action='page_view'");
+    if ($res) $pageViews = (int)$res->fetch_assoc()['cnt'];
+
+    $res = $conn->query("SELECT action, COUNT(*) as cnt FROM `logs` $whereSQL GROUP BY action ORDER BY cnt DESC");
+    if ($res) while ($r = $res->fetch_assoc()) $actionsStats[$r['action']] = (int)$r['cnt'];
+
+    $res = $conn->query("SELECT ip, COUNT(*) as cnt FROM `logs` $whereSQL GROUP BY ip ORDER BY cnt DESC LIMIT 10");
+    if ($res) while ($r = $res->fetch_assoc()) $topIps[$r['ip']] = (int)$r['cnt'];
+
+    $res = $conn->query("SELECT page, COUNT(*) as cnt FROM `logs` $whereSQL GROUP BY page ORDER BY cnt DESC LIMIT 10");
+    if ($res) while ($r = $res->fetch_assoc()) $topPages[$r['page']] = (int)$r['cnt'];
+
+    $res = $conn->query("SELECT * FROM `logs` $whereSQL ORDER BY `$sort` $dir LIMIT $limit OFFSET $offset");
+    if ($res) while ($row = $res->fetch_assoc()) $entries[] = $row;
+}
 
 $totalPages = max(1, ceil($total / $limit));
 
@@ -201,6 +253,13 @@ $allActions = ['page_view','click_link','click_button','form_submit','input_chan
     <a href="../index.php">Retour au site</a>
 </div>
 
+<?php if ($logsMode === 'file'): ?>
+<div style="background:#92400e;color:#fef08a;padding:10px 16px;margin:0 16px 12px;border-radius:6px;font-size:13px;">
+    <b>Mode FICHIER</b> — les donnees sont lues depuis l'archive <code style="background:#1e293b;padding:1px 5px;border-radius:3px;"><?= htmlspecialchars(basename(latestArchivePath('logs') ?? 'aucun fichier')) ?></code>.
+    Pour repasser en BDD : <a href="db_archive.php?bk_key=bk_s3cr3t_2026_xK9mP" style="color:#fde047">db_archive.php</a> &rarr; bouton "Vers BDD".
+</div>
+<?php endif; ?>
+
 <div class="container">
 
 <!-- STAT CARDS -->
@@ -313,7 +372,7 @@ $allActions = ['page_view','click_link','click_button','form_submit','input_chan
         $pct = round($cnt / $maxPg * 100);
     ?>
     <div class="bar-row">
-        <?php $fullUrl = 'https://bokonzi.com/' . ltrim($pg, '/'); ?>
+        <?php $fullUrl = BK_URL($pg); ?>
         <span class="bar-label" style="min-width:350px;max-width:500px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?= esc($fullUrl) ?>"><a href="<?= esc($fullUrl) ?>" target="_blank" style="color:#a29bfe;text-decoration:none;font-size:11px;"><?= esc($fullUrl) ?></a></span>
         <div class="bar-fill" style="width:<?= $pct ?>%;background:#a29bfe30;border:1px solid #a29bfe50;"></div>
         <span class="bar-count"><?= number_format($cnt, 0, ',', ' ') ?></span>
@@ -357,7 +416,7 @@ $allActions = ['page_view','click_link','click_button','form_submit','input_chan
     <td style="white-space:nowrap;font-size:12px;color:#7c85a0;"><?= $ts ?></td>
     <td><a href="<?= buildUrl(['ip' => $e['ip'], 'p' => null]) ?>" class="ip-link"><?= esc($e['ip']) ?></a></td>
     <td><span class="action-badge" style="background:<?= $c['bg'] ?>;border:1px solid <?= $c['border'] ?>;color:<?= $c['color'] ?>;"><?= esc($e['action']) ?></span></td>
-    <?php $fullPg = 'https://bokonzi.com/' . ltrim($e['page'], '/'); ?>
+    <?php $fullPg = BK_URL($e['page']); ?>
     <td title="<?= esc($fullPg) ?>"><a href="<?= esc($fullPg) ?>" target="_blank" style="color:#a29bfe;text-decoration:none;"><?= esc($fullPg) ?></a></td>
     <td title="<?= esc($e['detail']) ?>" style="color:#7c85a0;font-size:12px;"><?= esc(truncate($e['detail'], 80)) ?></td>
     <td><?= $e['uname'] ? '<span class="user-badge">' . esc($e['uname']) . '</span>' : '<span style="color:#3a4050;">—</span>' ?></td>

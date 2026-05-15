@@ -104,11 +104,11 @@ $htmlBody = <<<HTML
 </html>
 HTML;
 
-$headers = "From: noreply@bokonzi.com\r\n";
-$headers .= "Reply-To: noreply@bokonzi.com\r\n";
-$headers .= "MIME-Version: 1.0\r\n";
+$headers  = "MIME-Version: 1.0\r\n";
 $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-$headers .= "X-Mailer: Bokonzi/1.0\r\n";
+$headers .= "From: Bokonzi <noreply@bokonzi.com>\r\n";
+$headers .= "Reply-To: noreply@bokonzi.com\r\n";
+$headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
 
 @mail($user['email'], $subject, $htmlBody, $headers);
 

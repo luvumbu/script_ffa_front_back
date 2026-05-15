@@ -6,7 +6,6 @@
  *   http://localhost/BK/athlete.php?id=26134
  *   http://localhost/BK/athlete.php?id=809035
  */
-
 function dateFR($d) {
     if (!$d || $d === '-') return '-';
     $t = strtotime($d);

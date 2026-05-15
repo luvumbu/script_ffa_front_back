@@ -143,9 +143,7 @@ function generateAthleteSEO($data, $pageType = 'profil') {
     if ($clubName) {
         $person['memberOf'] = ['@type' => 'SportsTeam', 'name' => $clubName];
     }
-    if ($athleteId) {
-        $person['sameAs'] = 'https://bases.athle.fr/asp.net/athletes.aspx?base=bilans&seq=' . $athleteId;
-    }
+    // sameAs externe masque pour ne pas exposer la source des donnees
 
     // Description structurée
     $structDesc = $nom;

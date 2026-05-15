@@ -1,0 +1,4234 @@
+{
+    "success": true,
+    "visible": true,
+    "identite": {
+        "athlete_id": 264469,
+        "id_athlete": 99087,
+        "nom_complet": "Renaud LAVILLENIE",
+        "nom_1": "LAVILLENIE",
+        "nom_2": "Renaud",
+        "nom_3": "",
+        "nom_4": "",
+        "date_naissance": "1986-09-18",
+        "annee_naissance": 1986,
+        "lieu_naissance": "Barbezieux-Saint-Hilaire (16)Club : EnvolEntraîneur(s) : Philippe DENCAUSSEDernière sélection : Championnats du Monde 2025 - Tokyo",
+        "categorie": "",
+        "sexe": "M",
+        "nationalite": "FRA",
+        "taille_cm": 176,
+        "poids_kg": 72,
+        "licence": null,
+        "meilleur_niveau": "IA",
+        "age": 39
+    },
+    "clubs": [
+        {
+            "nom_club": "Envol",
+            "annee_debut": 2024,
+            "annee_fin": 2026
+        },
+        {
+            "nom_club": "Clermont Auvergne Athletisme",
+            "annee_debut": 2022,
+            "annee_fin": 2023
+        },
+        {
+            "nom_club": "Clermont Athletisme Auvergne",
+            "annee_debut": 2009,
+            "annee_fin": 2021
+        },
+        {
+            "nom_club": "Cognac Ac",
+            "annee_debut": 2003,
+            "annee_fin": 2009
+        }
+    ],
+    "medailles": [
+        {
+            "type": "bronze",
+            "annee": 2018,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Berlin"
+        },
+        {
+            "type": "or",
+            "annee": 2018,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Birmingham"
+        },
+        {
+            "type": "bronze",
+            "annee": 2017,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Londres"
+        },
+        {
+            "type": "argent",
+            "annee": 2016,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Rio"
+        },
+        {
+            "type": "or",
+            "annee": 2016,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Portland"
+        },
+        {
+            "type": "or",
+            "annee": 2015,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Prague"
+        },
+        {
+            "type": "bronze",
+            "annee": 2015,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Pékin"
+        },
+        {
+            "type": "or",
+            "annee": 2014,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Zurich"
+        },
+        {
+            "type": "argent",
+            "annee": 2013,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Moscou"
+        },
+        {
+            "type": "or",
+            "annee": 2013,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Göteborg"
+        },
+        {
+            "type": "or",
+            "annee": 2012,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Istanbul"
+        },
+        {
+            "type": "or",
+            "annee": 2012,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Helsinki"
+        },
+        {
+            "type": "or",
+            "annee": 2012,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Londres"
+        },
+        {
+            "type": "or",
+            "annee": 2011,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Paris"
+        },
+        {
+            "type": "bronze",
+            "annee": 2011,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Daegu"
+        },
+        {
+            "type": "or",
+            "annee": 2010,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Barcelone"
+        },
+        {
+            "type": "or",
+            "annee": 2009,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Turin"
+        },
+        {
+            "type": "bronze",
+            "annee": 2009,
+            "epreuve": "Perche",
+            "competition": "Championnats d'Europe",
+            "lieu": "Berlin"
+        }
+    ],
+    "selections": [],
+    "progressions": [
+        {
+            "epreuve": "Perche",
+            "annee": 2026,
+            "performance": 575,
+            "performance_brut": "5m75",
+            "vent": "",
+            "date": "2025-09-13",
+            "lieu": "Tokyo (JPN)",
+            "categorie": "V1",
+            "club": "Envol",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2025,
+            "performance": 591,
+            "performance_brut": "5m91",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Clermont ferrand",
+            "categorie": "SE",
+            "club": "Envol",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2025,
+            "performance": 591,
+            "performance_brut": "5m91",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Clermont ferrand",
+            "categorie": "SE",
+            "club": "Envol",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2024,
+            "performance": 572,
+            "performance_brut": "5m72",
+            "vent": "",
+            "date": "2024-05-31",
+            "lieu": "Duszniki (POL)",
+            "categorie": "SE",
+            "club": "Envol",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2023,
+            "performance": 581,
+            "performance_brut": "5m81",
+            "vent": "",
+            "date": "2022-09-08",
+            "lieu": "Zurich (SUI)",
+            "categorie": "SE",
+            "club": "Clermont Auvergne Athletisme *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2022,
+            "performance": 581,
+            "performance_brut": "5m81",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Tourcoing",
+            "categorie": "SE",
+            "club": "Clermont Auvergne Athletisme *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2022,
+            "performance": 587,
+            "performance_brut": "5m87",
+            "vent": "",
+            "date": "2022-07-24",
+            "lieu": "Eugene (USA)",
+            "categorie": "SE",
+            "club": "Clermont Auvergne Athletisme *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2021,
+            "performance": 606,
+            "performance_brut": "6m06",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2021,
+            "performance": 592,
+            "performance_brut": "5m92",
+            "vent": "",
+            "date": "2021-06-20",
+            "lieu": "Chorzow (POL)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2020,
+            "performance": 594,
+            "performance_brut": "5m94",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Clermont ferrand",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2020,
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "date": "2020-09-25",
+            "lieu": "Doha (QAT)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2019,
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "date": "2019-01-10",
+            "lieu": "Tignes",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2019,
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": "2019-07-28",
+            "lieu": "Saint Etienne",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2018,
+            "performance": 1493,
+            "performance_brut": "14''93",
+            "vent": "+0.8",
+            "date": "2018-05-20",
+            "lieu": "Aix Les Bains",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2018,
+            "performance": 593,
+            "performance_brut": "5m93",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Clermont ferrand",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "annee": 2018,
+            "performance": 695,
+            "performance_brut": "6m95",
+            "vent": "",
+            "date": "2018-01-13",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2018,
+            "performance": 595,
+            "performance_brut": "5m95",
+            "vent": "",
+            "date": "2018-04-14",
+            "lieu": "Austin (USA)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2018,
+            "performance": 723,
+            "performance_brut": "7m23",
+            "vent": "+1.4",
+            "date": "2018-05-20",
+            "lieu": "Aix Les Bains",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2017,
+            "performance": 591,
+            "performance_brut": "5m91",
+            "vent": "",
+            "date": "2017-08-15",
+            "lieu": "Varsovie (POL)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2017,
+            "performance": 571,
+            "performance_brut": "5m71",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Clermont ferrand",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "ARA \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2016,
+            "performance": 716,
+            "performance_brut": "7m16",
+            "vent": "-0.4",
+            "date": "2016-05-22",
+            "lieu": "Villeneuve D'ascq",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2016,
+            "performance": 598,
+            "performance_brut": "5m98",
+            "vent": "",
+            "date": "2016-08-15",
+            "lieu": "Rio De Janeiro (BRA)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2016,
+            "performance": 1454,
+            "performance_brut": "14''54",
+            "vent": "-0.3",
+            "date": "2016-05-22",
+            "lieu": "Villeneuve D'ascq",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2016,
+            "performance": 603,
+            "performance_brut": "6m03",
+            "vent": "",
+            "date": "2016-03-05",
+            "lieu": "Jablonec (CZE)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2015,
+            "performance": 1473,
+            "performance_brut": "14''73",
+            "vent": "-0.5",
+            "date": "2015-05-10",
+            "lieu": "Vénissieux",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2015,
+            "performance": 605,
+            "performance_brut": "6m05",
+            "vent": "",
+            "date": "2015-05-30",
+            "lieu": "Eugene (USA)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2015,
+            "performance": 604,
+            "performance_brut": "6m04",
+            "vent": "",
+            "date": "2015-03-07",
+            "lieu": "Prague (CZE)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2015,
+            "performance": 727,
+            "performance_brut": "7m27",
+            "vent": "+1.5",
+            "date": "2015-05-10",
+            "lieu": "Vénissieux",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2014,
+            "performance": 616,
+            "performance_brut": "6m16",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Donetsk (UKR)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2014,
+            "performance": 688,
+            "performance_brut": "6m88",
+            "vent": "+1.4",
+            "date": "2014-05-04",
+            "lieu": "Annecy",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2014,
+            "performance": null,
+            "performance_brut": "6m97 (F)",
+            "vent": "+2.5",
+            "date": "2014-05-04",
+            "lieu": "Annecy",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2014,
+            "performance": 1522,
+            "performance_brut": "15''22",
+            "vent": "-1.9",
+            "date": "2014-05-04",
+            "lieu": "Annecy",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2014,
+            "performance": 593,
+            "performance_brut": "5m93",
+            "vent": "",
+            "date": "2014-09-05",
+            "lieu": "Bruxelles (BEL)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Hauteur",
+            "annee": 2013,
+            "performance": 187,
+            "performance_brut": "1m87",
+            "vent": "",
+            "date": "2013-09-14",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2013,
+            "performance": 602,
+            "performance_brut": "6m02",
+            "vent": "",
+            "date": "2013-07-27",
+            "lieu": "Londres (GBR)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2013,
+            "performance": 719,
+            "performance_brut": "7m19",
+            "vent": "+1.2",
+            "date": "2013-05-05",
+            "lieu": "Saint Etienne",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "1 500m",
+            "annee": 2013,
+            "performance": 31419,
+            "performance_brut": "5'14''19",
+            "vent": "",
+            "date": "2013-09-15",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2013,
+            "performance": 1459,
+            "performance_brut": "14''59",
+            "vent": "+1.2",
+            "date": "2013-05-05",
+            "lieu": "Saint Etienne",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2013,
+            "performance": 1138,
+            "performance_brut": "11''38",
+            "vent": "-0,9",
+            "date": "2013-09-14",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR3"
+            ]
+        },
+        {
+            "epreuve": "Disque (2.0 kg)",
+            "annee": 2013,
+            "performance": 3002,
+            "performance_brut": "30m02",
+            "vent": "",
+            "date": "2013-09-15",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Javelot (800 g)",
+            "annee": 2013,
+            "performance": 3886,
+            "performance_brut": "38m86",
+            "vent": "",
+            "date": "2013-09-15",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "R6"
+            ]
+        },
+        {
+            "epreuve": "Poids (7.26 kg)",
+            "annee": 2013,
+            "performance": 930,
+            "performance_brut": "9m30",
+            "vent": "",
+            "date": "2013-09-14",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Decathlon SH",
+            "annee": 2013,
+            "performance": null,
+            "performance_brut": "6 676 pts",
+            "vent": "",
+            "date": "2013-09-14",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2013,
+            "performance": 601,
+            "performance_brut": "6m01",
+            "vent": "",
+            "date": "2013-03-03",
+            "lieu": "Goteborg (SWE)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "400m",
+            "annee": 2013,
+            "performance": 5384,
+            "performance_brut": "53''84",
+            "vent": "",
+            "date": "2013-09-14",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "R1"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2012,
+            "performance": null,
+            "performance_brut": "11''07 (F)",
+            "vent": "+2.2",
+            "date": "2012-05-20",
+            "lieu": "Aix Les Bains",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2012,
+            "performance": 737,
+            "performance_brut": "7m37",
+            "vent": "+1.6",
+            "date": "2012-05-20",
+            "lieu": "Aix Les Bains",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2012,
+            "performance": 597,
+            "performance_brut": "5m97",
+            "vent": "",
+            "date": "2012-07-01",
+            "lieu": "Helsinki (FIN)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2012,
+            "performance": 1472,
+            "performance_brut": "14''72",
+            "vent": "+2.0",
+            "date": "2012-05-06",
+            "lieu": "Aix Les Bains",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2012,
+            "performance": 595,
+            "performance_brut": "5m95",
+            "vent": "",
+            "date": "2012-03-10",
+            "lieu": "Istanbul (TUR)",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2011,
+            "performance": 603,
+            "performance_brut": "6m03",
+            "vent": "",
+            "date": "2011-03-05",
+            "lieu": "Paris",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2011,
+            "performance": 590,
+            "performance_brut": "5m90",
+            "vent": "",
+            "date": "2011-07-22",
+            "lieu": "Monaco",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2011,
+            "performance": 1104,
+            "performance_brut": "11''04",
+            "vent": "+0.6",
+            "date": "2011-05-22",
+            "lieu": "Bondoufle",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2011,
+            "performance": null,
+            "performance_brut": "7m20 (F)",
+            "vent": "+2.6",
+            "date": "2011-05-22",
+            "lieu": "Bondoufle",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2011,
+            "performance": 717,
+            "performance_brut": "7m17",
+            "vent": "+0.0",
+            "date": "2011-05-08",
+            "lieu": "Saint Etienne",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2010,
+            "performance": 594,
+            "performance_brut": "5m94",
+            "vent": "",
+            "date": "2010-07-10",
+            "lieu": "Valence",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2010,
+            "performance": 731,
+            "performance_brut": "7m31",
+            "vent": "+0.9",
+            "date": "2010-05-23",
+            "lieu": "Franconville",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Poids (7.26 kg)",
+            "annee": 2010,
+            "performance": 920,
+            "performance_brut": "9m20",
+            "vent": "",
+            "date": "2010-06-30",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2010,
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Paris",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "annee": 2010,
+            "performance": 722,
+            "performance_brut": "7m22",
+            "vent": "",
+            "date": "2010-01-17",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m - Salle",
+            "annee": 2010,
+            "performance": 716,
+            "performance_brut": "7''16",
+            "vent": "",
+            "date": "2010-01-16",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2010,
+            "performance": 1451,
+            "performance_brut": "14''51",
+            "vent": "+2.0",
+            "date": "2010-05-23",
+            "lieu": "Franconville",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2009,
+            "performance": 601,
+            "performance_brut": "6m01",
+            "vent": "",
+            "date": "2009-06-21",
+            "lieu": "Leiria (POR)",
+            "categorie": "SE",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2009,
+            "performance": 1454,
+            "performance_brut": "14''54",
+            "vent": "+1.9",
+            "date": "2009-05-03",
+            "lieu": "Niort",
+            "categorie": "SE",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2009,
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "date": "2009-12-04",
+            "lieu": "Aulnay-Sous-Bois",
+            "categorie": "SE",
+            "club": "Clermont Athletisme Auvergne *",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Heptathlon SH-Salle",
+            "annee": 2008,
+            "performance": null,
+            "performance_brut": "5 363 pts",
+            "vent": "",
+            "date": "2008-12-20",
+            "lieu": "Aubiere",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2008,
+            "performance": 1533,
+            "performance_brut": "15''33",
+            "vent": "+0.3",
+            "date": "2008-05-04",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2008,
+            "performance": 581,
+            "performance_brut": "5m81",
+            "vent": "",
+            "date": "2008-12-06",
+            "lieu": "Aulnay-Sous-Bois",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m - Salle",
+            "annee": 2008,
+            "performance": 723,
+            "performance_brut": "7''23",
+            "vent": "",
+            "date": "2008-12-20",
+            "lieu": "Aubiere",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "annee": 2008,
+            "performance": 698,
+            "performance_brut": "6m98",
+            "vent": "",
+            "date": "2008-12-20",
+            "lieu": "Aubiere",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Poids (7 kg) - Salle",
+            "annee": 2008,
+            "performance": 961,
+            "performance_brut": "9m61",
+            "vent": "",
+            "date": "2008-12-20",
+            "lieu": "Aubiere",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "1 000m Piste Courte",
+            "annee": 2008,
+            "performance": 18625,
+            "performance_brut": "3'06''25",
+            "vent": "",
+            "date": "2008-12-21",
+            "lieu": "Aubiere",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (106)-Salle",
+            "annee": 2008,
+            "performance": 841,
+            "performance_brut": "8''41",
+            "vent": "",
+            "date": "2008-12-21",
+            "lieu": "Aubiere",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "Hauteur - Salle",
+            "annee": 2008,
+            "performance": 189,
+            "performance_brut": "1m89",
+            "vent": "",
+            "date": "2008-12-20",
+            "lieu": "Aubiere",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2008,
+            "performance": 565,
+            "performance_brut": "5m65",
+            "vent": "",
+            "date": "2008-06-27",
+            "lieu": "Villeneuve-D'ascq",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IA"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2007,
+            "performance": 558,
+            "performance_brut": "5m58",
+            "vent": "",
+            "date": "2007-12-08",
+            "lieu": "Aulnay-Sous-Bois",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2007,
+            "performance": 545,
+            "performance_brut": "5m45",
+            "vent": "",
+            "date": "2007-08-04",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (106)-Salle",
+            "annee": 2007,
+            "performance": 859,
+            "performance_brut": "8''59",
+            "vent": "",
+            "date": "2007-01-06",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Hauteur",
+            "annee": 2007,
+            "performance": 187,
+            "performance_brut": "1m87",
+            "vent": "",
+            "date": "2007-06-02",
+            "lieu": "Saintes",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2007,
+            "performance": 1524,
+            "performance_brut": "15''24",
+            "vent": "+0.2",
+            "date": "2007-06-09",
+            "lieu": "Tours",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "annee": 2007,
+            "performance": 679,
+            "performance_brut": "6m79",
+            "vent": "",
+            "date": "2007-01-06",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2007,
+            "performance": 1134,
+            "performance_brut": "11''34",
+            "vent": "+1.5",
+            "date": "2007-07-04",
+            "lieu": "Chatellerault",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR2"
+            ]
+        },
+        {
+            "epreuve": "Poids (7.26 kg)",
+            "annee": 2007,
+            "performance": 909,
+            "performance_brut": "9m09",
+            "vent": "",
+            "date": "2007-06-13",
+            "lieu": "Poitiers",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2007,
+            "performance": 680,
+            "performance_brut": "6m80",
+            "vent": "+0.7",
+            "date": "2007-05-06",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "50m Haies (106)-Salle",
+            "annee": 2006,
+            "performance": 726,
+            "performance_brut": "7''26",
+            "vent": "",
+            "date": "2006-12-16",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2006,
+            "performance": 522,
+            "performance_brut": "5m22",
+            "vent": "",
+            "date": "2006-07-29",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "N2"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2006,
+            "performance": 683,
+            "performance_brut": "6m83",
+            "vent": "+0.5",
+            "date": "2006-07-29",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2006,
+            "performance": 1569,
+            "performance_brut": "15''69",
+            "vent": "+1.9",
+            "date": "2006-06-03",
+            "lieu": "La Rochelle",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR2"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2006,
+            "performance": null,
+            "performance_brut": "11''42 (F)",
+            "vent": "+3.4",
+            "date": "2006-04-30",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2006,
+            "performance": 525,
+            "performance_brut": "5m25",
+            "vent": "",
+            "date": "2006-12-16",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "annee": 2006,
+            "performance": 697,
+            "performance_brut": "6m97",
+            "vent": "",
+            "date": "2006-12-16",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2006,
+            "performance": 1150,
+            "performance_brut": "11''50",
+            "vent": "+1.2",
+            "date": "2006-05-27",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (106)-Salle",
+            "annee": 2006,
+            "performance": 877,
+            "performance_brut": "8''77",
+            "vent": "",
+            "date": "2006-01-21",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR2"
+            ]
+        },
+        {
+            "epreuve": "Triple saut",
+            "annee": 2005,
+            "performance": 1266,
+            "performance_brut": "12m66",
+            "vent": "+0,2",
+            "date": "2005-05-01",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2005,
+            "performance": 634,
+            "performance_brut": "6m34",
+            "vent": "NC",
+            "date": "2005-10-08",
+            "lieu": "Jonzac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "annee": 2005,
+            "performance": 608,
+            "performance_brut": "6m08",
+            "vent": "",
+            "date": "2005-12-03",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2005,
+            "performance": 616,
+            "performance_brut": "6m16",
+            "vent": "+0,1",
+            "date": "2005-10-02",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "Javelot (800 g)",
+            "annee": 2005,
+            "performance": 3383,
+            "performance_brut": "33m83",
+            "vent": "",
+            "date": "2005-05-28",
+            "lieu": "St-Jean D'angély",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "D2"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2005,
+            "performance": 470,
+            "performance_brut": "4m70",
+            "vent": "",
+            "date": "2005-06-18",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2005,
+            "performance": 1184,
+            "performance_brut": "11''84",
+            "vent": "NC",
+            "date": "2005-05-01",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (106)-Salle",
+            "annee": 2005,
+            "performance": 911,
+            "performance_brut": "9''11",
+            "vent": "",
+            "date": "2005-01-22",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR3"
+            ]
+        },
+        {
+            "epreuve": "400m Haies (91)",
+            "annee": 2005,
+            "performance": 6173,
+            "performance_brut": "61''73",
+            "vent": "",
+            "date": "2005-06-04",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R3"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2005,
+            "performance": 1621,
+            "performance_brut": "16''21",
+            "vent": "-0.6",
+            "date": "2005-06-18",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "Hauteur",
+            "annee": 2005,
+            "performance": 180,
+            "performance_brut": "1m80",
+            "vent": "",
+            "date": "2005-06-04",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2005,
+            "performance": 481,
+            "performance_brut": "4m81",
+            "vent": "",
+            "date": "2005-12-17",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2005,
+            "performance": 1200,
+            "performance_brut": "12''00",
+            "vent": "+0.5",
+            "date": "2005-10-02",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R3"
+            ]
+        },
+        {
+            "epreuve": "50m Haies (106)-Salle",
+            "annee": 2005,
+            "performance": 740,
+            "performance_brut": "7''40",
+            "vent": "",
+            "date": "2005-12-03",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "200m",
+            "annee": 2005,
+            "performance": null,
+            "performance_brut": "24''34 (F)",
+            "vent": "+3,3",
+            "date": "2005-06-04",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "50m Haies (106)-Salle",
+            "annee": 2004,
+            "performance": 770,
+            "performance_brut": "7''7",
+            "vent": "",
+            "date": "2004-12-18",
+            "lieu": "Isle d'espagnac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR2"
+            ]
+        },
+        {
+            "epreuve": "400m Haies (91)",
+            "annee": 2004,
+            "performance": 6653,
+            "performance_brut": "66''53",
+            "vent": "",
+            "date": "2004-09-26",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "D1"
+            ]
+        },
+        {
+            "epreuve": "50m - Salle",
+            "annee": 2004,
+            "performance": 653,
+            "performance_brut": "6''53",
+            "vent": "",
+            "date": "2004-11-24",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "Hauteur",
+            "annee": 2004,
+            "performance": 175,
+            "performance_brut": "1m75",
+            "vent": "",
+            "date": "2004-06-05",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R3"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2004,
+            "performance": 1730,
+            "performance_brut": "17''3",
+            "vent": "+0.9",
+            "date": "2004-05-23",
+            "lieu": "La Roche-Sur-Yon",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "annee": 2004,
+            "performance": 1731,
+            "performance_brut": "17''31",
+            "vent": "-1.6",
+            "date": "2004-05-09",
+            "lieu": "Niort",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "200m",
+            "annee": 2004,
+            "performance": 2537,
+            "performance_brut": "25''37",
+            "vent": "+1.0",
+            "date": "2004-06-05",
+            "lieu": "Cognac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R6"
+            ]
+        },
+        {
+            "epreuve": "Triple saut",
+            "annee": 2004,
+            "performance": null,
+            "performance_brut": "12m30 (F)",
+            "vent": "+2,7",
+            "date": "2004-10-10",
+            "lieu": "La Rochelle",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "50m - Salle",
+            "annee": 2004,
+            "performance": 650,
+            "performance_brut": "6''5",
+            "vent": "",
+            "date": "2004-12-18",
+            "lieu": "Isle d'espagnac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R1"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2004,
+            "performance": 606,
+            "performance_brut": "6m06",
+            "vent": "NC",
+            "date": "2004-04-07",
+            "lieu": "Angouleme",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R3"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "annee": 2004,
+            "performance": 450,
+            "performance_brut": "4m50",
+            "vent": "",
+            "date": "2004-11-24",
+            "lieu": "Poitiers-Vouneuil Ss Biard",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2004,
+            "performance": 460,
+            "performance_brut": "4m60",
+            "vent": "",
+            "date": "2004-07-04",
+            "lieu": "Blois",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "Hauteur - Salle",
+            "annee": 2004,
+            "performance": 170,
+            "performance_brut": "1m70",
+            "vent": "",
+            "date": "2004-12-18",
+            "lieu": "Isle d'espagnac",
+            "categorie": "ES",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "annee": 2003,
+            "performance": 430,
+            "performance_brut": "4m30",
+            "vent": "",
+            "date": "2003-07-20",
+            "lieu": "Bordeaux",
+            "categorie": "JU",
+            "club": "Cognac Ac",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "IR3"
+            ]
+        }
+    ],
+    "records": [
+        {
+            "epreuve": "50m - Salle",
+            "performance": 653,
+            "performance_brut": "6''53",
+            "date": "2004-11-24",
+            "club": "Cognac Ac",
+            "lieu": "Poitiers-vouneuil ss",
+            "categorie": "JU",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "50m - Salle",
+            "performance": 650,
+            "performance_brut": "6''5",
+            "date": "2004-12-18",
+            "club": "Cognac Ac",
+            "lieu": "Isle d'espagnac",
+            "categorie": "JU",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R1"
+            ]
+        },
+        {
+            "epreuve": "60m - Salle",
+            "performance": 716,
+            "performance_brut": "7''16",
+            "date": "2010-01-16",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "performance": 1104,
+            "performance_brut": "11''04",
+            "date": "2011-05-22",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Bondoufle",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IR1"
+            ]
+        },
+        {
+            "epreuve": "200m",
+            "performance": 2537,
+            "performance_brut": "25''37",
+            "date": "2004-06-05",
+            "club": "Cognac Ac",
+            "lieu": "Cognac",
+            "categorie": "JU",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R6"
+            ]
+        },
+        {
+            "epreuve": "400m",
+            "performance": 5384,
+            "performance_brut": "53''84",
+            "date": "2013-09-14",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "R1"
+            ]
+        },
+        {
+            "epreuve": "1 000m Piste Courte",
+            "performance": 18625,
+            "performance_brut": "3'06''25",
+            "date": "2008-12-21",
+            "club": "Cognac Ac",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "1 500m",
+            "performance": 31419,
+            "performance_brut": "5'14''19",
+            "date": "2013-09-15",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "50m Haies (106)-Salle",
+            "performance": 726,
+            "performance_brut": "7''26",
+            "date": "2006-12-16",
+            "club": "Cognac Ac",
+            "lieu": "Poitiers-vouneuil ss",
+            "categorie": "ES",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (106)-Salle",
+            "performance": 841,
+            "performance_brut": "8''41",
+            "date": "2008-12-21",
+            "club": "Cognac Ac",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "N4"
+            ]
+        },
+        {
+            "epreuve": "110m Haies (106)",
+            "performance": 1451,
+            "performance_brut": "14''51",
+            "date": "2010-05-23",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Franconville",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "400m Haies (91)",
+            "performance": 6173,
+            "performance_brut": "61''73",
+            "date": "2005-06-04",
+            "club": "Cognac Ac",
+            "lieu": "Cognac",
+            "categorie": "JU",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R3"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "performance": 737,
+            "performance_brut": "7m37",
+            "date": "2012-05-20",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Aix Les Bains",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "N3"
+            ]
+        },
+        {
+            "epreuve": "Triple saut",
+            "performance": 1266,
+            "performance_brut": "12m66",
+            "date": "2005-05-01",
+            "club": "Cognac Ac",
+            "lieu": "Cognac",
+            "categorie": "JU",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "Hauteur - Salle",
+            "performance": 189,
+            "performance_brut": "1m89",
+            "date": "2008-12-20",
+            "club": "Cognac Ac",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 616,
+            "performance_brut": "6m16",
+            "date": "0000-00-00",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Donetsk (UKR)",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Disque (2.0 kg)",
+            "performance": 3002,
+            "performance_brut": "30m02",
+            "date": "2013-09-15",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Poids (7 kg) - Salle",
+            "performance": 961,
+            "performance_brut": "9m61",
+            "date": "2008-12-20",
+            "club": "Cognac Ac",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Javelot (800 g)",
+            "performance": 3886,
+            "performance_brut": "38m86",
+            "date": "2013-09-15",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": [
+                "R6"
+            ]
+        },
+        {
+            "epreuve": "Decathlon SH",
+            "performance": null,
+            "performance_brut": "6 676 pts",
+            "date": "2013-09-14",
+            "club": "Clermont Athletisme Auvergne *",
+            "lieu": "Talence",
+            "categorie": "SE",
+            "ligue_dept": "AUV \/ 063",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Heptathlon SH-Salle",
+            "performance": null,
+            "performance_brut": "5 363 pts",
+            "date": "2008-12-20",
+            "club": "Cognac Ac",
+            "lieu": "Aubiere",
+            "categorie": "SE",
+            "ligue_dept": "POI \/ 016",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 606,
+            "performance_brut": "6m06",
+            "date": "0000-00-00",
+            "club": "27 Fév. 2021",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aubiere",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 606,
+            "performance_brut": "6m06",
+            "date": "0000-00-00",
+            "club": "27 Fév. 2021",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aubiere",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 591,
+            "performance_brut": "5m91",
+            "date": "0000-00-00",
+            "club": "28 Fév. 2025",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Clermont Ferrand",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 591,
+            "performance_brut": "5m91",
+            "date": "0000-00-00",
+            "club": "28 Fév. 2025",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Clermont Ferrand",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 616,
+            "performance_brut": "6m16",
+            "date": "0000-00-00",
+            "club": "15 Fév. 2014",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Donetsk",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 616,
+            "performance_brut": "6m16",
+            "date": "0000-00-00",
+            "club": "15 Fév. 2014",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Donetsk",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 595,
+            "performance_brut": "5m95",
+            "date": "0000-00-00",
+            "club": "26 Juin 2016",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Angers",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 595,
+            "performance_brut": "5m95",
+            "date": "0000-00-00",
+            "club": "14 Juil 2013",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Paris",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 601,
+            "performance_brut": "6m01",
+            "date": "0000-00-00",
+            "club": "22 Fév. 2015",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aubiere",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 606,
+            "performance_brut": "6m06",
+            "date": "0000-00-00",
+            "club": "27 Fév. 2021",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aubiere",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 606,
+            "performance_brut": "6m06",
+            "date": "0000-00-00",
+            "club": "27 Fév. 2021",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aubiere",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 591,
+            "performance_brut": "5m91",
+            "date": "0000-00-00",
+            "club": "28 Fév. 2025",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Clermont Ferrand",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 591,
+            "performance_brut": "5m91",
+            "date": "0000-00-00",
+            "club": "28 Fév. 2025",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Clermont Ferrand",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 616,
+            "performance_brut": "6m16",
+            "date": "0000-00-00",
+            "club": "15 Fév. 2014",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Donetsk",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 616,
+            "performance_brut": "6m16",
+            "date": "0000-00-00",
+            "club": "15 Fév. 2014",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Donetsk",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 601,
+            "performance_brut": "6m01",
+            "date": "0000-00-00",
+            "club": "21 Juin 2009",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Leiria",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "8 Mars 2009",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Turin",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "1 Fév. 2009",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Moscou",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "6 Déc. 2008",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aulnay-Sous-Bois",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "6 Déc. 2008",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aulnay-Sous-Bois",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "6 Déc. 2008",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aulnay-Sous-Bois",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 601,
+            "performance_brut": "6m01",
+            "date": "0000-00-00",
+            "club": "21 Juin 2009",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Leiria",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "8 Mars 2009",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Turin",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "1 Fév. 2009",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Moscou",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "6 Déc. 2008",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aulnay-Sous-Bois",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "6 Déc. 2008",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aulnay-Sous-Bois",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "date": "0000-00-00",
+            "club": "6 Déc. 2008",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aulnay-Sous-Bois",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 606,
+            "performance_brut": "6m06",
+            "date": "0000-00-00",
+            "club": "27 Fév. 2021",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aubiere",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 606,
+            "performance_brut": "6m06",
+            "date": "0000-00-00",
+            "club": "27 Fév. 2021",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Aubiere",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche",
+            "performance": 616,
+            "performance_brut": "6m16",
+            "date": "0000-00-00",
+            "club": "15 Fév. 2014",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Donetsk",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        },
+        {
+            "epreuve": "Perche - Salle",
+            "performance": 616,
+            "performance_brut": "6m16",
+            "date": "0000-00-00",
+            "club": "15 Fév. 2014",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Donetsk",
+            "niveaux": [
+                "IA",
+                "IB"
+            ]
+        }
+    ],
+    "podiums": [
+        {
+            "annee": 2025,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "date": "2025-08-01",
+            "lieu": "Talence"
+        },
+        {
+            "annee": 2025,
+            "niveau_competition": "National",
+            "place": "Vice-champion National TCM - Elite",
+            "rang": null,
+            "epreuve": "Perche - Salle",
+            "performance": 576,
+            "performance_brut": "5m76",
+            "vent": "",
+            "date": null,
+            "lieu": "Miramas"
+        },
+        {
+            "annee": 2024,
+            "niveau_competition": "National",
+            "place": "3ème (place) National TCM - Elite",
+            "rang": null,
+            "epreuve": "Perche",
+            "performance": 560,
+            "performance_brut": "5m60",
+            "vent": "",
+            "date": "2024-06-28",
+            "lieu": "Angers"
+        },
+        {
+            "annee": 2022,
+            "niveau_competition": "National",
+            "place": "Vice champion National TCM - Elite",
+            "rang": 2,
+            "epreuve": "Perche",
+            "performance": 575,
+            "performance_brut": "5m75",
+            "vent": "",
+            "date": "2022-06-24",
+            "lieu": "Caen"
+        },
+        {
+            "annee": 2021,
+            "niveau_competition": "National",
+            "place": "Vice champion National TCM - Elite",
+            "rang": 2,
+            "epreuve": "Perche",
+            "performance": 570,
+            "performance_brut": "5m70",
+            "vent": "",
+            "date": "2021-06-25",
+            "lieu": "Angers"
+        },
+        {
+            "annee": 2021,
+            "niveau_competition": "National",
+            "place": "3ème (place) National TCM - Elite",
+            "rang": null,
+            "epreuve": "Perche - Salle",
+            "performance": 566,
+            "performance_brut": "5m66",
+            "vent": "",
+            "date": null,
+            "lieu": "Miramas"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "date": "2020-09-12",
+            "lieu": "Albi"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "date": null,
+            "lieu": "Liévin"
+        },
+        {
+            "annee": 2019,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": "2019-07-26",
+            "lieu": "Saint Etienne"
+        },
+        {
+            "annee": 2018,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "date": "2018-07-06",
+            "lieu": "Albi"
+        },
+        {
+            "annee": 2018,
+            "niveau_competition": "Mondial",
+            "place": "Champion Mondial SEM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 590,
+            "performance_brut": "5m90",
+            "vent": "",
+            "date": "2018-03-01",
+            "lieu": "Birmingham"
+        },
+        {
+            "annee": 2018,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 583,
+            "performance_brut": "5m83",
+            "vent": "",
+            "date": null,
+            "lieu": "Liévin"
+        },
+        {
+            "annee": 2018,
+            "niveau_competition": "Européen",
+            "place": "3ème (place) Européen SEM",
+            "rang": null,
+            "epreuve": "Perche",
+            "performance": 595,
+            "performance_brut": "5m95",
+            "vent": "",
+            "date": "2018-08-06",
+            "lieu": "Berlin"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "date": "2017-07-14",
+            "lieu": "Marseille"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "Mondial",
+            "place": "3ème (place) Mondial SEM",
+            "rang": null,
+            "epreuve": "Perche",
+            "performance": 589,
+            "performance_brut": "5m89",
+            "vent": "",
+            "date": "2017-08-04",
+            "lieu": "Londres"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 595,
+            "performance_brut": "5m95",
+            "vent": "",
+            "date": "2016-06-24",
+            "lieu": "Angers"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 593,
+            "performance_brut": "5m93",
+            "vent": "",
+            "date": null,
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Olympique",
+            "place": "Vice-Champion Olympique TCM",
+            "rang": null,
+            "epreuve": "Perche",
+            "performance": 598,
+            "performance_brut": "5m98",
+            "vent": "",
+            "date": "2016-08-12",
+            "lieu": "Rio De Janeiro"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Mondial",
+            "place": "Champion Mondial SEM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 602,
+            "performance_brut": "6m02",
+            "vent": "",
+            "date": "2016-03-17",
+            "lieu": "Portland"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": "2015-07-10",
+            "lieu": "Villeneuve D'ascq"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 601,
+            "performance_brut": "6m01",
+            "vent": "",
+            "date": null,
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "Européen",
+            "place": "Champion Européen SEM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 604,
+            "performance_brut": "6m04",
+            "vent": "",
+            "date": "2015-03-05",
+            "lieu": "Prague"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "Mondial",
+            "place": "3ème (place) Mondial SEM",
+            "rang": null,
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "date": "2015-08-22",
+            "lieu": "Pekin"
+        },
+        {
+            "annee": 2014,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "date": "2014-07-11",
+            "lieu": "Reims"
+        },
+        {
+            "annee": 2014,
+            "niveau_competition": "Européen",
+            "place": "Champion Européen SEM",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 590,
+            "performance_brut": "5m90",
+            "vent": "",
+            "date": "2014-08-12",
+            "lieu": "Zurich"
+        },
+        {
+            "annee": 2013,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 593,
+            "performance_brut": "5m93",
+            "vent": "",
+            "date": null,
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2013,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 595,
+            "performance_brut": "5m95",
+            "vent": "",
+            "date": "2013-07-12",
+            "lieu": "Paris"
+        },
+        {
+            "annee": 2013,
+            "niveau_competition": "Mondial",
+            "place": "Vice champion Mondial SEM",
+            "rang": 2,
+            "epreuve": "Perche",
+            "performance": 589,
+            "performance_brut": "5m89",
+            "vent": "",
+            "date": "2013-08-10",
+            "lieu": "Moscou"
+        },
+        {
+            "annee": 2013,
+            "niveau_competition": "Européen",
+            "place": "Champion Européen SEM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 601,
+            "performance_brut": "6m01",
+            "vent": "",
+            "date": "2013-03-01",
+            "lieu": "Goteborg"
+        },
+        {
+            "annee": 2012,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 572,
+            "performance_brut": "5m72",
+            "vent": "",
+            "date": null,
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2012,
+            "niveau_competition": "Mondial",
+            "place": "Champion Mondial SEM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 595,
+            "performance_brut": "5m95",
+            "vent": "",
+            "date": "2012-03-09",
+            "lieu": "Istanbul"
+        },
+        {
+            "annee": 2012,
+            "niveau_competition": "Olympique",
+            "place": "Champion Olympique SEM",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 597,
+            "performance_brut": "5m97",
+            "vent": "",
+            "date": "2012-08-03",
+            "lieu": "Londres"
+        },
+        {
+            "annee": 2012,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": "2012-06-15",
+            "lieu": "Angers"
+        },
+        {
+            "annee": 2012,
+            "niveau_competition": "Européen",
+            "place": "Champion Européen SEM",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 597,
+            "performance_brut": "5m97",
+            "vent": "",
+            "date": "2012-06-27",
+            "lieu": "Helsinki"
+        },
+        {
+            "annee": 2011,
+            "niveau_competition": "Européen",
+            "place": "Champion Européen SEM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 603,
+            "performance_brut": "6m03",
+            "vent": "",
+            "date": "2011-03-04",
+            "lieu": "Paris"
+        },
+        {
+            "annee": 2011,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": null,
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2011,
+            "niveau_competition": "Mondial",
+            "place": "3ème (place) Mondial SEM",
+            "rang": null,
+            "epreuve": "Perche",
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": "2011-08-27",
+            "lieu": "Daegu"
+        },
+        {
+            "annee": 2010,
+            "niveau_competition": "Régional",
+            "place": "Champion SEM - AUV",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 550,
+            "performance_brut": "5m50",
+            "vent": "",
+            "date": "2010-01-16",
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2010,
+            "niveau_competition": "Régional",
+            "place": "Champion SEM - AUV",
+            "rang": 1,
+            "epreuve": "Longueur - Salle",
+            "performance": 722,
+            "performance_brut": "7m22",
+            "vent": "",
+            "date": "2010-01-16",
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2010,
+            "niveau_competition": "Régional",
+            "place": "Vice champion SEM - AUV",
+            "rang": 2,
+            "epreuve": "60m - Salle",
+            "performance": 721,
+            "performance_brut": "7''21",
+            "vent": "",
+            "date": "2010-01-16",
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2010,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": null,
+            "lieu": "Paris"
+        },
+        {
+            "annee": 2010,
+            "niveau_competition": "Européen",
+            "place": "Champion Européen SEM",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 585,
+            "performance_brut": "5m85",
+            "vent": "",
+            "date": "2010-07-27",
+            "lieu": "Barcelone"
+        },
+        {
+            "annee": 2010,
+            "niveau_competition": "National",
+            "place": "Champion National TCM - Elite",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 594,
+            "performance_brut": "5m94",
+            "vent": "",
+            "date": "2010-07-08",
+            "lieu": "Valence"
+        },
+        {
+            "annee": 2009,
+            "niveau_competition": "Mondial",
+            "place": "3ème (place) Mondial SEM",
+            "rang": null,
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "date": "2009-08-15",
+            "lieu": "Berlin"
+        },
+        {
+            "annee": 2009,
+            "niveau_competition": "Européen",
+            "place": "Champion Européen SEM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 581,
+            "performance_brut": "5m81",
+            "vent": "",
+            "date": "2009-03-06",
+            "lieu": "Turin"
+        },
+        {
+            "annee": 2009,
+            "niveau_competition": "National",
+            "place": "Vice champion National TCM - Elite",
+            "rang": 2,
+            "epreuve": "Perche - Salle",
+            "performance": 555,
+            "performance_brut": "5m55",
+            "vent": "",
+            "date": null,
+            "lieu": "Liévin"
+        },
+        {
+            "annee": 2009,
+            "niveau_competition": "National",
+            "place": "Vice champion National TCM - Elite",
+            "rang": 2,
+            "epreuve": "Perche",
+            "performance": 555,
+            "performance_brut": "5m55",
+            "vent": "",
+            "date": "2009-07-23",
+            "lieu": "Angers"
+        },
+        {
+            "annee": 2008,
+            "niveau_competition": "National",
+            "place": "Vice champion National TCM - Elite",
+            "rang": 2,
+            "epreuve": "Perche",
+            "performance": 565,
+            "performance_brut": "5m65",
+            "vent": "",
+            "date": "2008-07-24",
+            "lieu": "Albi"
+        },
+        {
+            "annee": 2008,
+            "niveau_competition": "National",
+            "place": "Champion National ESM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 561,
+            "performance_brut": "5m61",
+            "vent": "",
+            "date": null,
+            "lieu": "Paris"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Régional",
+            "place": "Champion ESM - POI",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 500,
+            "performance_brut": "5m00",
+            "vent": "",
+            "date": "2007-06-16",
+            "lieu": "Poitiers"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Régional",
+            "place": "Champion ESM - POI",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 500,
+            "performance_brut": "5m00",
+            "vent": "",
+            "date": "2007-01-20",
+            "lieu": "Poitiers-vouneuil ss"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Régional",
+            "place": "Champion ESM - POI",
+            "rang": 1,
+            "epreuve": "110m Haies (106)",
+            "performance": 1715,
+            "performance_brut": "17''15",
+            "vent": "NC",
+            "date": "2007-06-02",
+            "lieu": "Saintes"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Régional",
+            "place": "Champion ESM - POI",
+            "rang": 1,
+            "epreuve": "60m haies(106)-salle",
+            "performance": 872,
+            "performance_brut": "8''72",
+            "vent": "",
+            "date": "2007-01-20",
+            "lieu": "Poitiers-vouneuil ss"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "National",
+            "place": "Champion National ESM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 530,
+            "performance_brut": "5m30",
+            "vent": "",
+            "date": null,
+            "lieu": "Paris"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Départemental",
+            "place": "Champion ESM - 016",
+            "rang": 1,
+            "epreuve": "Hauteur",
+            "performance": 187,
+            "performance_brut": "1m87",
+            "vent": "",
+            "date": "2007-06-02",
+            "lieu": "Saintes"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Interrégional",
+            "place": "Champion Inter-régional ESM",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 520,
+            "performance_brut": "5m20",
+            "vent": "",
+            "date": "2007-07-07",
+            "lieu": "Tours"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Interrégional",
+            "place": "Champion Inter-régional ESM",
+            "rang": 1,
+            "epreuve": "110m Haies (106)",
+            "performance": 1544,
+            "performance_brut": "15''44",
+            "vent": "+0.3",
+            "date": "2007-07-07",
+            "lieu": "Tours"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "Départemental",
+            "place": "Champion ESM - 016",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 500,
+            "performance_brut": "5m00",
+            "vent": "",
+            "date": "2007-06-02",
+            "lieu": "Saintes"
+        },
+        {
+            "annee": 2007,
+            "niveau_competition": "National",
+            "place": "Champion National ESM",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 525,
+            "performance_brut": "5m25",
+            "vent": "",
+            "date": "2007-07-27",
+            "lieu": "Narbonne"
+        },
+        {
+            "annee": 2006,
+            "niveau_competition": "Régional",
+            "place": "Vice champion ESM - POI",
+            "rang": 2,
+            "epreuve": "60m haies(106)-salle",
+            "performance": 877,
+            "performance_brut": "8''77",
+            "vent": "",
+            "date": "2006-01-21",
+            "lieu": "Poitiers-vouneuil ss"
+        },
+        {
+            "annee": 2006,
+            "niveau_competition": "Régional",
+            "place": "Vice champion TCM - POI",
+            "rang": 2,
+            "epreuve": "110m Haies (106)",
+            "performance": 1570,
+            "performance_brut": "15''70",
+            "vent": "+0.6",
+            "date": "2006-06-03",
+            "lieu": "La Rochelle"
+        },
+        {
+            "annee": 2006,
+            "niveau_competition": "Régional",
+            "place": "Champion ESM - POI",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 485,
+            "performance_brut": "4m85",
+            "vent": "",
+            "date": "2006-01-21",
+            "lieu": "Poitiers-vouneuil ss"
+        },
+        {
+            "annee": 2006,
+            "niveau_competition": "Régional",
+            "place": "Champion ESM - POI",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 480,
+            "performance_brut": "4m80",
+            "vent": "",
+            "date": "2006-06-03",
+            "lieu": "La Rochelle"
+        },
+        {
+            "annee": 2006,
+            "niveau_competition": "Interrégional",
+            "place": "Champion Inter-régional ESM",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 510,
+            "performance_brut": "5m10",
+            "vent": "",
+            "date": "2006-07-01",
+            "lieu": "Niort"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Régional",
+            "place": "Champion JUM - POI",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 470,
+            "performance_brut": "4m70",
+            "vent": "",
+            "date": "2005-06-18",
+            "lieu": "Niort"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Départemental",
+            "place": "Vice champion JUM - 016",
+            "rang": 2,
+            "epreuve": "110m Haies (106)",
+            "performance": 1623,
+            "performance_brut": "16''23",
+            "vent": "NC",
+            "date": "2005-05-28",
+            "lieu": "St-Jean D'angély"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Départemental",
+            "place": "Champion JUM - 016",
+            "rang": 1,
+            "epreuve": "Perche",
+            "performance": 400,
+            "performance_brut": "4m00",
+            "vent": "",
+            "date": "2005-05-28",
+            "lieu": "St-Jean D'angély"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Départemental",
+            "place": "Champion JUM - 016",
+            "rang": 1,
+            "epreuve": "Hauteur",
+            "performance": 175,
+            "performance_brut": "1m75",
+            "vent": "",
+            "date": "2005-05-28",
+            "lieu": "St-Jean D'angély"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Interrégional",
+            "place": "Champion Inter-régional TCM",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 460,
+            "performance_brut": "4m60",
+            "vent": "",
+            "date": null,
+            "lieu": "Poitiers-vouneuil ss"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Régional",
+            "place": "3ème (place) JUM - POI",
+            "rang": null,
+            "epreuve": "110m Haies (106)",
+            "performance": 1621,
+            "performance_brut": "16''21",
+            "vent": "-0.6",
+            "date": "2005-06-18",
+            "lieu": "Niort"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Régional",
+            "place": "Vice champion JUM - POI",
+            "rang": 2,
+            "epreuve": "Hauteur",
+            "performance": 180,
+            "performance_brut": "1m80",
+            "vent": "",
+            "date": "2005-06-04",
+            "lieu": "Cognac"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Régional",
+            "place": "Champion JUM - POI",
+            "rang": 1,
+            "epreuve": "60m haies(106)-salle",
+            "performance": 911,
+            "performance_brut": "9''11",
+            "vent": "",
+            "date": "2005-01-22",
+            "lieu": "Poitiers-vouneuil ss"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Régional",
+            "place": "Champion JUM - POI",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 440,
+            "performance_brut": "4m40",
+            "vent": "",
+            "date": "2005-01-16",
+            "lieu": "La Rochelle"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Régional",
+            "place": "Champion JUM - POI",
+            "rang": 1,
+            "epreuve": "Perche - Salle",
+            "performance": 470,
+            "performance_brut": "4m70",
+            "vent": "",
+            "date": "2005-01-22",
+            "lieu": "Poitiers-vouneuil ss"
+        },
+        {
+            "annee": 2005,
+            "niveau_competition": "Départemental",
+            "place": "Vice champion JUM - 016",
+            "rang": 2,
+            "epreuve": "Triple saut",
+            "performance": 1233,
+            "performance_brut": "12m33",
+            "vent": "NC",
+            "date": "2005-05-28",
+            "lieu": "St-Jean D'angély"
+        }
+    ],
+    "resultats": [
+        {
+            "annee": 2025,
+            "date": "2025-09-15",
+            "epreuve": "Perche",
+            "performance": 575,
+            "performance_brut": "5m75",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 8,
+            "niveau": "IA",
+            "points": 1198,
+            "lieu": "Tokyo"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-09-13",
+            "epreuve": "Perche",
+            "performance": 575,
+            "performance_brut": "5m75",
+            "vent": "",
+            "tour": "Quali 1",
+            "place": 7,
+            "niveau": "IA",
+            "points": 1198,
+            "lieu": "Tokyo"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-08-27",
+            "epreuve": "Perche",
+            "performance": null,
+            "performance_brut": "NC",
+            "vent": "",
+            "tour": "Final 1",
+            "place": null,
+            "niveau": "",
+            "points": null,
+            "lieu": "Zurich"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-08-19",
+            "epreuve": "Perche",
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 2,
+            "niveau": "IA",
+            "points": 1217,
+            "lieu": "Lausanne"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-08-16",
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 5,
+            "niveau": "IA",
+            "points": 1212,
+            "lieu": "Chorzow"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-08-03",
+            "epreuve": "Perche",
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 1,
+            "niveau": "IA",
+            "points": 1217,
+            "lieu": "Talence"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-07-11",
+            "epreuve": "Perche",
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 4,
+            "niveau": "IA",
+            "points": 1217,
+            "lieu": "Monaco"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-07-05",
+            "epreuve": "Perche",
+            "performance": null,
+            "performance_brut": "NC",
+            "vent": "",
+            "tour": "Final 1",
+            "place": null,
+            "niveau": "",
+            "points": null,
+            "lieu": "Eugene"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-06-15",
+            "epreuve": "Perche",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 4,
+            "niveau": "IA",
+            "points": 1212,
+            "lieu": "Stockholm"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-06-12",
+            "epreuve": "Perche",
+            "performance": 572,
+            "performance_brut": "5m72",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 4,
+            "niveau": "IA",
+            "points": 1190,
+            "lieu": "Oslo"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-05-25",
+            "epreuve": "Perche",
+            "performance": 582,
+            "performance_brut": "5m82",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 1,
+            "niveau": "IA",
+            "points": 1217,
+            "lieu": "Duszniki"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-05-23",
+            "epreuve": "Perche",
+            "performance": 562,
+            "performance_brut": "5m62",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 3,
+            "niveau": "IB",
+            "points": 1162,
+            "lieu": "Chorzow"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-03-13",
+            "epreuve": "Perche - Salle",
+            "performance": 565,
+            "performance_brut": "5m65",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 10,
+            "niveau": "IA",
+            "points": 1171,
+            "lieu": "Uppsala"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-03-09",
+            "epreuve": "Perche - Salle",
+            "performance": 560,
+            "performance_brut": "5m60",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 11,
+            "niveau": "IB",
+            "points": 1157,
+            "lieu": "Apeldoorn"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-03-07",
+            "epreuve": "Perche - Salle",
+            "performance": 565,
+            "performance_brut": "5m65",
+            "vent": "",
+            "tour": "Quali 1",
+            "place": 8,
+            "niveau": "IA",
+            "points": 1171,
+            "lieu": "Apeldoorn"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-01-31",
+            "epreuve": "Perche - Salle",
+            "performance": 580,
+            "performance_brut": "5m80",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 3,
+            "niveau": "IA",
+            "points": 1212,
+            "lieu": "Caen"
+        },
+        {
+            "annee": 2025,
+            "date": null,
+            "epreuve": "Perche - Salle",
+            "performance": 591,
+            "performance_brut": "5m91",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 6,
+            "niveau": "IA",
+            "points": 1242,
+            "lieu": "Clermont ferrand"
+        },
+        {
+            "annee": 2025,
+            "date": null,
+            "epreuve": "Perche - Salle",
+            "performance": 576,
+            "performance_brut": "5m76",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 2,
+            "niveau": "IA",
+            "points": 1201,
+            "lieu": "Miramas"
+        },
+        {
+            "annee": 2025,
+            "date": null,
+            "epreuve": "Perche - Salle",
+            "performance": 572,
+            "performance_brut": "5m72",
+            "vent": "",
+            "tour": "Final 1",
+            "place": 5,
+            "niveau": "IA",
+            "points": 1190,
+            "lieu": "Roubaix"
+        }
+    ],
+    "niveaux": [
+        {
+            "annee": 2026,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Envol",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 575,
+                    "performance_brut": "5m75",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 575,
+                    "performance_brut": "5m75",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2025,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Envol",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 582,
+                    "performance_brut": "5m82",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 591,
+                    "performance_brut": "5m91",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2024,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Envol",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 572,
+                    "performance_brut": "5m72",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 572,
+                    "performance_brut": "5m72",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2023,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Auvergne Athletisme",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 581,
+                    "performance_brut": "5m81",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 581,
+                    "performance_brut": "5m81",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2022,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Auvergne Athletisme",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 583,
+                    "performance_brut": "5m83",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 587,
+                    "performance_brut": "5m87",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2021,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 602,
+                    "performance_brut": "6m02",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 606,
+                    "performance_brut": "6m06",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2020,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 582,
+                    "performance_brut": "5m82",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 594,
+                    "performance_brut": "5m94",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2019,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 585,
+                    "performance_brut": "5m85",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 582,
+                    "performance_brut": "5m82",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2018,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 595,
+                    "performance_brut": "5m95",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 595,
+                    "performance_brut": "5m95",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2017,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 589,
+                    "performance_brut": "5m89",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 591,
+                    "performance_brut": "5m91",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2016,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 603,
+                    "performance_brut": "6m03",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 602,
+                    "performance_brut": "6m02",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2015,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 604,
+                    "performance_brut": "6m04",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 605,
+                    "performance_brut": "6m05",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2014,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 616,
+                    "performance_brut": "6m16",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 608,
+                    "performance_brut": "6m08",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2013,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 601,
+                    "performance_brut": "6m01",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 602,
+                    "performance_brut": "6m02",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2012,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 597,
+                    "performance_brut": "5m97",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 597,
+                    "performance_brut": "5m97",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2011,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 603,
+                    "performance_brut": "6m03",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 593,
+                    "performance_brut": "5m93",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2010,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Clermont Athletisme Auvergne",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 594,
+                    "performance_brut": "5m94",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 591,
+                    "performance_brut": "5m91",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2009,
+            "code_niveau": "IA",
+            "points_niveau": 17,
+            "club": "Cognac Ac",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 601,
+                    "performance_brut": "6m01",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 596,
+                    "performance_brut": "5m96",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2008,
+            "code_niveau": "IB",
+            "points_niveau": 15,
+            "club": "Cognac Ac",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 570,
+                    "performance_brut": "5m70",
+                    "code_niveau": "IB"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 565,
+                    "performance_brut": "5m65",
+                    "code_niveau": "IB"
+                }
+            ]
+        },
+        {
+            "annee": 2007,
+            "code_niveau": "N2",
+            "points_niveau": 11,
+            "club": "Cognac Ac",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 545,
+                    "performance_brut": "5m45",
+                    "code_niveau": "N1"
+                },
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 535,
+                    "performance_brut": "5m35",
+                    "code_niveau": "N2"
+                }
+            ]
+        },
+        {
+            "annee": 2006,
+            "code_niveau": "N2",
+            "points_niveau": 11,
+            "club": "Cognac Ac",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 522,
+                    "performance_brut": "5m22",
+                    "code_niveau": "N2"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 515,
+                    "performance_brut": "5m15",
+                    "code_niveau": "N2"
+                }
+            ]
+        },
+        {
+            "annee": 2005,
+            "code_niveau": "N3",
+            "points_niveau": 9,
+            "club": "Cognac Ac",
+            "performances": [
+                {
+                    "epreuve": "Perche - Salle",
+                    "performance": 470,
+                    "performance_brut": "4m70",
+                    "code_niveau": "N3"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 470,
+                    "performance_brut": "4m70",
+                    "code_niveau": "N3"
+                }
+            ]
+        },
+        {
+            "annee": 2004,
+            "code_niveau": "N3",
+            "points_niveau": 9,
+            "club": "Cognac Ac",
+            "performances": [
+                {
+                    "epreuve": "Perche",
+                    "performance": 460,
+                    "performance_brut": "4m60",
+                    "code_niveau": "N3"
+                },
+                {
+                    "epreuve": "Perche",
+                    "performance": 460,
+                    "performance_brut": "4m60",
+                    "code_niveau": "N3"
+                }
+            ]
+        }
+    ]
+}

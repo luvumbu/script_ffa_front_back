@@ -15,52 +15,90 @@ $hasAthletes  = isset($_GET['has_athletes']) && $_GET['has_athletes'] == '1';
 $page         = max(1, (int)($_GET['page'] ?? 1));
 $limit        = min(100, max(1, (int)($_GET['limit'] ?? 50)));
 $offset       = ($page - 1) * $limit;
+// Filtre annee : si fourni, lit depuis villes_stats_annee (pre-calcule par annee)
+$annee        = (int)($_GET['annee'] ?? 0);
+if ($annee < 1990 || $annee > (int)date('Y')) $annee = 0;
 
-$where = "";
+// Rate limiting recherches (cf. core/search_limit.php) : applique uniquement sur recherche par nom.
+$_sl = null;
 if ($nom !== '') {
-    $nomEsc = $conn->real_escape_string($nom);
-    $where = "WHERE v.nom_ville LIKE '%$nomEsc%'";
+    require_once __DIR__ . '/../core/search_limit.php';
+    $_sl = bkSearchLimit($conn, true);
+    if ($_sl['blocked']) {
+        jsonResponse(array_merge([
+            'success'       => false,
+            'limit_reached' => true,
+            'reason'        => $_sl['reason'],
+            'limit'         => $_sl['limit'],
+            'remaining'     => 0,
+            'error'         => $_sl['reason'] === 'trial'
+                ? 'Decouverte gratuite terminee — inscrivez-vous pour continuer'
+                : ($_sl['reason'] === 'cooldown'
+                    ? 'Patientez avant la prochaine recherche'
+                    : 'Limite de recherches atteinte'),
+        ], bkSlFields($_sl)), 429);
+    }
 }
 
-$having = $hasAthletes ? "HAVING nb_athletes > 0" : "";
-$join = $hasAthletes ? "INNER JOIN" : "LEFT JOIN";
+// Filtres en WHERE direct (colonnes denormalisees : nb_athletes pre-calcule)
+$conds = [];
+if ($nom !== '') {
+    $nomEsc = $conn->real_escape_string($nom);
+    $conds[] = "v.nom_ville LIKE '%$nomEsc%'";
+}
+if ($hasAthletes) $conds[] = "v.nb_athletes > 0";
+$where = $conds ? "WHERE " . implode(' AND ', $conds) : "";
 
 // ---- Cache fichier (24h) ----
 $cacheDir = __DIR__ . '/../cache';
 if (!is_dir($cacheDir)) @mkdir($cacheDir, 0755, true);
-$cacheKey = 'villes_' . md5($nom . '_' . $page . '_' . $limit . '_' . ($hasAthletes?1:0));
+$cacheKey = 'villes_' . md5($nom . '_' . $page . '_' . $limit . '_' . ($hasAthletes?1:0) . '_y' . $annee);
 $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
 if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
     $cached = @file_get_contents($cacheFile);
-    if ($cached !== false) { echo $cached; $conn->close(); exit; }
+    if ($cached !== false) {
+        // Rafraichir le quota du visiteur (le cache ne doit pas servir des compteurs perimes)
+        if ($_sl) {
+            $_cd = json_decode($cached, true);
+            if (is_array($_cd)) {
+                echo json_encode(array_merge($_cd, bkSlFields($_sl)), JSON_UNESCAPED_UNICODE);
+                $conn->close(); exit;
+            }
+        }
+        echo $cached; $conn->close(); exit;
+    }
 }
 
-if ($hasAthletes) {
-    $countSql = "SELECT COUNT(*) as c FROM (
-        SELECT v.id_ville, COUNT(DISTINCT ar.id_athlete) as nb_athletes
-        FROM villes v
-        INNER JOIN athlete_resultats ar ON ar.id_ville = v.id_ville
-        $where
-        GROUP BY v.id_ville
-        $having
-    ) sub";
+if ($annee > 0) {
+    // Mode annee filtree : utilise villes_stats_annee (pre-calculee par admin/refresh_villes_stats.php)
+    $countSql = "SELECT COUNT(*) as c FROM villes v INNER JOIN villes_stats_annee s ON s.id_ville = v.id_ville AND s.annee = $annee $where";
+    $res = $conn->query($countSql);
+    $total = $res ? (int)$res->fetch_assoc()['c'] : 0;
+
+    $sql = "SELECT v.id_ville, v.nom_ville,
+                   s.nb_athletes,
+                   $annee as annee_debut,
+                   $annee as annee_fin
+            FROM villes v
+            INNER JOIN villes_stats_annee s ON s.id_ville = v.id_ville AND s.annee = $annee
+            $where
+            ORDER BY s.nb_athletes DESC
+            LIMIT $limit OFFSET $offset";
 } else {
+    // Mode all-time : colonnes denormalisees sur villes
     $countSql = "SELECT COUNT(*) as c FROM villes v $where";
-}
-$res = $conn->query($countSql);
-$total = $res ? (int)$res->fetch_assoc()['c'] : 0;
+    $res = $conn->query($countSql);
+    $total = $res ? (int)$res->fetch_assoc()['c'] : 0;
 
-$sql = "SELECT v.id_ville, v.nom_ville,
-               COUNT(DISTINCT ar.id_athlete) as nb_athletes,
-               MIN(ar.annee_resultat) as annee_debut,
-               MAX(ar.annee_resultat) as annee_fin
-        FROM villes v
-        $join athlete_resultats ar ON ar.id_ville = v.id_ville
-        $where
-        GROUP BY v.id_ville
-        $having
-        ORDER BY nb_athletes DESC
-        LIMIT $limit OFFSET $offset";
+    $sql = "SELECT v.id_ville, v.nom_ville,
+                   v.nb_athletes,
+                   v.annee_debut_perf as annee_debut,
+                   v.annee_fin_perf as annee_fin
+            FROM villes v
+            $where
+            ORDER BY v.nb_athletes DESC
+            LIMIT $limit OFFSET $offset";
+}
 
 $res = $conn->query($sql);
 $villes = [];
@@ -114,6 +152,7 @@ $resp = [
     'total_pages' => ceil($total / $limit),
     'villes'      => $villes,
 ];
+if ($_sl) $resp = array_merge($resp, bkSlFields($_sl));
 $json = json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 @file_put_contents($cacheFile, $json, LOCK_EX);
 jsonResponse($resp);

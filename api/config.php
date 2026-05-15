@@ -27,6 +27,14 @@ define('BK_API_KEY', 'bk_s3cr3t_2026_xK9mP');
 
 // Connexion BDD (partagee avec core/db.php)
 require_once __DIR__ . '/../core/db.php';
+require_once __DIR__ . '/../core/paths.php';
+
+// En local : MySQL non tune, certaines requetes (clubs/epreuves/villes) sont lentes.
+// On relache max_execution_time pour eviter les fatales a 120s.
+if (defined('BK_IS_LOCAL') && BK_IS_LOCAL) {
+    @set_time_limit(300);
+    @ini_set('max_execution_time', '300');
+}
 require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/ip_logger.php';
 logIp();

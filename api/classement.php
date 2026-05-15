@@ -4,6 +4,8 @@
  * GET params: epreuve (id), categorie (code), sexe (M/F), annee, limit, offset
  */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/../core/visibility.php';
+$_isAdminInt = isAdminViewing() ? 1 : 0;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     jsonResponse(['success' => false, 'error' => 'Methode GET requise'], 405);
@@ -30,7 +32,7 @@ $sql = "SELECT
             p.annee_progression,
             e.nom_epreuve
         FROM athlete_progressions p
-        JOIN athletes a ON a.id_athlete = p.id_athlete
+        JOIN athletes a ON a.id_athlete = p.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
         JOIN epreuves e ON e.id_epreuve = p.id_epreuve
         LEFT JOIN athlete_clubs ac ON ac.id_athlete = a.id_athlete
         LEFT JOIN clubs c ON c.id_club = ac.id_club
@@ -85,7 +87,7 @@ $sql = "SELECT ranked.* FROM (
         e.nom_epreuve,
         ROW_NUMBER() OVER (PARTITION BY a.id_athlete ORDER BY p.performance_progression $sortOrder) as rn
     FROM athlete_progressions p
-    JOIN athletes a ON a.id_athlete = p.id_athlete
+    JOIN athletes a ON a.id_athlete = p.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     JOIN epreuves e ON e.id_epreuve = p.id_epreuve
     LEFT JOIN (
         SELECT id_athlete, id_club
@@ -140,7 +142,7 @@ $stmt->close();
 // Compter le total
 $countSql = "SELECT COUNT(DISTINCT a.id_athlete) as total
     FROM athlete_progressions p
-    JOIN athletes a ON a.id_athlete = p.id_athlete
+    JOIN athletes a ON a.id_athlete = p.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
     WHERE p.id_epreuve = ?
     AND p.performance_progression IS NOT NULL
     AND p.performance_progression > 0

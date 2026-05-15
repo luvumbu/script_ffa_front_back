@@ -4,7 +4,9 @@
  * URL: profil.php?id=123
  */
 
-$BASE_API = "https://bokonzi.com/api";
+require_once __DIR__ . '/../core/paths.php';
+$BASE_API    = BK_URL('/api');     // PHP : URL absolue pour apiCall HTTP
+$BASE_API_JS = BK_BASE . '/api';   // JS : URL relative pour suivre le host courant
 require_once __DIR__ . '/../core/ip_logger.php';
 logIp();
 
@@ -12,6 +14,47 @@ function dateFR($d) {
     if (!$d || $d === '-') return '-';
     $t = strtotime($d);
     return $t ? date('d/m/Y', $t) : $d;
+}
+
+// Categorisation epreuves (pour onglets records)
+function _profCategEpreuve($nom) {
+    $n = strtolower((string)$nom);
+    if (preg_match('/(poids|disque|javelot|marteau)/', $n))     return 'lancers';
+    if (preg_match('/(hauteur|perche|longueur|triple)/', $n))   return 'sauts';
+    if (preg_match('/haies/', $n))                              return 'haies';
+    if (preg_match('/steeple/', $n))                            return 'steeple';
+    if (preg_match('/(pentathlon|heptathlon|decathlon)/', $n))  return 'combines';
+    if (preg_match('/marathon|semi/', $n))                      return 'fond';
+    if (preg_match('/(\d+)\s*km/', $n))                         return 'fond';
+    if (preg_match('/^\s*(\d+)\s*m\b/', $n, $m)) {
+        $d = (int)$m[1];
+        if ($d <= 400)  return 'sprint';
+        if ($d <= 3000) return 'demi-fond';
+        return 'fond';
+    }
+    return 'autre';
+}
+function _profNivOrder($code) {
+    $o = ['IA'=>1,'IB'=>2,'IE'=>3,'IR'=>4,'IR1'=>4,'IR2'=>5,'IR3'=>6,'IR4'=>7,'N1'=>10,'N2'=>11,'N3'=>12,'N4'=>13,'R1'=>20,'R2'=>21,'R3'=>22,'R4'=>23,'R5'=>24,'R6'=>25,'D1'=>30,'D2'=>31,'D3'=>32,'D4'=>33,'D5'=>34,'D6'=>35,'D7'=>36,'D8'=>37];
+    return $o[$code] ?? 99;
+}
+function _profNivStyle($code) {
+    $f = $code[0] ?? '';
+    if ($f === 'I') return 'background:#c026d320;border:1px solid #c026d340;color:#e879f9;';
+    if ($f === 'N') return 'background:#e11d4820;border:1px solid #e11d4840;color:#fb7185;';
+    if ($f === 'R') return 'background:#0891b220;border:1px solid #0891b240;color:#22d3ee;';
+    if ($f === 'D') return 'background:#f9731620;border:1px solid #f9731640;color:#fb923c;';
+    return 'background:#30363d;border:1px solid #6e7681;color:#c9d1d9;';
+}
+function _profBestNiv($records) {
+    $best = null; $bestO = 99;
+    foreach ($records as $r) {
+        foreach (($r['niveaux'] ?? []) as $code) {
+            $o = _profNivOrder($code);
+            if ($o < $bestO) { $bestO = $o; $best = $code; }
+        }
+    }
+    return $best;
 }
 
 function apiCall($url) {
@@ -28,12 +71,66 @@ if ($idAthlete <= 0) {
     exit;
 }
 
-// Appel API unique pour toutes les données
-$data = apiCall("$BASE_API/athlete.php?id_athlete=$idAthlete");
+// Verifier visibilite en BDD
+require_once __DIR__ . '/../core/db.php';
+$_isProfileHidden = false;
+$_isAdmin = !empty($_COOKIE['bk_sa_token']);
+$_chkVis = $conn->query("SELECT visible, athlete_id_externe FROM athletes WHERE id_athlete = " . (int)$idAthlete);
+if ($_chkVis && $_chkRow = $_chkVis->fetch_assoc()) {
+    $_isProfileHidden = ((int)$_chkRow['visible'] === 0);
+    $_athleteIdExterne = (int)$_chkRow['athlete_id_externe'];
+}
 
-if (!$data || !($data['success'] ?? false)) {
+// Si masque + admin → appeler l'API avec _all pour voir le profil
+if ($_isProfileHidden && $_isAdmin) {
+    $data = apiCall("$BASE_API/athlete.php?id_athlete=$idAthlete&_all=1");
+} else {
+    $data = apiCall("$BASE_API/athlete.php?id_athlete=$idAthlete");
+}
+
+if ($_isProfileHidden && !$_isAdmin) {
     http_response_code(404);
-    echo "Athlète introuvable";
+    header('X-Robots-Tag: noindex, nofollow, noarchive');
+    ?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <title>Profil non disponible — Bokonzi</title>
+    <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#080c14; color:#c9d1d9; font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .card { background:#111830; border:1px solid #1a2540; border-radius:16px; padding:40px 36px; max-width:500px; width:90%; text-align:center; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div style="font-size:56px;margin-bottom:20px;">&#128683;</div>
+    <h2 style="color:#ef4444;font-size:22px;margin-bottom:12px;">Ce profil n'est plus disponible</h2>
+    <p style="color:#5a6580;font-size:14px;line-height:1.6;">Ce profil a ete retire a la demande de l'interesse(e) ou suite a un signalement.</p>
+    <a href="../index.php" style="display:inline-block;margin-top:24px;padding:10px 24px;background:#1e2a3a;border:1px solid #2a3560;border-radius:8px;color:#a29bfe;text-decoration:none;font-size:14px;font-weight:600;">Retour a l'accueil</a>
+</div>
+</body>
+</html>
+    <?php
+    exit;
+}
+
+// --- Limite offre gratuite : 1 fiche profil par jour + minuteur 2 min ---
+require_once __DIR__ . '/../core/profile_gate.php';
+$_pGate = bkProfileGateStatus($conn, $_athleteIdExterne ?? 0);
+if (!$_pGate['allowed']) {
+    header('X-Robots-Tag: noindex');
+    ?><!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Acc&egrave;s limit&eacute; &mdash; Bokonzi</title>
+<style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#080c14;min-height:100vh;}</style>
+</head><body>
+<?php echo bkProfilePaywallHtml($_pGate['reason']); ?>
+</body></html><?php
     exit;
 }
 
@@ -82,13 +179,7 @@ if (!$premiereAnnee) {
     foreach ($resultats as $r) { if (($r['annee'] ?? 0) > 0 && (!$premiereAnnee || $r['annee'] < $premiereAnnee)) $premiereAnnee = $r['annee']; }
 }
 
-// Âge
-$age = null;
-if ($i['date_naissance']) {
-    try { $age = (new DateTime())->diff(new DateTime($i['date_naissance']))->y; } catch (Exception $e) {}
-} elseif ($i['annee_naissance']) {
-    $age = date('Y') - $i['annee_naissance'];
-}
+$age = isset($i['age']) ? $i['age'] : null;
 
 // INTRO
 $natMap = ['FRA'=>'français'.$eF,'MAR'=>'marocain'.$eF,'SEN'=>'sénégalais'.$eF,'CMR'=>'camerounais'.$eF,'ALG'=>'algérien'.($i['sexe']==='F'?'ne':''),'TUN'=>'tunisien'.($i['sexe']==='F'?'ne':''),'BEL'=>'belge','SUI'=>'suisse','CIV'=>'ivoirien'.($i['sexe']==='F'?'ne':''),'GBR'=>'britannique','USA'=>'américain'.$eF,'ESP'=>'espagnol'.$eF,'ITA'=>'italien'.($i['sexe']==='F'?'ne':''),'POR'=>'portugais'.$eF,'GER'=>'allemand'.$eF,'BRA'=>'brésilien'.($i['sexe']==='F'?'ne':''),'JAM'=>'jamaïcain'.$eF,'HAI'=>'haïtien'.($i['sexe']==='F'?'ne':''),'COD'=>'congolais'.$eF,'COG'=>'congolais'.$eF,'MLI'=>'malien'.($i['sexe']==='F'?'ne':''),'GIN'=>'guinéen'.($i['sexe']==='F'?'ne':''),'GAB'=>'gabonais'.$eF,'BUR'=>'burkinabè','NIG'=>'nigérien'.($i['sexe']==='F'?'ne':''),'BEN'=>'béninois'.$eF,'TOG'=>'togolais'.$eF,'RWA'=>'rwandais'.$eF,'MAD'=>'malgache','LUX'=>'luxembourgeois'.$eF,'NED'=>'néerlandais'.$eF,'ROU'=>'roumain'.$eF,'POL'=>'polonais'.$eF,'GRE'=>'grec'.($i['sexe']==='F'?'que':''),'TUR'=>'turc'.($i['sexe']==='F'?'que':''),'KEN'=>'kényan'.$eF,'ETH'=>'éthiopien'.($i['sexe']==='F'?'ne':''),'RSA'=>'sud-africain'.$eF,'JPN'=>'japonais'.$eF,'CHN'=>'chinois'.$eF,'AUS'=>'australien'.($i['sexe']==='F'?'ne':''),'CAN'=>'canadien'.($i['sexe']==='F'?'ne':''),'MEX'=>'mexicain'.$eF,'COL'=>'colombien'.($i['sexe']==='F'?'ne':''),'ARG'=>'argentin'.$eF,'CHI'=>'chilien'.($i['sexe']==='F'?'ne':''),'CUB'=>'cubain'.$eF,'DOM'=>'dominicain'.$eF,'TRI'=>'trinidadien'.($i['sexe']==='F'?'ne':''),'BAH'=>'bahaméen'.($i['sexe']==='F'?'ne':'')];
@@ -108,15 +199,8 @@ if ($i['nationalite'] && isset($natMap[$i['nationalite']])) {
 if ($i['categorie'] && isset($catMap[$i['categorie']])) {
     $intro .= ' évoluant en catégorie ' . $catMap[$i['categorie']];
 }
-if ($i['date_naissance'] || $i['annee_naissance']) {
-    $intro .= ', né' . $eF;
-    if ($i['date_naissance']) {
-        $intro .= ' en ' . substr($i['date_naissance'], 0, 4);
-    } else {
-        $intro .= ' en ' . $i['annee_naissance'];
-    }
-    if ($i['lieu_naissance']) $intro .= ' à ' . $i['lieu_naissance'];
-    if ($age) $intro .= ' (' . $age . ' ans)';
+if ($i['lieu_naissance']) {
+    $intro .= ', originaire de ' . $i['lieu_naissance'];
 }
 if ($i['taille_cm'] && $i['poids_kg']) {
     $intro .= ', mesurant ' . number_format($i['taille_cm']/100, 2, ',', '') . ' m pour ' . $i['poids_kg'] . ' kg';
@@ -259,18 +343,26 @@ if (!empty($resultats)) {
 // NIVEAU DE PERFORMANCE
 $meilleurNiv = null;
 $meilleurPts = 0;
+$nivMap = ['IA'=>'International A (Élite)','IB'=>'International B','N1'=>'Niveau National 1 (Élite)','N2'=>'Niveau National 2','N3'=>'Niveau National 3','N4'=>'Niveau National 4','IR1'=>'Interrégional 1','IR2'=>'Interrégional 2','IR3'=>'Interrégional 3','IR4'=>'Interrégional 4','R1'=>'Niveau Régional 1','R2'=>'Niveau Régional 2','R3'=>'Niveau Régional 3','R4'=>'Niveau Régional 4','R5'=>'Niveau Régional 5','R6'=>'Niveau Régional 6','D1'=>'Niveau Départemental 1','D2'=>'Niveau Départemental 2','D3'=>'Niveau Départemental 3','D4'=>'Niveau Départemental 4','D5'=>'Niveau Départemental 5','D6'=>'Niveau Départemental 6','D7'=>'Niveau Départemental 7','IR'=>'Interrégional','IE'=>'International Élite'];
 if (!empty($niveaux)) {
     foreach ($niveaux as $niv) {
         if (($niv['points_niveau'] ?? 0) > $meilleurPts) { $meilleurPts = $niv['points_niveau']; $meilleurNiv = $niv; }
     }
     if (!$meilleurNiv) $meilleurNiv = $niveaux[0];
-    $nivMap = ['N1'=>'Niveau National 1 (Élite)','N2'=>'Niveau National 2','N3'=>'Niveau National 3','N4'=>'Niveau National 4','R1'=>'Niveau Régional 1','R2'=>'Niveau Régional 2','R3'=>'Niveau Régional 3','R4'=>'Niveau Régional 4','R5'=>'Niveau Régional 5','R6'=>'Niveau Régional 6','D1'=>'Niveau Départemental 1','D2'=>'Niveau Départemental 2','D3'=>'Niveau Départemental 3','D4'=>'Niveau Départemental 4','D5'=>'Niveau Départemental 5','D6'=>'Niveau Départemental 6','D7'=>'Niveau Départemental 7','IR'=>'Interrégional','IE'=>'International Élite'];
     $nivNom = $nivMap[$meilleurNiv['code_niveau']] ?? $meilleurNiv['code_niveau'];
     $pNiv = 'En termes de classement, ' . strtolower(substr($ilElle, 0, 1)) . substr($ilElle, 1) . ' a atteint le ' . $nivNom;
     if ($meilleurNiv['annee']) $pNiv .= ' en ' . $meilleurNiv['annee'];
     if ($meilleurPts > 0) $pNiv .= ' avec ' . $meilleurPts . ' points';
     if ($meilleurNiv['club']) $pNiv .= ' sous les couleurs du ' . $meilleurNiv['club'];
     $pNiv .= '.';
+    $bio[] = $pNiv;
+}
+// Fallback : si pas de niveau BDD, utiliser le meilleur_niveau calcule via bareme FFA
+if (!$meilleurNiv && !empty($identite['meilleur_niveau'])) {
+    $calcCode = $identite['meilleur_niveau'];
+    $meilleurNiv = ['code_niveau' => $calcCode, 'annee' => null, 'club' => '', 'points_niveau' => 0, 'performances' => []];
+    $nivNom = $nivMap[$calcCode] ?? $calcCode;
+    $pNiv = 'En termes de classement, ' . strtolower(substr($ilElle, 0, 1)) . substr($ilElle, 1) . ' a atteint le ' . $nivNom . ' (estimé).';
     $bio[] = $pNiv;
 }
 ?>
@@ -335,6 +427,34 @@ if (!empty($niveaux)) {
     .btn-share:hover { border-color: #6c5ce7; color: #a29bfe; }
     .btn-dashboard { border-color: #6c5ce740; color: #a29bfe; background: #6c5ce710; }
     .btn-dashboard:hover { border-color: #6c5ce7; background: #6c5ce720; }
+    .btn-report-pub { border-color: #48505840; color: #8b949e; background: #30363d; }
+    .btn-report-pub:hover { border-color: #da3636; color: #f85149; background: #da363620; }
+    .report-overlay {
+        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center;
+    }
+    .report-overlay.active { display: flex; }
+    .report-modal {
+        background: #161b22; border: 1px solid #30363d; border-radius: 16px;
+        padding: 32px; max-width: 480px; width: 90%; position: relative;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    }
+    .report-modal h3 { color: #f0f6fc; margin: 0 0 8px; font-size: 20px; }
+    .report-modal p { color: #8b949e; margin: 0 0 20px; font-size: 14px; line-height: 1.5; }
+    .report-modal label { display: block; color: #c9d1d9; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .report-modal select, .report-modal textarea, .report-modal input[type="email"] {
+        width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d;
+        border-radius: 8px; color: #c9d1d9; font-size: 14px; font-family: inherit;
+        margin-bottom: 16px; box-sizing: border-box; transition: border-color 0.2s;
+    }
+    .report-modal select:focus, .report-modal textarea:focus, .report-modal input:focus {
+        outline: none; border-color: #da3636;
+    }
+    .report-modal textarea { resize: vertical; min-height: 80px; }
+    .contact-section {
+        background: linear-gradient(135deg, #111830 0%, #0d1220 100%);
+        border: 1px solid #1a2540; border-radius: 12px; padding: 24px; margin-top: 24px; text-align: center;
+    }
     .section-card {
         background: linear-gradient(135deg, #111830 0%, #0d1220 100%);
         border: 1px solid #1a2540;
@@ -382,6 +502,22 @@ if (!empty($niveaux)) {
 </head>
 <body>
 <?php include __DIR__ . '/../nav.php'; ?>
+<?php if (!$_pGate['exempt']) echo bkProfileTimerBlock($_pGate['remaining']); ?>
+
+<?php if ($_isProfileHidden): ?>
+<div style="background:#ef444418;border:2px solid #ef4444;border-radius:12px;padding:16px 24px;margin:0 auto 16px;max-width:900px;display:flex;align-items:center;gap:14px;">
+    <span style="font-size:28px;">&#128683;</span>
+    <div>
+        <strong style="color:#ef4444;font-size:15px;">Profil masque — Inaccessible publiquement</strong>
+        <p style="color:#8b949e;font-size:12px;margin:4px 0 0;">Ce profil a ete signale et n'est plus visible par les visiteurs. <a href="../admin/panel.php#signalements" style="color:#a29bfe;">Gerer dans le panel</a></p>
+    </div>
+</div>
+<style>
+.profil-hero, .profil-hero h1, .profil-hero .meta, .profil-hero .meta a,
+.section h2, .bk-table td, .bk-table td a, .tag { color: #ef4444 !important; -webkit-text-fill-color: #ef4444 !important; }
+.profil-hero, .section, .bk-table { border-color: #ef444440 !important; }
+</style>
+<?php endif; ?>
 
 <div class="profil-container">
     <!-- Hero -->
@@ -393,6 +529,14 @@ if (!empty($niveaux)) {
             <?php if ($i['categorie']): ?><span class="tag"><?= htmlspecialchars($i['categorie']) ?></span><?php endif; ?>
             <?php if ($i['sexe']): ?><span><?= $i['sexe'] === 'M' ? 'Homme' : 'Femme' ?></span><?php endif; ?>
             <?php if ($i['nationalite']): ?><span><?= htmlspecialchars($i['nationalite']) ?></span><?php endif; ?>
+            <?php if (!empty($i['meilleur_niveau'])):
+                $__mn = $i['meilleur_niveau'];
+                $__nc = $__mn[0] ?? '';
+                if ($__nc === 'N') { $__bg='#e11d4820'; $__bc='#e11d48'; $__tc='#fb7185'; }
+                elseif ($__nc === 'I') { $__bg='#c026d320'; $__bc='#c026d3'; $__tc='#e879f9'; }
+                elseif ($__nc === 'R') { $__bg='#0891b220'; $__bc='#0891b2'; $__tc='#22d3ee'; }
+                else { $__bg='#f9731620'; $__bc='#f97316'; $__tc='#fb923c'; }
+            ?><span style="display:inline-block;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;background:<?= $__bg ?>;border:1px solid <?= $__bc ?>40;color:<?= $__tc ?>;"><?= htmlspecialchars($__mn) ?></span><?php endif; ?>
             <?php if ($age): ?><span><?= $age ?> ans</span><?php endif; ?>
         </div>
         <?php if ($nbOr + $nbArgent + $nbBronze > 0): ?>
@@ -405,6 +549,7 @@ if (!empty($niveaux)) {
         <div class="hero-actions">
             <button class="btn-share" onclick="copyLink()">Copier le lien</button>
             <a class="btn-dashboard" href="../index.php?page=profil&id=<?= $i['athlete_id'] ?>">Voir sur le Dashboard &#8599;</a>
+            <button class="btn-share btn-report-pub" onclick="openReportModal()">&#9888; Signaler</button>
         </div>
     </div>
 
@@ -452,18 +597,90 @@ if (!empty($niveaux)) {
     </div>
     <?php endif; ?>
 
-    <!-- Records personnels -->
+    <!-- Records personnels avec onglets par categorie -->
     <div class="section-card">
         <h2>&#9201; Records personnels (<?= count($records) ?>)</h2>
-        <?php if (count($records) > 0): ?>
+        <?php if (count($records) > 0):
+            // Grouper par categorie
+            $_recByCat = [];
+            foreach ($records as $r) {
+                $c = _profCategEpreuve($r['epreuve'] ?? '');
+                if (!isset($_recByCat[$c])) $_recByCat[$c] = [];
+                $_recByCat[$c][] = $r;
+            }
+            $_catLabels = ['sprint'=>'Sprint','haies'=>'Haies','sauts'=>'Sauts','lancers'=>'Lancers','demi-fond'=>'Demi-fond','fond'=>'Fond','steeple'=>'Steeple','combines'=>'Combines','autre'=>'Autres'];
+            $_catOrder = ['sprint','haies','sauts','lancers','demi-fond','fond','steeple','combines','autre'];
+
+            // Synthese par categorie
+            $_summaries = ['all' => ['nb'=>count($records), 'best_niv'=>_profBestNiv($records), 'min'=>null, 'max'=>null]];
+            foreach ($_catOrder as $c) {
+                if (empty($_recByCat[$c])) continue;
+                $minY=null; $maxY=null;
+                foreach ($_recByCat[$c] as $r) {
+                    $y = !empty($r['date']) ? (int)substr($r['date'],0,4) : 0;
+                    if ($y > 0) { if ($minY===null||$y<$minY) $minY=$y; if ($maxY===null||$y>$maxY) $maxY=$y; }
+                }
+                $_summaries[$c] = ['nb'=>count($_recByCat[$c]), 'best_niv'=>_profBestNiv($_recByCat[$c]), 'min'=>$minY, 'max'=>$maxY];
+            }
+            $minA=null; $maxA=null;
+            foreach ($records as $r) {
+                $y = !empty($r['date']) ? (int)substr($r['date'],0,4) : 0;
+                if ($y > 0) { if ($minA===null||$y<$minA) $minA=$y; if ($maxA===null||$y>$maxA) $maxA=$y; }
+            }
+            $_summaries['all']['min'] = $minA; $_summaries['all']['max'] = $maxA;
+        ?>
+
+        <!-- Onglets categorie -->
+        <div class="rec-cat-tabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #21262d;">
+            <button type="button" class="rec-cat-tab is-active" data-cat="all" onclick="_profRecFilter('all',this)" style="background:linear-gradient(135deg,rgba(162,155,254,0.15),rgba(108,92,231,0.08));border:1px solid rgba(162,155,254,0.55);color:#f0f6fc;font-size:12px;font-weight:600;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+                Tous <span style="background:rgba(162,155,254,0.25);color:#fff;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;"><?= count($records) ?></span>
+            </button>
+            <?php foreach ($_catOrder as $cat):
+                if (empty($_recByCat[$cat])) continue;
+            ?>
+            <button type="button" class="rec-cat-tab" data-cat="<?= $cat ?>" onclick="_profRecFilter('<?= $cat ?>',this)" style="background:transparent;border:1px solid rgba(162,155,254,0.18);color:#8b949e;font-size:12px;font-weight:500;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+                <?= $_catLabels[$cat] ?> <span style="background:rgba(162,155,254,0.12);color:#a29bfe;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;"><?= count($_recByCat[$cat]) ?></span>
+            </button>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- Synthese par categorie (un par cat, on affiche celle active) -->
+        <?php foreach ($_summaries as $sk => $su):
+            $lbl = $sk === 'all' ? 'Tous niveaux confondus' : ($_catLabels[$sk] ?? $sk);
+            $bn = $su['best_niv'];
+            $periode = ($su['min'] && $su['max']) ? ($su['min']===$su['max'] ? $su['min'] : ($su['min'].' &mdash; '.$su['max'])) : '';
+        ?>
+        <div class="rec-cat-summary" data-cat="<?= $sk ?>" style="<?= $sk === 'all' ? '' : 'display:none;' ?>background:linear-gradient(135deg,rgba(162,155,254,0.06),rgba(108,92,231,0.02));border:1px solid rgba(162,155,254,0.18);border-left:3px solid #a29bfe;border-radius:10px;padding:12px 16px;margin-bottom:14px;">
+            <div style="font-size:11px;color:#a29bfe;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;"><?= htmlspecialchars($lbl) ?></div>
+            <div style="display:flex;flex-wrap:wrap;gap:24px;">
+                <div><div style="font-size:24px;font-weight:800;color:#f0f6fc;line-height:1;"><?= (int)$su['nb'] ?></div><div style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:1.5px;margin-top:3px;">Records</div></div>
+                <?php if ($bn): ?>
+                <div><div style="line-height:1;"><span style="display:inline-block;padding:5px 12px;border-radius:6px;font-weight:700;font-size:14px;<?= _profNivStyle($bn) ?>"><?= htmlspecialchars($bn) ?></span></div><div style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:1.5px;margin-top:6px;">Niveau max</div></div>
+                <?php endif; ?>
+                <?php if ($periode): ?>
+                <div><div style="font-size:18px;font-weight:600;color:#c9d1d9;line-height:1;"><?= $periode ?></div><div style="font-size:10px;color:#6e7681;text-transform:uppercase;letter-spacing:1.5px;margin-top:3px;">Periode</div></div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
         <div class="table-wrap">
-            <table class="bk-table"><thead><tr><th>Épreuve</th><th>Performance</th><th>Date</th><th>Club</th><th>Lieu</th></tr></thead></table>
+            <table class="bk-table"><thead><tr><th>Épreuve</th><th>Performance</th><th>Niveau</th><th>Date</th><th>Club</th><th>Lieu</th></tr></thead></table>
             <table class="bk-table">
-                <tbody>
-                <?php foreach ($records as $r): ?>
-                    <tr>
+                <tbody id="profRecTbody">
+                <?php foreach ($records as $r):
+                    $rcat = _profCategEpreuve($r['epreuve'] ?? '');
+                    // Meilleur niveau du record
+                    $rBestNiv = null; $rBestO = 99;
+                    foreach (($r['niveaux'] ?? []) as $nc) {
+                        $o = _profNivOrder($nc);
+                        if ($o < $rBestO) { $rBestO = $o; $rBestNiv = $nc; }
+                    }
+                ?>
+                    <tr data-cat="<?= $rcat ?>">
                         <td><a class="epreuve-link" href="../index.php?page=recherche&epreuve=<?= urlencode($r['epreuve'] ?? '') ?>"><?= htmlspecialchars($r['epreuve'] ?? '-') ?></a></td>
                         <td class="perf-value"><?= htmlspecialchars($r['performance_brut'] ?? '-') ?></td>
+                        <td><?php if ($rBestNiv): ?><span style="display:inline-block;padding:2px 8px;border-radius:5px;font-weight:700;font-size:11px;<?= _profNivStyle($rBestNiv) ?>"><?= htmlspecialchars($rBestNiv) ?></span><?php else: ?>—<?php endif; ?></td>
                         <td><?= dateFR($r['date'] ?? '-') ?></td>
                         <td><?php if (!empty($r['club'])): ?><a class="epreuve-link" href="global_athlete.php?club=<?= urlencode($r['club']) ?>"><?= htmlspecialchars($r['club']) ?></a><?php else: ?>-<?php endif; ?></td>
                         <td><?php if (!empty($r['lieu'])): ?><a class="epreuve-link" href="global_athlete.php?ville=<?= urlencode($r['lieu']) ?>"><?= htmlspecialchars($r['lieu']) ?></a><?php else: ?>-<?php endif; ?></td>
@@ -471,8 +688,27 @@ if (!empty($niveaux)) {
                 <?php endforeach; ?>
                 </tbody>
             </table>
-            <table class="bk-table"><thead><tr><th>Épreuve</th><th>Performance</th><th>Date</th><th>Club</th><th>Lieu</th></tr></thead></table>
+            <table class="bk-table"><thead><tr><th>Épreuve</th><th>Performance</th><th>Niveau</th><th>Date</th><th>Club</th><th>Lieu</th></tr></thead></table>
         </div>
+
+        <script>
+        function _profRecFilter(cat, btn) {
+            document.querySelectorAll('.rec-cat-tab').forEach(function(t){
+                t.classList.remove('is-active');
+                t.style.cssText = 'background:transparent;border:1px solid rgba(162,155,254,0.18);color:#8b949e;font-size:12px;font-weight:500;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;';
+                var c = t.querySelector('span'); if (c) c.style.cssText = 'background:rgba(162,155,254,0.12);color:#a29bfe;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;';
+            });
+            btn.classList.add('is-active');
+            btn.style.cssText = 'background:linear-gradient(135deg,rgba(162,155,254,0.15),rgba(108,92,231,0.08));border:1px solid rgba(162,155,254,0.55);color:#f0f6fc;font-size:12px;font-weight:600;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;';
+            var c2 = btn.querySelector('span'); if (c2) c2.style.cssText = 'background:rgba(162,155,254,0.25);color:#fff;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;';
+            document.querySelectorAll('#profRecTbody tr').forEach(function(tr){
+                tr.style.display = (cat === 'all' || tr.dataset.cat === cat) ? '' : 'none';
+            });
+            document.querySelectorAll('.rec-cat-summary').forEach(function(s){
+                s.style.display = (s.dataset.cat === cat) ? '' : 'none';
+            });
+        }
+        </script>
         <?php else: ?>
             <div class="empty-msg">Aucun record enregistré</div>
         <?php endif; ?>
@@ -539,10 +775,10 @@ if (!empty($niveaux)) {
     </div>
     <?php endif; ?>
 
-    <!-- Résultats récents -->
-    <?php if (count($resultats) > 0): $resDisplay = array_slice($resultats, 0, 20); ?>
+    <!-- Résultats -->
+    <?php if (count($resultats) > 0): $resDisplay = $resultats; ?>
     <div class="section-card">
-        <h2>&#128202; Résultats récents (<?= count($resultats) ?>)</h2>
+        <h2>&#128202; Résultats (<?= count($resultats) ?>)</h2>
         <div class="table-wrap">
             <table class="bk-table"><thead><tr><th>Place</th><th>Épreuve</th><th>Performance</th><th>Date</th><th>Niveau</th><th>Lieu</th></tr></thead></table>
             <table class="bk-table">
@@ -576,10 +812,10 @@ if (!empty($niveaux)) {
     </div>
     <?php endif; ?>
 
-    <!-- Dernières performances (progressions) -->
-    <?php if (count($progressions) > 0): $progDisplay = array_slice($progressions, 0, 20); ?>
+    <!-- Performances (progressions) -->
+    <?php if (count($progressions) > 0): $progDisplay = $progressions; ?>
     <div class="section-card">
-        <h2>&#128200; Dernières performances (<?= count($progressions) ?>)</h2>
+        <h2>&#128200; Performances (<?= count($progressions) ?>)</h2>
         <div class="table-wrap">
             <table class="bk-table"><thead><tr><th>Épreuve</th><th>Performance</th><th>Date</th><th>Année</th><th>Club</th><th>Lieu</th></tr></thead></table>
             <table class="bk-table">
@@ -608,14 +844,148 @@ if (!empty($niveaux)) {
     </div>
 </div>
 
+<!-- Section contact + signalement -->
+<div class="profil-container">
+    <div class="contact-section">
+        <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+            <button onclick="openReportModal()" style="background:#da363620;border:1px solid #da363660;color:#f85149;font-size:13px;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;">&#9888; Signaler ce profil</button>
+            <button onclick="document.getElementById('pubContactForm').style.display=document.getElementById('pubContactForm').style.display==='none'?'block':'none';" style="background:#1e2a3a;border:1px solid #2d3a4a;color:#c9d1d9;font-size:13px;padding:10px 20px;border-radius:8px;cursor:pointer;">&#9993; Nous contacter</button>
+        </div>
+        <p style="color:#5a6580;font-size:11px;line-height:1.5;margin:12px 0 0;max-width:400px;display:inline-block;">Pour demander le retrait de ce profil ou signaler des informations incorrectes, cliquez sur <span style="color:#f85149;">Signaler</span>. Pour toute autre question, utilisez le formulaire de contact.</p>
+        <div id="pubContactForm" style="display:none;max-width:480px;margin:16px auto 0;text-align:left;">
+            <div style="background:#dc262618;border:2px solid #dc2626;border-radius:10px;padding:16px;margin:0 0 12px;">
+                <p style="color:#fca5a5;font-size:16px;font-weight:800;margin:0 0 10px;text-transform:uppercase;letter-spacing:0.5px;line-height:1.3;">&#9888; Retirer son profil soi-meme</p>
+                <ol style="color:#fca5a5;font-size:13px;line-height:1.7;margin:0;padding-left:20px;font-weight:600;">
+                    <li>Cliquez sur le bouton <b style="color:#f85149;">&#9888; Signaler ce profil</b> ci-dessus</li>
+                    <li>Choisissez le motif <b>&laquo; Je souhaite retirer mon profil &raquo;</b></li>
+                    <li>Indiquez votre adresse email</li>
+                    <li style="color:#86efac;">&#10003; Votre profil est masque <b>immediatement</b></li>
+                </ol>
+            </div>
+            <p style="color:#ef4444;font-size:12px;line-height:1.5;margin:0 0 10px;">&#9993; Un email de confirmation vous sera envoye. Votre message ne nous parviendra qu'apres validation du lien.</p>
+            <input type="text" id="pubNom" maxlength="100" placeholder="Votre nom (facultatif)" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:8px;box-sizing:border-box;">
+            <input type="email" id="pubEmail" maxlength="200" placeholder="Email *" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:8px;box-sizing:border-box;" required>
+            <textarea id="pubMsg" maxlength="2000" placeholder="Votre message..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;font-size:13px;font-family:inherit;resize:vertical;min-height:80px;margin-bottom:10px;box-sizing:border-box;"></textarea>
+            <button onclick="_pubContact()" id="pubBtn" style="width:100%;padding:10px;background:#6c5ce7;border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">Envoyer</button>
+            <div id="pubStatus" style="font-size:13px;margin-top:8px;text-align:center;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Signaler profil -->
+<div class="report-overlay" id="reportOverlay">
+    <div class="report-modal">
+        <button onclick="closeReportModal()" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#8b949e;font-size:24px;cursor:pointer;">&times;</button>
+        <h3>&#9888; Signaler ce profil</h3>
+        <p style="color:#c9d1d9;font-weight:600;margin-bottom:4px;"><?= htmlspecialchars($i['nom_complet']) ?></p>
+        <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0 0 16px;line-height:1.5;">&#9993; Votre adresse email est <u>obligatoire</u> pour valider votre signalement. Pour un retrait, nous vous enverrons un lien de confirmation pour retirer votre profil instantanement. Sans email valide, votre demande ne sera pas enregistree.</p>
+        <label>Motif du signalement</label>
+        <select id="reportReason" onchange="(function(v){var h=document.getElementById('reportRetraitHint');if(v==='retrait'){h.style.display='block';}else{h.style.display='none';}})(this.value)">
+            <option value="">-- Choisir un motif --</option>
+            <option value="retrait">Je souhaite retirer mon profil</option>
+            <option value="donnees_incorrectes">Donnees incorrectes</option>
+            <option value="usurpation">Usurpation d'identite</option>
+            <option value="vie_privee">Atteinte a la vie privee</option>
+            <option value="autre">Autre</option>
+        </select>
+        <div id="reportRetraitHint" style="display:none;background:#ef444415;border:1px solid #ef444440;border-radius:8px;padding:10px 14px;margin:8px 0 12px;">
+            <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0;line-height:1.5;">&#9888; L'email est obligatoire pour ce motif. Vous recevrez un lien de confirmation : un seul clic et votre profil sera masque immediatement.</p>
+        </div>
+        <label>Details (facultatif)</label>
+        <textarea id="reportMessage" placeholder="Precisez votre demande..." maxlength="2000"></textarea>
+        <label id="reportEmailLabel">Email de contact <span style="color:#ef4444">*</span></label>
+        <input type="email" id="reportEmail" placeholder="votre@email.com" required>
+        <button onclick="submitReport()" id="btnSubmitReport" style="width:100%;padding:12px;background:#da3636;border:none;border-radius:8px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Envoyer le signalement</button>
+        <div id="reportFeedback" style="margin-top:12px;font-size:14px;text-align:center;"></div>
+    </div>
+</div>
+
 <script>
 function copyLink() {
-    const url = '<?= $ogUrl ?>';
+    var url = '<?= $ogUrl ?>';
     navigator.clipboard.writeText(url).then(function() {
-        const btn = document.querySelector('.btn-share');
-        btn.textContent = 'Lien copié !';
+        var btn = document.querySelector('.btn-share');
+        btn.textContent = 'Lien copie !';
         setTimeout(function() { btn.textContent = 'Copier le lien'; }, 2000);
     });
+}
+
+var _athleteId = <?= (int)$i['athlete_id'] ?>;
+var _athleteName = <?= json_encode($i['nom_complet']) ?>;
+var _apiBase = <?= json_encode($BASE_API_JS) ?>;
+
+function openReportModal() {
+    document.getElementById('reportReason').value = '';
+    document.getElementById('reportMessage').value = '';
+    document.getElementById('reportEmail').value = '';
+    document.getElementById('reportFeedback').innerHTML = '';
+    document.getElementById('btnSubmitReport').disabled = false;
+    document.getElementById('btnSubmitReport').textContent = 'Envoyer le signalement';
+    document.getElementById('reportOverlay').classList.add('active');
+}
+function closeReportModal() {
+    document.getElementById('reportOverlay').classList.remove('active');
+}
+document.getElementById('reportOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeReportModal();
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('reportOverlay').classList.contains('active')) closeReportModal();
+});
+
+function submitReport() {
+    var reason = document.getElementById('reportReason').value;
+    var message = document.getElementById('reportMessage').value.trim();
+    var email = document.getElementById('reportEmail').value.trim();
+    var fb = document.getElementById('reportFeedback');
+    var btn = document.getElementById('btnSubmitReport');
+    if (!reason) { fb.innerHTML = '<span style="color:#f85149">Veuillez choisir un motif.</span>'; return; }
+    if (!email) { fb.innerHTML = '<span style="color:#f85149">&#9993; Adresse email obligatoire pour valider votre signalement.</span>'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fb.innerHTML = '<span style="color:#f85149">&#9888; Adresse email invalide. Veuillez verifier votre saisie.</span>'; return; }
+    btn.disabled = true; btn.textContent = 'Envoi...';
+    fetch(_apiBase + '/report.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ athlete_id: _athleteId, athlete_name: _athleteName, reason: reason, message: message, email: email })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) {
+            if (d.confirm_sent) {
+                fb.innerHTML = '<div style="background:#a29bfe15;border:2px solid #a29bfe;border-radius:12px;padding:18px 20px;margin-top:14px;text-align:center;line-height:1.7;">'
+                    + '<div style="font-size:36px;margin-bottom:8px;">&#9993;</div>'
+                    + '<strong style="color:#a29bfe;font-size:16px;">Verifiez votre boite mail !</strong><br>'
+                    + '<span style="color:#c9d1d9;font-size:14px;">Un email a ete envoye a <strong>' + email + '</strong></span><br><br>'
+                    + '<span style="color:#f0f6fc;font-size:15px;font-weight:700;">&#x1F449; Ouvrez l\'email et cliquez sur le bouton de confirmation pour masquer votre profil.</span><br><br>'
+                    + '<span style="color:#8b949e;font-size:12px;">Sans confirmation, votre profil restera visible.<br>Pensez a verifier vos spams. Le lien expire dans 48h.</span>'
+                    + '</div>';
+            } else {
+                fb.innerHTML = '<span style="color:#3fb950">&#10003; ' + (d.message || 'Signalement envoye.') + '</span>';
+            }
+            btn.textContent = 'Envoye';
+        } else {
+            fb.innerHTML = '<span style="color:#f85149">' + (d.error || 'Erreur') + '</span>';
+            btn.disabled = false; btn.textContent = 'Envoyer le signalement';
+        }
+    }).catch(function() {
+        fb.innerHTML = '<span style="color:#f85149">Erreur de connexion.</span>';
+        btn.disabled = false; btn.textContent = 'Envoyer le signalement';
+    });
+}
+
+function _pubContact() {
+    var email = document.getElementById('pubEmail').value.trim();
+    var msg = document.getElementById('pubMsg').value.trim();
+    var fb = document.getElementById('pubStatus');
+    if (!email) { fb.innerHTML = '<span style="color:#f85149">Veuillez indiquer votre email.</span>'; return; }
+    if (!msg) { fb.innerHTML = '<span style="color:#f85149">Ecrivez un message.</span>'; return; }
+    var btn = document.getElementById('pubBtn'); btn.disabled = true; btn.textContent = 'Envoi...';
+    fetch(_apiBase + '/contact.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nom: document.getElementById('pubNom').value.trim() || 'Visiteur (profil public #' + _athleteId + ')', email: email, message: '[Profil public #' + _athleteId + ' - ' + _athleteName + '] ' + msg })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) { document.getElementById('pubContactForm').innerHTML = '<div style="margin-top:12px;line-height:1.6;"><p style="color:#3fb950;font-size:14px;font-weight:600;">&#9993; Verifiez votre boite mail !</p><p style="color:#8b949e;font-size:12px;">Un email de confirmation a ete envoye a <strong style="color:#c9d1d9;">' + email + '</strong>. Cliquez sur le lien pour que votre message nous parvienne.</p></div>'; }
+        else { fb.innerHTML = '<span style="color:#f85149">' + (d.error || 'Erreur') + '</span>'; btn.disabled = false; btn.textContent = 'Envoyer'; }
+    }).catch(function() { fb.innerHTML = '<span style="color:#f85149">Erreur de connexion.</span>'; btn.disabled = false; btn.textContent = 'Envoyer'; });
 }
 </script>
 </body>

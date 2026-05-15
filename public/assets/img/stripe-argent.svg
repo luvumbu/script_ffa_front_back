@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="BOKONZI Argent">
+  <defs>
+    <radialGradient id="bga" cx="50%" cy="36%" r="78%">
+      <stop offset="0%" stop-color="#26263c"/>
+      <stop offset="100%" stop-color="#0b0b12"/>
+    </radialGradient>
+    <radialGradient id="rga" cx="38%" cy="30%" r="85%">
+      <stop offset="0%" stop-color="#f7f8fa"/>
+      <stop offset="55%" stop-color="#c0c4cc"/>
+      <stop offset="100%" stop-color="#5b6470"/>
+    </radialGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#bga)"/>
+  <rect x="11" y="11" width="578" height="578" rx="36" fill="none" stroke="#c0c4cc" stroke-width="2" opacity="0.55"/>
+  <circle cx="300" cy="232" r="222" fill="#c0c4cc" opacity="0.12"/>
+  <g stroke="#8b7cf0" stroke-linecap="round">
+    <line x1="44" y1="150" x2="158" y2="150" stroke-width="8" opacity="0.7"/>
+    <line x1="24" y1="188" x2="126" y2="188" stroke-width="8" opacity="0.45"/>
+    <line x1="50" y1="226" x2="134" y2="226" stroke-width="8" opacity="0.27"/>
+  </g>
+  <circle cx="300" cy="232" r="172" fill="#5b6470"/>
+  <circle cx="300" cy="232" r="163" fill="url(#rga)"/>
+  <circle cx="300" cy="232" r="134" fill="#14141f"/>
+  <circle cx="300" cy="232" r="134" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="3"/>
+  <g transform="translate(183,107.2) scale(3.9)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="34" cy="14" r="6" fill="#ecedf5" stroke="none"/>
+    <line x1="32" y1="20" x2="28" y2="36" stroke="#ecedf5" stroke-width="3"/>
+    <polyline points="30,24 22,20 18,26" stroke="#ecedf5" stroke-width="2.5"/>
+    <polyline points="30,24 38,30 42,24" stroke="#ecedf5" stroke-width="2.5"/>
+    <polyline points="28,36 20,44 14,42" stroke="#ecedf5" stroke-width="3"/>
+    <polyline points="28,36 36,44 38,54" stroke="#ecedf5" stroke-width="3"/>
+    <line x1="8" y1="28" x2="17" y2="28" stroke="#8b7cf0" stroke-width="2.2"/>
+    <line x1="5" y1="34" x2="15" y2="34" stroke="#8b7cf0" stroke-width="2.2" opacity="0.7"/>
+    <line x1="9" y1="40" x2="17" y2="40" stroke="#8b7cf0" stroke-width="2.2" opacity="0.45"/>
+  </g>
+  <text x="300" y="470" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="58" font-weight="900" fill="#f4f4f8" letter-spacing="4">BOKONZI</text>
+  <text x="300" y="524" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="40" font-weight="900" fill="#d4d8de" letter-spacing="7">ARGENT</text>
+  <text x="300" y="562" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" fill="#d4d8de">&#9733;&#9733;</text>
+</svg>

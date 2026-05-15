@@ -1,0 +1,435 @@
+/* ============================================================
+   JARVIS DATA UI — style HUD futuriste cyan
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap');
+
+:root {
+    --cyan:        #00d4ff;
+    --cyan-soft:   #4ec9ff;
+    --cyan-dim:    #1a4d6b;
+    --cyan-glow:   rgba(0, 212, 255, 0.6);
+    --cyan-bg:     rgba(0, 212, 255, 0.05);
+    --orange:      #ff8c00;
+    --orange-glow: rgba(255, 140, 0, 0.6);
+    --red:         #ff3860;
+    --green:       #00ff88;
+    --bg:          #000308;
+    --bg-panel:    rgba(0, 20, 35, 0.6);
+    --grid:        rgba(0, 212, 255, 0.06);
+    --txt:         #c8e6f5;
+    --txt-dim:     #5a8aa8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    background: var(--bg);
+    color: var(--txt);
+    font-family: 'Orbitron', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* ============== BACKGROUND : grid + radial scan ============== */
+body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+        radial-gradient(circle at 50% 50%, transparent 0%, rgba(0, 5, 15, 0.6) 60%, var(--bg) 100%),
+        linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 60px 60px,
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 60px 60px;
+    z-index: -2;
+    pointer-events: none;
+}
+
+/* Scan line qui descend */
+body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: linear-gradient(180deg, transparent 0%, var(--cyan-glow) 50%, transparent 100%);
+    height: 2px; top: 0;
+    animation: scanV 6s linear infinite;
+    z-index: -1;
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+@keyframes scanV {
+    0%   { transform: translateY(0); }
+    100% { transform: translateY(100vh); }
+}
+
+/* ============== HEADER HUD ============== */
+.hud-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--cyan-dim);
+    background: linear-gradient(180deg, rgba(0, 30, 50, 0.5) 0%, transparent 100%);
+    position: relative;
+}
+
+.hud-header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    box-shadow: 0 0 8px var(--cyan-glow);
+}
+
+.hud-title {
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--cyan);
+    letter-spacing: 6px;
+    text-shadow: 0 0 12px var(--cyan-glow), 0 0 24px var(--cyan-glow);
+    animation: titleGlow 3s ease-in-out infinite;
+}
+
+@keyframes titleGlow {
+    0%, 100% { text-shadow: 0 0 12px var(--cyan-glow), 0 0 24px var(--cyan-glow); }
+    50%      { text-shadow: 0 0 18px var(--cyan), 0 0 36px var(--cyan-glow); }
+}
+
+.hud-subtitle {
+    font-size: 10px;
+    color: var(--txt-dim);
+    letter-spacing: 4px;
+    margin-top: 4px;
+    text-transform: uppercase;
+}
+
+.hud-clock {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 28px;
+    color: var(--cyan-soft);
+    text-shadow: 0 0 8px var(--cyan-glow);
+    letter-spacing: 2px;
+}
+
+.hud-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border: 1px solid var(--green);
+    border-radius: 20px;
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: rgba(0, 255, 136, 0.05);
+    box-shadow: 0 0 16px rgba(0, 255, 136, 0.3);
+}
+
+.hud-status-pill.alert {
+    border-color: var(--orange);
+    color: var(--orange);
+    box-shadow: 0 0 16px var(--orange-glow);
+    background: rgba(255, 140, 0, 0.05);
+}
+
+.hud-status-pill .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* ============== LAYOUT GRID ============== */
+.hud-main {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 16px;
+    padding: 24px 28px;
+}
+
+.hud-main-2 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    padding: 0 28px 24px;
+}
+
+/* ============== TILES (cards HUD) ============== */
+.tile {
+    background: var(--bg-panel);
+    border: 1px solid var(--cyan-dim);
+    padding: 18px;
+    position: relative;
+    backdrop-filter: blur(2px);
+    /* Coins HUD via clip-path */
+    clip-path: polygon(
+        12px 0, 100% 0,
+        100% calc(100% - 12px), calc(100% - 12px) 100%,
+        0 100%, 0 12px
+    );
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.tile:hover {
+    border-color: var(--cyan);
+    box-shadow: 0 0 24px var(--cyan-bg);
+}
+
+/* Lignes de coin lumineuses */
+.tile::before, .tile::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border-color: var(--cyan);
+    border-style: solid;
+    box-shadow: 0 0 6px var(--cyan-glow);
+}
+.tile::before {
+    top: 0; right: 0;
+    border-width: 1px 1px 0 0;
+}
+.tile::after {
+    bottom: 0; left: 0;
+    border-width: 0 0 1px 1px;
+}
+
+.tile-label {
+    font-size: 10px;
+    color: var(--txt-dim);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.tile-value {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--cyan);
+    text-shadow: 0 0 12px var(--cyan-glow);
+    line-height: 1;
+}
+
+.tile-value.alert  { color: var(--orange); text-shadow: 0 0 12px var(--orange-glow); }
+.tile-value.danger { color: var(--red);    text-shadow: 0 0 12px rgba(255, 56, 96, 0.6); }
+.tile-value.ok     { color: var(--green);  text-shadow: 0 0 12px rgba(0, 255, 136, 0.6); }
+
+.tile-trend {
+    font-size: 11px;
+    color: var(--txt-dim);
+    margin-top: 8px;
+    letter-spacing: 1px;
+}
+
+/* ============== HUD CIRCLE ============== */
+.hud-circle-wrap {
+    background: var(--bg-panel);
+    border: 1px solid var(--cyan-dim);
+    padding: 28px;
+    position: relative;
+    clip-path: polygon(
+        16px 0, 100% 0,
+        100% calc(100% - 16px), calc(100% - 16px) 100%,
+        0 100%, 0 16px
+    );
+    text-align: center;
+    min-height: 320px;
+}
+
+.hud-circle-title {
+    font-size: 11px;
+    color: var(--txt-dim);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+}
+
+.hud-circle {
+    width: 220px; height: 220px;
+    margin: 0 auto;
+    position: relative;
+}
+
+.hud-circle svg {
+    width: 100%; height: 100%;
+    transform: rotate(-90deg);
+}
+
+.hud-circle .ring-bg {
+    fill: none;
+    stroke: var(--cyan-dim);
+    stroke-width: 4;
+}
+
+.hud-circle .ring-fg {
+    fill: none;
+    stroke: var(--cyan);
+    stroke-width: 4;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 6px var(--cyan-glow));
+    transition: stroke-dashoffset 1s ease;
+}
+
+.hud-circle .ring-deco {
+    fill: none;
+    stroke: var(--cyan);
+    stroke-width: 1;
+    opacity: 0.3;
+    stroke-dasharray: 4 4;
+    animation: ringSpin 30s linear infinite;
+    transform-origin: center;
+}
+
+@keyframes ringSpin {
+    100% { transform: rotate(360deg); }
+}
+
+.hud-circle-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.hud-circle-pct {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--cyan);
+    text-shadow: 0 0 12px var(--cyan-glow);
+    line-height: 1;
+}
+
+.hud-circle-label {
+    font-size: 10px;
+    color: var(--txt-dim);
+    letter-spacing: 2px;
+    margin-top: 4px;
+    text-transform: uppercase;
+}
+
+/* ============== LOG CONSOLE ============== */
+.hud-console {
+    background: rgba(0, 10, 20, 0.8);
+    border: 1px solid var(--cyan-dim);
+    padding: 16px;
+    clip-path: polygon(
+        12px 0, 100% 0,
+        100% calc(100% - 12px), calc(100% - 12px) 100%,
+        0 100%, 0 12px
+    );
+    height: 100%;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+}
+
+.hud-console-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--cyan-dim);
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+}
+
+.hud-console-title {
+    font-size: 11px;
+    color: var(--cyan);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+}
+
+.hud-console-status {
+    font-size: 10px;
+    color: var(--green);
+    letter-spacing: 2px;
+}
+
+.hud-console-body {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--txt);
+    overflow-y: auto;
+    flex: 1;
+    line-height: 1.7;
+}
+
+.hud-console-body div {
+    border-bottom: 1px dashed rgba(0, 212, 255, 0.1);
+    padding: 3px 0;
+}
+
+.hud-console-body .ts {
+    color: var(--cyan-soft);
+    margin-right: 8px;
+}
+
+.hud-console-body .tag {
+    color: var(--orange);
+    margin-right: 6px;
+}
+
+.hud-console-body .url {
+    color: var(--txt-dim);
+    word-break: break-all;
+}
+
+/* Scrollbar custom cyan */
+.hud-console-body::-webkit-scrollbar { width: 6px; }
+.hud-console-body::-webkit-scrollbar-track { background: rgba(0, 212, 255, 0.05); }
+.hud-console-body::-webkit-scrollbar-thumb { background: var(--cyan-dim); }
+.hud-console-body::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
+
+/* ============== NAV BAR ============== */
+.hud-nav {
+    display: flex;
+    gap: 8px;
+    padding: 12px 28px;
+    border-bottom: 1px solid var(--cyan-dim);
+    background: rgba(0, 20, 35, 0.4);
+}
+
+.hud-nav a {
+    color: var(--cyan-soft);
+    text-decoration: none;
+    padding: 6px 18px;
+    border: 1px solid var(--cyan-dim);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.hud-nav a:hover {
+    background: var(--cyan-bg);
+    color: var(--cyan);
+    border-color: var(--cyan);
+    text-shadow: 0 0 6px var(--cyan-glow);
+}
+
+.hud-nav a.active {
+    background: var(--cyan-bg);
+    color: var(--cyan);
+    border-color: var(--cyan);
+}
+
+/* ============== FOOTER ============== */
+.hud-footer {
+    padding: 12px 28px;
+    border-top: 1px solid var(--cyan-dim);
+    color: var(--txt-dim);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-align: center;
+    text-transform: uppercase;
+}

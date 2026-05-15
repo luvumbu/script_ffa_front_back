@@ -5,10 +5,57 @@
  * Usage : http://localhost/BK/index.php
  */
 
-$BASE_API = "https://bokonzi.com/api";
+require_once __DIR__ . '/core/paths.php';
+// API interne : URL absolue cote PHP (apiCall HTTP), URL relative cote JS (suit le host courant).
+$BASE_API    = BK_URL('/api');         // pour apiCall() en PHP : http(s)://<host>/BK/api ou /api
+$BASE_API_JS = BK_BASE . '/api';       // pour le JS : /BK/api en local, /api en prod
 require_once __DIR__ . '/core/db.php';
 require_once __DIR__ . '/core/ip_logger.php';
 logIp();
+
+// === Anti-scraping : 20 pages/jour max pour les visiteurs anonymes ===
+// Au-dela, redirection vers login.php (oblige a se connecter). Connectes / super
+// admin / whitelist (Google, Hostinger, localhost) : illimite.
+// Compteur journalier par IP dans logs/.page_limits.php (reset auto au changement de date).
+(function () {
+    if (!empty($_COOKIE['bk_token']) || !empty($_COOKIE['bk_sa_token'])) return; // connecte = illimite
+    $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    $ip = trim(explode(',', $ip)[0]);
+    if ($ip === '') return;
+    $whitelist = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
+    foreach ($whitelist as $prefix) {
+        if (strpos($ip, $prefix) === 0) return; // Google / Hostinger / localhost : illimite
+    }
+    $file  = __DIR__ . '/logs/.page_limits.php';
+    $today = date('Y-m-d');
+    $data  = [];
+    if (file_exists($file)) {
+        $raw = file_get_contents($file);
+        $pos = strpos($raw, "\n");
+        if ($pos !== false) $data = json_decode(substr($raw, $pos + 1), true) ?: [];
+    }
+    if (($data['_date'] ?? '') !== $today) $data = ['_date' => $today]; // nouveau jour : remise a zero
+    $count = ($data[$ip] ?? 0) + 1;
+    $data[$ip] = $count;
+    @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data), LOCK_EX);
+    if ($count > 20) {
+        header('Location: ' . BK_URL('/login.php?limit=1'));
+        exit;
+    }
+})();
+
+// === Minuteur "decouverte" anonyme : 60 s de recherche libre des l'arrivee sur le site ===
+// Pose le cookie bk_anon_t0 (timestamp d'arrivee) une seule fois. Passe ce delai, les
+// recherches sont bloquees (cf. core/search_limit.php) jusqu'a connexion / inscription.
+if (empty($_COOKIE['bk_token']) && empty($_COOKIE['bk_sa_token']) && empty($_COOKIE['bk_anon_t0'])) {
+    $_bkT0 = (string)time();
+    setcookie('bk_anon_t0', $_bkT0, [
+        'expires'  => time() + 31536000, // 1 an : le minuteur ne se reinitialise pas chaque jour
+        'path'     => '/',
+        'samesite' => 'Lax',
+    ]);
+    $_COOKIE['bk_anon_t0'] = $_bkT0; // disponible des cette requete (badge nav)
+}
 
 // === Auth : detecter si utilisateur connecte ===
 require_once __DIR__ . '/core/auth.php';
@@ -22,9 +69,14 @@ function dateFR($d) {
 }
 
 function highestNiveau($niveaux) {
-    $order = ['IE'=>100,'IR'=>99];
-    foreach (['N'=>90,'R'=>80,'D'=>70] as $p=>$b)
-        for ($i=1;$i<=8;$i++) $order[$p.$i] = $b - $i;
+    // Hierarchie conforme bareme FFA : IA > IB > IE > N1..N4 > IR/IR1..IR6 > R1..R6 > D1..D8
+    $order = [
+        'IA'=>200,'IB'=>195,'IE'=>190,
+        'N1'=>180,'N2'=>175,'N3'=>170,'N4'=>165,
+        'IR'=>160,'IR1'=>160,'IR2'=>155,'IR3'=>150,'IR4'=>145,'IR5'=>140,'IR6'=>135,
+        'R1'=>130,'R2'=>125,'R3'=>120,'R4'=>115,'R5'=>110,'R6'=>105,
+        'D1'=>80,'D2'=>75,'D3'=>70,'D4'=>65,'D5'=>60,'D6'=>55,'D7'=>50,'D8'=>45,
+    ];
     $best = null; $bestS = -1;
     foreach ($niveaux as $n) {
         $s = $order[trim($n)] ?? 0;
@@ -33,20 +85,165 @@ function highestNiveau($niveaux) {
     return $best;
 }
 
-function nivBadgeHtml($code) {
+function nivBadgeHtml($code, $size = 'md') {
     if (!$code) return '-';
     $nc = $code[0] ?? '';
-    if ($nc === 'N') { $bg = '#e11d4820'; $bc = '#e11d48'; $tc = '#fb7185'; }
-    elseif ($nc === 'I') { $bg = '#c026d320'; $bc = '#c026d3'; $tc = '#e879f9'; }
-    elseif ($nc === 'R') { $bg = '#0891b220'; $bc = '#0891b2'; $tc = '#22d3ee'; }
-    else { $bg = '#f9731620'; $bc = '#f97316'; $tc = '#fb923c'; }
-    return '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;margin:1px;background:'.$bg.';border:1px solid '.$bc.'40;color:'.$tc.';">'.htmlspecialchars($code).'</span>';
+    // Palettes par famille (background plus opaque pour la visibilite)
+    if ($nc === 'I') { $bg = '#c026d340'; $bc = '#c026d3'; $tc = '#f0abfc'; $glow = 'rgba(192,38,211,.4)'; }      // International — fuchsia
+    elseif ($nc === 'N') { $bg = '#e11d4840'; $bc = '#e11d48'; $tc = '#fda4af'; $glow = 'rgba(225,29,72,.4)'; }  // National — rose
+    elseif ($nc === 'R') { $bg = '#0891b240'; $bc = '#0891b2'; $tc = '#67e8f9'; $glow = 'rgba(8,145,178,.4)'; } // Regional — cyan
+    else { $bg = '#f9731640'; $bc = '#f97316'; $tc = '#fdba74'; $glow = 'rgba(249,115,22,.4)'; }                 // Departemental — orange
+    // Tailles : sm (compact), md (defaut), lg (profil principal)
+    if ($size === 'lg') { $pad = '5px 12px'; $fs = '14px'; $br = '8px'; $bw = '2px'; }
+    elseif ($size === 'sm') { $pad = '2px 6px'; $fs = '10px'; $br = '4px'; $bw = '1px'; }
+    else { $pad = '3px 9px'; $fs = '12px'; $br = '6px'; $bw = '1.5px'; }
+    return '<span style="display:inline-block;padding:' . $pad . ';border-radius:' . $br . ';font-size:' . $fs . ';font-weight:800;margin:1px;background:' . $bg . ';border:' . $bw . ' solid ' . $bc . ';color:' . $tc . ';letter-spacing:0.5px;text-shadow:0 1px 2px rgba(0,0,0,.7);box-shadow:0 0 8px ' . $glow . ',inset 0 1px 0 rgba(255,255,255,.1);">' . htmlspecialchars($code) . '</span>';
 }
 
 /**
  * Appel API : lit le cache local JSON si disponible,
  * sinon fallback HTTP.
  */
+/**
+ * Detecte la plateforme social et retourne le HTML d'embed officiel + script JS associe.
+ * Retourne ['platform','html','script','height']  ou null si non supporte.
+ *  - height = 0 signifie hauteur auto (geree par le script de la plateforme).
+ */
+function bkSocialEmbed($url) {
+    $url = trim((string)$url);
+    if ($url === '') return null;
+
+    // === YouTube : iframe directe, fonctionne sans script ===
+    if (preg_match('#(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})#', $url, $m)) {
+        $id = $m[1];
+        return [
+            'platform' => 'youtube',
+            'html' => '<iframe src="https://www.youtube.com/embed/' . htmlspecialchars($id) . '" '
+                    . 'style="position:absolute;inset:0;width:100%;height:100%;border:0;" '
+                    . 'loading="lazy" allowfullscreen '
+                    . 'allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" '
+                    . 'referrerpolicy="strict-origin-when-cross-origin" '
+                    . 'title="YouTube preview"></iframe>',
+            'script' => null,
+            'height' => 280,
+        ];
+    }
+
+    // === TikTok : blockquote officiel + embed.js ===
+    if (preg_match('#tiktok\.com/@([^/]+)/video/([0-9]+)#', $url, $m)) {
+        $user = $m[1]; $vid = $m[2];
+        $cite = 'https://www.tiktok.com/@' . $user . '/video/' . $vid;
+        return [
+            'platform' => 'tiktok',
+            'html' => '<blockquote class="tiktok-embed" cite="' . htmlspecialchars($cite) . '" '
+                    . 'data-video-id="' . htmlspecialchars($vid) . '" '
+                    . 'style="max-width:605px;min-width:325px;margin:0 auto;">'
+                    . '<section><a target="_blank" rel="noopener" href="' . htmlspecialchars($cite) . '">Voir sur TikTok</a></section>'
+                    . '</blockquote>',
+            'script' => 'https://www.tiktok.com/embed.js',
+            'height' => 0,
+        ];
+    }
+
+    // === Instagram : blockquote officiel + embed.js ===
+    if (preg_match('#instagram\.com/(p|reel|tv)/([A-Za-z0-9_-]+)#', $url, $m)) {
+        $code = $m[2];
+        $perma = 'https://www.instagram.com/' . $m[1] . '/' . $code . '/';
+        return [
+            'platform' => 'instagram',
+            'html' => '<blockquote class="instagram-media" data-instgrm-captioned '
+                    . 'data-instgrm-permalink="' . htmlspecialchars($perma) . '" '
+                    . 'data-instgrm-version="14" '
+                    . 'style="background:#FFF;border:0;border-radius:3px;box-shadow:0 0 1px rgba(0,0,0,0.5),0 1px 10px rgba(0,0,0,0.15);margin:0 auto;max-width:540px;min-width:326px;padding:0;width:99.375%;width:-webkit-calc(100% - 2px);width:calc(100% - 2px);">'
+                    . '<a target="_blank" rel="noopener" href="' . htmlspecialchars($perma) . '">Voir sur Instagram</a>'
+                    . '</blockquote>',
+            'script' => '//www.instagram.com/embed.js',
+            'height' => 0,
+        ];
+    }
+
+    // === X / Twitter : blockquote officiel + widgets.js ===
+    if (preg_match('#(?:twitter\.com|x\.com)/([^/]+)/status/([0-9]+)#', $url, $m)) {
+        $statusUrl = 'https://twitter.com/' . $m[1] . '/status/' . $m[2];
+        return [
+            'platform' => 'twitter',
+            'html' => '<blockquote class="twitter-tweet" data-theme="dark" data-dnt="true">'
+                    . '<a href="' . htmlspecialchars($statusUrl) . '">Voir sur X</a>'
+                    . '</blockquote>',
+            'script' => 'https://platform.twitter.com/widgets.js',
+            'height' => 0,
+        ];
+    }
+
+    // === Facebook : plugin iframe (sans SDK pour eviter cookies tiers lourds) ===
+    if (preg_match('#facebook\.com/(?:[^/]+/videos/|watch/?\?v=|video\.php\?v=)([0-9]+)#', $url)
+        || preg_match('#fb\.watch/#', $url)) {
+        $emb = 'https://www.facebook.com/plugins/video.php?href=' . urlencode($url) . '&show_text=false&width=500';
+        return [
+            'platform' => 'facebook',
+            'html' => '<iframe src="' . htmlspecialchars($emb) . '" '
+                    . 'style="position:absolute;inset:0;width:100%;height:100%;border:0;overflow:hidden;" '
+                    . 'scrolling="no" frameborder="0" allowfullscreen="true" '
+                    . 'allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" '
+                    . 'title="Facebook video"></iframe>',
+            'script' => null,
+            'height' => 360,
+        ];
+    }
+    if (preg_match('#facebook\.com/[^/]+/posts/[A-Za-z0-9]+#', $url)) {
+        $emb = 'https://www.facebook.com/plugins/post.php?href=' . urlencode($url) . '&show_text=true&width=500';
+        return [
+            'platform' => 'facebook',
+            'html' => '<iframe src="' . htmlspecialchars($emb) . '" '
+                    . 'style="position:absolute;inset:0;width:100%;height:100%;border:0;overflow:hidden;" '
+                    . 'scrolling="no" frameborder="0" allowfullscreen="true" '
+                    . 'allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" '
+                    . 'title="Facebook post"></iframe>',
+            'script' => null,
+            'height' => 580,
+        ];
+    }
+
+    return null;
+}
+
+/**
+ * Calcule la vitesse en km/h pour une course.
+ * @param string $epreuve  nom de l'epreuve (ex: '100m', 'Marathon', '60m Haies (106)')
+ * @param int    $perfInt  performance en centiemes de seconde (ex: 1102 = 11.02s)
+ * @return float|null vitesse km/h, ou null si pas une course ou donnees insuffisantes
+ */
+function bkPerfSpeedKmh($epreuve, $perfInt) {
+    if (!$epreuve || !$perfInt || $perfInt <= 0) return null;
+    // Exclusions : sauts, lancers, combines, marche
+    if (preg_match('/(longueur|triple|hauteur|perche|poids|disque|marteau|javelot|pentathlon|heptathlon|decathlon|octathlon|triathlon|tetrathlon|marche)/i', $epreuve)) return null;
+    // Distance en metres
+    $dist = null;
+    if (preg_match('/marathon/i', $epreuve) && !preg_match('/semi/i', $epreuve)) $dist = 42195;
+    elseif (preg_match('/semi/i', $epreuve)) $dist = 21097;
+    elseif (preg_match('/(\d[\d\s]*)\s*km/i', $epreuve, $m)) $dist = ((int)str_replace(' ', '', $m[1])) * 1000;
+    elseif (preg_match('/^\s*(\d[\d\s]*)\s*m\b/i', $epreuve, $m)) $dist = (int)str_replace(' ', '', $m[1]);
+    if (!$dist || $dist < 50) return null;
+    $seconds = $perfInt / 100;
+    if ($seconds < 1) return null;
+    return ($dist / $seconds) * 3.6;
+}
+
+/**
+ * Rend un badge de performance avec vitesse km/h si applicable.
+ */
+function bkPerfBadge($epreuve, $perfBrut, $perfInt, $small = false) {
+    $label = $perfBrut !== '' && $perfBrut !== null ? $perfBrut : $perfInt;
+    $kmh = bkPerfSpeedKmh($epreuve, (int)$perfInt);
+    $badge = '<span class="badge badge-perf">' . htmlspecialchars($label) . '</span>';
+    if ($kmh !== null) {
+        $kmhStr = number_format($kmh, 1, '.', '');
+        $sz = $small ? 9 : 10;
+        $badge .= ' <span style="color:#a78bfa;font-size:' . $sz . 'px;font-weight:600;">' . $kmhStr . ' km/h</span>';
+    }
+    return $badge;
+}
+
 function apiCall($url) {
     $cacheDir = __DIR__ . '/cache';
 
@@ -115,7 +312,13 @@ function apiCall($url) {
             $pg = $params['page'] ?? '1';
             $lim = $params['limit'] ?? '50';
             $ord = $params['ordre'] ?? 'nom';
-            $cacheFile = $cacheDir . '/liste_' . md5($pg . '_' . $lim . '_' . $ord) . '.json';
+            $niv = $params['niveau'] ?? '';
+            $epF = $params['epreuve'] ?? '';
+            $clb = $params['club'] ?? '';
+            $sxF = $params['sexe'] ?? '';
+            $ryM = $params['recent_year_min'] ?? '';
+            $strict = $params['niveau_strict_ep'] ?? '';
+            $cacheFile = $cacheDir . '/liste_' . md5($pg . '_' . $lim . '_' . $ord . '_' . $niv . '_' . $epF . '_' . $clb . '_' . $sxF . '_' . $ryM . '_' . $strict) . '.json';
         } elseif ($apiName === 'search') {
             $cacheFile = $cacheDir . '/search_' . md5($query) . '.json';
         }
@@ -130,7 +333,18 @@ function apiCall($url) {
     }
 
     // Fallback : appel HTTP
-    $ctx = stream_context_create(['http' => ['timeout' => 30]]);
+    // En local : ajoute la cle API automatiquement pour bypass les rate limits cote prod
+    if (BK_IS_LOCAL && strpos($url, 'bokonzi.com') !== false && strpos($url, 'bk_key=') === false) {
+        $url .= (strpos($url, '?') === false ? '?' : '&') . 'bk_key=bk_s3cr3t_2026_xK9mP';
+    }
+    // En local, certaines requetes (clubs/epreuves/villes) sont lentes (MySQL non tune).
+    // 90s en local, 30s en prod.
+    $_timeout = BK_IS_LOCAL ? 90 : 30;
+    // X-BK-KEY active le mode super admin cote API. En LOCAL ca ralentit (perd l'index visible=1)
+    // et c'est inutile (pas de rate limit en local). En PROD on le garde pour bypass les limites
+    // sur les appels internes (loopback peut ne pas avoir les cookies SA).
+    $_hdr = BK_IS_LOCAL ? '' : "X-BK-KEY: bk_s3cr3t_2026_xK9mP\r\n";
+    $ctx = stream_context_create(['http' => ['timeout' => $_timeout, 'header' => $_hdr]]);
     $json = @file_get_contents($url, false, $ctx);
     if (!$json) return null;
     return json_decode($json, true);
@@ -139,6 +353,177 @@ function apiCall($url) {
 $page    = $_GET['page'] ?? 'accueil';
 $id      = $_GET['id'] ?? null;
 $p       = max(1, (int)($_GET['p'] ?? 1));
+
+// profil2 utilise le meme style et les memes donnees que profil (magazine)
+if ($page === 'profil2') $page = 'profil';
+
+// === ATHLETES MIS EN AVANT (config admin panel) — uniquement sur la page Athletes ===
+$featEnabled = false;
+$featTitle   = 'Athletes en lumiere';
+$featAthletes = [];
+if ($page === 'athletes') {
+    $ftFile = __DIR__ . '/logs/.featured_athletes.php';
+    $featList = [];
+    if (file_exists($ftFile)) {
+        $ftRaw = @file_get_contents($ftFile);
+        $ftPos = $ftRaw ? strpos($ftRaw, "\n") : false;
+        if ($ftPos !== false) {
+            $ftData = json_decode(substr($ftRaw, $ftPos + 1), true);
+            if (is_array($ftData)) {
+                $featEnabled = !empty($ftData['enabled']);
+                if (!empty($ftData['title'])) $featTitle = $ftData['title'];
+                if (!empty($ftData['athletes']) && is_array($ftData['athletes'])) $featList = $ftData['athletes'];
+            }
+        }
+    }
+    if ($featEnabled && !empty($featList)) {
+        // Utilise directement l'API athlete.php (cache 24h) pour avoir les memes
+        // valeurs (meilleur_niveau, medailles, club...) qu'affichees sur la fiche profil.
+        foreach ($featList as $fa) {
+            $fid = (int)($fa['id'] ?? 0);
+            if ($fid <= 0) continue;
+            $athData = apiCall("$BASE_API/athlete.php?id=$fid");
+            if (!is_array($athData) || ($athData['visible'] ?? true) === false) continue;
+            $ident = $athData['identite'] ?? [];
+            if (empty($ident)) continue;
+
+            // Club courant : derniere periode (annee_fin DESC)
+            $club = '';
+            if (!empty($athData['clubs']) && is_array($athData['clubs'])) {
+                $clubsList = $athData['clubs'];
+                usort($clubsList, function($a, $b) {
+                    $af = (int)($a['annee_fin'] ?? 0); $bf = (int)($b['annee_fin'] ?? 0);
+                    if ($bf !== $af) return $bf - $af;
+                    return (int)($b['annee_debut'] ?? 0) - (int)($a['annee_debut'] ?? 0);
+                });
+                $club = $clubsList[0]['nom_club'] ?? '';
+            }
+
+            // Compter medailles or/argent/bronze
+            $medSplit = ['or'=>0,'argent'=>0,'bronze'=>0];
+            if (!empty($athData['medailles']) && is_array($athData['medailles'])) {
+                foreach ($athData['medailles'] as $m) {
+                    $t = strtolower((string)($m['type_medaille'] ?? $m['type'] ?? ''));
+                    if (isset($medSplit[$t])) $medSplit[$t]++;
+                }
+            }
+            $totalMed = $medSplit['or'] + $medSplit['argent'] + $medSplit['bronze'];
+
+            $featAthletes[] = [
+                'athlete_id'      => $fid,
+                'nom_complet'     => $ident['nom_complet_athlete'] ?? ($fa['name'] ?? ''),
+                'date_naissance'  => $ident['date_naissance_athlete'] ?? null,
+                'categorie'       => $ident['categorie_athlete'] ?? '',
+                'sexe'            => $ident['sexe_athlete'] ?? ($fa['sexe'] ?? ''),
+                'nationalite'     => $ident['nationalite_athlete'] ?? '',
+                'club'            => $club,
+                'meilleur_niveau' => $ident['meilleur_niveau'] ?? null,
+                'nb_medailles'    => $totalMed,
+                'nb_podiums'      => is_array($athData['podiums'] ?? null) ? count($athData['podiums']) : 0,
+                'nb_selections'   => is_array($athData['selections'] ?? null) ? count($athData['selections']) : 0,
+                'nb_records'      => is_array($athData['records'] ?? null) ? count($athData['records']) : 0,
+                'medailles'       => $medSplit,
+            ];
+        }
+    }
+}
+
+// Helper de rendu de la section "Athletes en lumiere" (utilise par Accueil et Athletes)
+function _renderFeaturedSection($featAthletes, $featTitle) {
+    if (empty($featAthletes)) return;
+    $count = count($featAthletes);
+    ?>
+    <section class="ath-spotlight" style="background:linear-gradient(135deg,#1e1b4b 0%,#0f0c2e 50%,#1a0a2e 100%);border:1px solid #6c5ce760;border-radius:18px;padding:28px 26px;margin-bottom:32px;position:relative;overflow:hidden;">
+        <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:radial-gradient(circle,#a78bfa30 0%,transparent 70%);border-radius:50%;pointer-events:none;"></div>
+        <div style="position:absolute;bottom:-50px;left:-50px;width:180px;height:180px;background:radial-gradient(circle,#c026d320 0%,transparent 70%);border-radius:50%;pointer-events:none;"></div>
+        <header style="text-align:center;margin-bottom:24px;position:relative;z-index:1;">
+            <div style="font-size:11px;font-weight:900;letter-spacing:6px;text-transform:uppercase;color:#a78bfa;margin-bottom:10px;">&#11088; SELECTION DE LA REDACTION &#11088;</div>
+            <h2 style="font-size:32px;font-weight:900;margin:0 0 8px;color:#fff;letter-spacing:-0.5px;background:linear-gradient(135deg,#fff 0%,#a78bfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"><?= htmlspecialchars($featTitle) ?></h2>
+            <div style="font-size:13px;color:#c9d1d9;font-style:italic;"><?= $count ?> athlete<?= $count > 1 ? 's' : '' ?> mis en lumiere par la redaction</div>
+        </header>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;position:relative;z-index:1;">
+        <?php foreach ($featAthletes as $idx => $fa):
+            $sxF = ($fa['sexe'] ?? '') === 'F';
+            $sxIcon = $sxF ? '&#9792;' : '&#9794;';
+            $sxColor = $sxF ? '#ec4899' : '#3b82f6';
+            // Age inline
+            $age = null;
+            if (!empty($fa['date_naissance'])) {
+                try { $dn = new DateTime($fa['date_naissance']); $age = (new DateTime('today'))->diff($dn)->y; } catch (Exception $e) {}
+            }
+            $totalMed = ($fa['medailles']['or'] ?? 0) + ($fa['medailles']['argent'] ?? 0) + ($fa['medailles']['bronze'] ?? 0);
+            // Niveau badge inline
+            $nivCode = $fa['meilleur_niveau'] ?? null;
+            $nivBadgeHtml = '';
+            if ($nivCode) {
+                $nc = $nivCode[0] ?? '';
+                if ($nc === 'N') { $bg='#e11d4820'; $bc='#e11d48'; $tc='#fb7185'; }
+                elseif ($nc === 'I') { $bg='#c026d320'; $bc='#c026d3'; $tc='#e879f9'; }
+                elseif ($nc === 'R') { $bg='#0891b220'; $bc='#0891b2'; $tc='#22d3ee'; }
+                else { $bg='#f9731620'; $bc='#f97316'; $tc='#fb923c'; }
+                $nivBadgeHtml = '<span style="display:inline-block;padding:3px 9px;border-radius:6px;font-size:13px;font-weight:700;background:'.$bg.';border:1px solid '.$bc.'40;color:'.$tc.';">'.htmlspecialchars($nivCode).'</span>';
+            }
+        ?>
+            <a href="?page=profil&id=<?= (int)$fa['athlete_id'] ?>" class="ath-spot-card" style="display:block;text-decoration:none;background:rgba(13,17,23,0.7);backdrop-filter:blur(8px);border:1px solid #30363d;border-left:3px solid <?= $sxColor ?>;border-radius:12px;padding:16px;transition:all .25s cubic-bezier(.2,.8,.2,1);">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="background:#fbbf2420;color:#fbbf24;font-size:10px;font-weight:900;padding:2px 8px;border-radius:10px;letter-spacing:1px;">#<?= $idx + 1 ?></span>
+                        <span style="color:<?= $sxColor ?>;font-size:14px;"><?= $sxIcon ?></span>
+                    </div>
+                    <?= $nivBadgeHtml ?>
+                </div>
+                <div style="color:#fff;font-size:15px;font-weight:800;margin-bottom:4px;line-height:1.25;"><?= htmlspecialchars($fa['nom_complet']) ?></div>
+                <?php if (!empty($fa['club'])): ?>
+                <div style="color:#a78bfa;font-size:11px;font-weight:600;margin-bottom:8px;line-height:1.3;"><?= htmlspecialchars(rtrim($fa['club'], '* ')) ?></div>
+                <?php endif; ?>
+                <div style="display:flex;align-items:center;gap:10px;font-size:11px;color:#8b949e;flex-wrap:wrap;">
+                    <?php if (!empty($fa['categorie'])): ?>
+                    <span><?= htmlspecialchars($fa['categorie']) ?><?= $age !== null ? ' &middot; ' . $age . ' ans' : '' ?></span>
+                    <?php elseif ($age !== null): ?>
+                    <span><?= $age ?> ans</span>
+                    <?php endif; ?>
+                </div>
+                <?php if ($totalMed > 0 || ($fa['nb_podiums'] ?? 0) > 0 || ($fa['nb_selections'] ?? 0) > 0): ?>
+                <div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid #30363d;flex-wrap:wrap;">
+                    <?php if ($totalMed > 0): ?>
+                    <span style="background:#fbbf2415;color:#fbbf24;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">&#127941; <?= $totalMed ?></span>
+                    <?php endif; ?>
+                    <?php if (($fa['nb_podiums'] ?? 0) > 0): ?>
+                    <span style="background:#fb923c15;color:#fb923c;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">&#129351; <?= (int)$fa['nb_podiums'] ?></span>
+                    <?php endif; ?>
+                    <?php if (($fa['nb_selections'] ?? 0) > 0): ?>
+                    <span style="background:#a78bfa15;color:#a78bfa;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">&#128293; <?= (int)$fa['nb_selections'] ?></span>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+            </a>
+        <?php endforeach; ?>
+        </div>
+    </section>
+    <style>
+    .ath-spotlight .ath-spot-card:hover {
+        transform: translateY(-3px);
+        border-color: #a78bfa !important;
+        box-shadow: 0 8px 24px rgba(167,139,250,0.25);
+        background: rgba(13,17,23,0.9) !important;
+    }
+    body.p2-light .ath-spotlight {
+        background: linear-gradient(135deg,#f3f0ff 0%,#fef9f3 50%,#fff 100%) !important;
+        border-color: #6c5ce740 !important;
+    }
+    body.p2-light .ath-spotlight h2 {
+        background: linear-gradient(135deg,#1a1814 0%,#6c5ce7 100%) !important;
+        -webkit-background-clip: text !important;
+        background-clip: text !important;
+    }
+    body.p2-light .ath-spotlight .ath-spot-card {
+        background: rgba(255,255,255,0.85) !important;
+        border-color: #c9bfa6 !important;
+    }
+    body.p2-light .ath-spotlight .ath-spot-card div[style*="color:#fff"] { color: #1a1814 !important; }
+    </style>
+    <?php
+}
 
 // === SEO dynamique selon la page ===
 $seoTitle = 'Bokonzi — Base de données Athlétisme français';
@@ -184,11 +569,30 @@ if ($page === 'clubs') {
 } elseif ($page === 'athletes') {
     $seoTitle = 'Tous les athlètes — Bokonzi';
     $seoDesc  = 'Liste complète des athlètes français d\'athlétisme avec records, clubs et statistiques.';
-} elseif ($page === 'profil' && $id) {
+} elseif (($page === 'profil' || $page === 'profil2') && $id) {
     $_profNom = '';
     $_profRes = $conn->query("SELECT nom_complet_athlete, categorie_athlete, sexe_athlete, visible FROM athletes WHERE athlete_id_externe = " . intval($id) . " LIMIT 1");
     if ($_profRes && $_profRow = $_profRes->fetch_assoc()) {
         if (isset($_profRow['visible']) && (int)$_profRow['visible'] === 0) {
+            // Detection admin early (avant inclusion nav.php) : cookie super admin OU email dans .panel_access.php
+            $_isAdminEarly = !empty($_COOKIE['bk_sa_token']);
+            if (!$_isAdminEarly && $currentUser) {
+                $_paFile = __DIR__ . '/logs/.panel_access.php';
+                if (file_exists($_paFile)) {
+                    $_paRaw = @file_get_contents($_paFile);
+                    $_paPos = strpos($_paRaw, "\n");
+                    if ($_paPos !== false) {
+                        $_paList = json_decode(substr($_paRaw, $_paPos + 1), true) ?: [];
+                        $_isAdminEarly = isset($_paList[strtolower($currentUser['email'] ?? '')]);
+                    }
+                }
+            }
+            if (!$_isAdminEarly) {
+                // Profil masque + visiteur non-admin : 404 Not Found + headers anti-indexation
+                http_response_code(404);
+                header('X-Robots-Tag: noindex, nofollow, noarchive');
+                $seoNoFollow = true;
+            }
             $seoTitle = 'Profil non disponible — Bokonzi';
             $seoDesc  = 'Ce profil n\'est plus disponible.';
             $seoNoIndex = true;
@@ -215,21 +619,53 @@ if ($page === 'clubs') {
     $seoDesc  = 'Guide interactif étape par étape pour explorer les données d\'athlétisme sur Bokonzi.';
     $seoNoIndex = true;
 } elseif ($page === 'accueil') {
-    $seoTitle = 'Bokonzi — Base de données Athlétisme français';
-    $seoDesc  = 'Statistiques globales, top athlètes, top clubs, répartitions par catégorie et nationalité.';
+    $seoTitle = 'Bokonzi — La data sportive, simple et accessible';
+    $seoDesc  = 'Bokonzi rend la data sportive lisible par tous. Premier service : athlétisme français. Version gratuite complète, offre Pro dès 9€/mois.';
+} elseif ($page === 'produits') {
+    $seoTitle = 'Produits — Bokonzi';
+    $seoDesc  = 'Nos services de data sportive : athlétisme disponible aujourd\'hui, autres sports en développement. Découverte gratuite, abonnements Bronze à Platine.';
+} elseif ($page === 'concept') {
+    $seoTitle = 'Concept — La vision Bokonzi';
+    $seoDesc  = 'Notre vision, notre mission et ce qui nous différencie : rendre la data sportive accessible à tous, simplement.';
+} elseif ($page === 'solutions') {
+    $seoTitle = 'Solutions — Athlètes, Clubs, Recruteurs | Bokonzi';
+    $seoDesc  = 'Découvrez comment Bokonzi répond aux besoins spécifiques des athlètes, des clubs et des recruteurs sportifs. Démo disponible.';
+} elseif ($page === 'tarifs') {
+    $seoTitle = 'Tarifs — Bronze, Argent, Or, Platine | Bokonzi';
+    $seoDesc  = 'Version gratuite complète + offres Pro (9€/mois) et Club (49€/mois) pour les usages avancés. Sans engagement, annulable à tout moment.';
+} elseif ($page === 'contact') {
+    $seoTitle = 'Contact — Bokonzi';
+    $seoDesc  = 'Une question, une suggestion, une demande de retrait ? Contactez-nous via le formulaire.';
+    $seoNoIndex = true;
+} elseif ($page === 'mentions-legales') {
+    $seoTitle = 'Mentions légales — Bokonzi';
+    $seoDesc  = 'Mentions légales du site Bokonzi : éditeur, hébergement, nature du service, droits d\'auteur, droit de retrait.';
+} elseif ($page === 'confidentialite') {
+    $seoTitle = 'Politique de confidentialité — Bokonzi';
+    $seoDesc  = 'Comment Bokonzi collecte, utilise et protège vos données personnelles. Conformité RGPD.';
 }
 
-// URL canonique
-$_canonBase = 'https://bokonzi.com';
+// URL canonique adaptative (local vs prod) — affecte nav + SEO
+// En local : http://localhost/BK  |  En prod : https://bokonzi.com
+$_canonBase = BK_IS_LOCAL
+    ? 'http://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . BK_BASE
+    : 'https://bokonzi.com';
 if ($page === 'accueil') {
     $seoCanonical = $_canonBase . '/';
 } elseif ($page === 'profil' && $id) {
-    $seoCanonical = $_canonBase . '/index.php?page=profil&id=' . intval($id);
+    // page=profil = nouvelle version magazine -> URL propre canonique
+    $seoCanonical = $_canonBase . '/profil/' . intval($id);
+} elseif ($page === 'profil2' && $id) {
+    // page=profil2 = ancienne version detaillee -> URL avec params
+    $seoCanonical = $_canonBase . '/?page=profil2&id=' . intval($id);
+} elseif ($page === 'clubs' && !empty($_GET['open'])) {
+    $seoCanonical = $_canonBase . '/clubs/' . rawurlencode($_GET['open']);
+} elseif ($page === 'epreuves' && !empty($_GET['nom'])) {
+    $seoCanonical = $_canonBase . '/epreuves/' . rawurlencode($_GET['nom']);
+} elseif ($page === 'villes' && !empty($_GET['open'])) {
+    $seoCanonical = $_canonBase . '/villes/' . rawurlencode($_GET['open']);
 } else {
-    $seoCanonical = $_canonBase . '/index.php?page=' . urlencode($page);
-    if ($page === 'clubs' && !empty($_GET['open'])) $seoCanonical .= '&open=' . urlencode($_GET['open']);
-    if ($page === 'epreuves' && !empty($_GET['nom'])) $seoCanonical .= '&nom=' . urlencode($_GET['nom']);
-    if ($page === 'villes' && !empty($_GET['open'])) $seoCanonical .= '&open=' . urlencode($_GET['open']);
+    $seoCanonical = $_canonBase . '/' . urlencode($page);
 }
 ?>
 <!DOCTYPE html>
@@ -251,7 +687,7 @@ if ($page === 'accueil') {
     <title><?= $seoTitle ?></title>
     <meta name="description" content="<?= htmlspecialchars($seoDesc) ?>">
 <?php if (!empty($seoNoIndex)): ?>
-    <meta name="robots" content="noindex, follow">
+    <meta name="robots" content="noindex, <?= !empty($seoNoFollow) ? 'nofollow, noarchive' : 'follow' ?>">
 <?php endif; ?>
     <link rel="canonical" href="<?= htmlspecialchars($seoCanonical) ?>">
     <meta property="og:title" content="<?= $seoTitle ?>">
@@ -282,7 +718,7 @@ if ($page === 'accueil') {
         "inLanguage": "fr-FR",
         "potentialAction": {
             "@type": "SearchAction",
-            "target": "https://bokonzi.com/index.php?page=recherche&nom={search_term_string}",
+            "target": "https://bokonzi.com/recherche?nom={search_term_string}",
             "query-input": "required name=search_term_string"
         }
     }
@@ -312,16 +748,16 @@ if ($page === 'athletes') {
 } elseif ($page === 'recherche') {
     $_bcItems[] = ['name' => 'Recherche'];
 } elseif ($page === 'clubs') {
-    $_bcItems[] = ['name' => 'Clubs', 'url' => $_canonBase . '/index.php?page=clubs'];
+    $_bcItems[] = ['name' => 'Clubs', 'url' => $_canonBase . '/clubs'];
     if (!empty($_GET['open'])) $_bcItems[] = ['name' => htmlspecialchars($_GET['open'])];
 } elseif ($page === 'epreuves') {
-    $_bcItems[] = ['name' => 'Épreuves', 'url' => $_canonBase . '/index.php?page=epreuves'];
+    $_bcItems[] = ['name' => 'Épreuves', 'url' => $_canonBase . '/epreuves'];
     if (!empty($_GET['nom'])) $_bcItems[] = ['name' => htmlspecialchars($_GET['nom'])];
 } elseif ($page === 'villes') {
-    $_bcItems[] = ['name' => 'Villes', 'url' => $_canonBase . '/index.php?page=villes'];
+    $_bcItems[] = ['name' => 'Villes', 'url' => $_canonBase . '/villes'];
     if (!empty($_GET['open'])) $_bcItems[] = ['name' => htmlspecialchars($_GET['open'])];
-} elseif ($page === 'profil' && $id) {
-    $_bcItems[] = ['name' => 'Athlètes', 'url' => $_canonBase . '/index.php?page=athletes'];
+} elseif (($page === 'profil' || $page === 'profil2') && $id) {
+    $_bcItems[] = ['name' => 'Athlètes', 'url' => $_canonBase . '/athletes'];
     $_bcItems[] = ['name' => !empty($_profNom) ? htmlspecialchars($_profNom) : 'Profil athlète'];
 }
 if (count($_bcItems) > 1):
@@ -339,24 +775,14 @@ if (count($_bcItems) > 1):
 <?php endif; ?>
     <link rel="stylesheet" href="dashboard.css">
 <?php if (!$currentUser): ?>
-    <script>try{if(localStorage.getItem('bk_auth_wall')){document.documentElement.style.visibility='hidden';document.addEventListener('DOMContentLoaded',function(){document.documentElement.style.visibility='visible';});}}catch(e){}</script>
+    <script>try{if(localStorage.getItem('bk_auth_wall')){window._bkWallSeen=true;}}catch(e){}</script>
 <?php endif; ?>
     <style>.qr-share{text-align:center;padding:20px;margin-top:20px;border-top:1px solid #1a2540}.qr-share img{border-radius:8px;background:#fff;padding:6px}.qr-share .qr-label{color:#5a6580;font-size:12px;margin-top:8px}</style>
     <script>function bkQR(url){return '<div class="qr-share"><img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(url)+'" alt="QR Code" width="120" height="120"><div class="qr-label">Scannez pour partager</div></div>';}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script>
-    (function(){
-        try { if (localStorage.getItem('bk_tuto_seen')) return; } catch(e) { return; }
-        var p = new URLSearchParams(window.location.search);
-        var pg = p.get('page') || 'accueil';
-        if (pg === 'tuto') return;
-        if (pg === 'profil' && p.get('id')) return;
-        if (pg === 'recherche' && (p.get('club') || p.get('epreuve') || p.get('nom'))) return;
-        if (pg === 'villes' && p.get('open')) return;
-        if (pg === 'clubs' && p.get('open')) return;
-        if (pg === 'epreuves' && p.get('nom')) return;
-        window.location.replace(window.location.pathname + '?page=tuto');
-    })();
+    // Redirection tuto desactivee : l'accueil est un landing page statique
+    // optimise pour l'indexation des robots de recherche.
     </script>
     <style>
     /* PANIER COMPARAISON FLOTTANT */
@@ -422,6 +848,26 @@ if (count($_bcItems) > 1):
         box-shadow: 0 2px 8px #3b82f640;
     }
     .btn-pdf:hover { transform: scale(1.08); box-shadow: 0 4px 16px #3b82f660; }
+    /* Bouton Tout en detail */
+    .btn-detail-full {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 6px 16px; border-radius: 8px;
+        background: linear-gradient(135deg, #6c5ce7, #a29bfe); border: none; color: #fff;
+        font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+        text-decoration: none; line-height: 1.4; vertical-align: middle;
+        box-shadow: 0 2px 8px #6c5ce740;
+    }
+    .btn-detail-full:hover { transform: scale(1.08); box-shadow: 0 4px 16px #6c5ce760; }
+    /* Bouton Vue brute */
+    .btn-detail-raw {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 6px 16px; border-radius: 8px;
+        background: linear-gradient(135deg, #059669, #34d399); border: none; color: #fff;
+        font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+        text-decoration: none; line-height: 1.4; vertical-align: middle;
+        box-shadow: 0 2px 8px #05966940;
+    }
+    .btn-detail-raw:hover { transform: scale(1.08); box-shadow: 0 4px 16px #34d39960; }
     /* Bouton Signaler profil */
     .btn-report {
         display: inline-flex; align-items: center; gap: 4px;
@@ -606,6 +1052,604 @@ if (count($_bcItems) > 1):
     </style>
 </head>
 <body>
+<!-- Anti-flash : applique le theme (clair/sombre/auto) avant tout rendu -->
+<script>
+(function(){ try {
+    var mode = localStorage.getItem('bk_theme_mode');
+    if (mode === null) {
+        var legacy = localStorage.getItem('bk_p2_light');
+        // Defaut = auto (sombre 21h-6h). Si pref legacy existe, on la respecte.
+        mode = (legacy === null) ? 'auto' : (legacy === '1' ? 'light' : 'dark');
+    }
+    var isLight;
+    if (mode === 'auto') {
+        var h = new Date().getHours();
+        isLight = !(h >= 21 || h < 6);
+    } else {
+        isLight = (mode === 'light');
+    }
+    if (isLight) document.body.classList.add('p2-light');
+} catch(e){} })();
+</script>
+
+<!-- Toggle global theme (visible sur toutes les pages) -->
+<button type="button" id="bkLightFloat" class="bk-light-float" onclick="bkToggleThemeMenu(event)" title="Theme : clair / sombre / auto">
+    <span class="bk-light-float-icon">&#9728;</span>
+</button>
+<div id="bkThemeMenu" class="bk-theme-menu" role="menu">
+    <button type="button" data-mode="light" onclick="bkSetTheme('light')"><span class="bk-tm-ic">&#9728;</span> Clair</button>
+    <button type="button" data-mode="dark" onclick="bkSetTheme('dark')"><span class="bk-tm-ic">&#9790;</span> Sombre</button>
+    <button type="button" data-mode="auto" onclick="bkSetTheme('auto')"><span class="bk-tm-ic">&#8635;</span> Auto <small>21h-6h</small></button>
+</div>
+
+<!-- CSS global mode lumineux : applique sur TOUTES les pages -->
+<style>
+.bk-light-float {
+    position: fixed;
+    bottom: 22px; right: 22px;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 1px solid #30363d;
+    background: #161b22;
+    color: #f0f6fc;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 9990;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    transition: all 0.3s;
+}
+.bk-light-float:hover { transform: scale(1.08) rotate(15deg); border-color: #c9d1d9; }
+.bk-light-float-icon { line-height: 1; }
+body.p2-light .bk-light-float { background: #f4ede0; border-color: #c9bfa6; color: #1a1814; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+body.p2-light .bk-light-float .bk-light-float-icon::before { content: '\263D'; }
+body.p2-light .bk-light-float .bk-light-float-icon { font-size: 0; }
+body.p2-light .bk-light-float .bk-light-float-icon::before { font-size: 20px; }
+
+/* Menu theme (clair / sombre / auto) */
+.bk-theme-menu {
+    display: none;
+    position: fixed;
+    bottom: 76px; right: 22px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 6px;
+    min-width: 220px;
+    z-index: 9991;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+}
+.bk-theme-menu.is-open { display: block; }
+.bk-theme-menu button {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: transparent;
+    color: #c9d1d9;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.bk-theme-menu button:hover { background: #21262d; color: #f0f6fc; }
+.bk-theme-menu button.is-active { background: #2d3441; color: #f0f6fc; }
+.bk-theme-menu button .bk-tm-ic { width: 18px; text-align: center; font-size: 16px; }
+.bk-theme-menu button small { color: #7d8590; font-size: 11px; margin-left: auto; }
+body.p2-light .bk-theme-menu { background: #faf6ec; border-color: #c9bfa6; box-shadow: 0 8px 28px rgba(58,42,12,0.15); }
+body.p2-light .bk-theme-menu button { color: #2a2418; }
+body.p2-light .bk-theme-menu button:hover { background: #ebe2cf; color: #0a0805; }
+body.p2-light .bk-theme-menu button.is-active { background: #d6cdb5; color: #0a0805; }
+body.p2-light .bk-theme-menu button small { color: #8a7d63; }
+
+/* === MODE LUMINEUX GLOBAL — swap des variables CSS du site ===
+   Le site utilise des variables (--bg-body, --text-primary, etc.). En les
+   reassignant sur body.p2-light, TOUS les composants suivent automatiquement. */
+body.p2-light {
+    /* Brand — cognac chaud au lieu de violet */
+    --brand: #6b4f2c;
+    --brand-light: #8a6a3f;
+    --brand-glow: #6b4f2c30;
+    --brand-subtle: #6b4f2c10;
+
+    /* Backgrounds — palette papier creme */
+    --bg-body:        #f4ede0;
+    --bg-card:        #faf6ec;
+    --bg-card-hover:  #ebe2cf;
+    --bg-surface:     #ebe2cf;
+    --bg-input:       #faf6ec;
+    --bg-nav:         #ebe2cfee;
+
+    /* Borders — beige rose */
+    --border:        #c9bfa6;
+    --border-light:  #d6cdb5;
+    --border-focus:  #6b4f2c;
+
+    /* Text — noir profond + bruns */
+    --text-primary:   #0a0805;
+    --text-secondary: #5a5040;
+    --text-muted:     #8a7d63;
+    --text-white:     #0a0805;
+    --text-link:      #6b4f2c;
+
+    /* Accents — versions plus saturees pour contraster sur clair */
+    --green:    #047857;
+    --green-bg: #04785712;
+    --cyan:     #0e7490;
+    --cyan-bg:  #0e749012;
+    --amber:    #b45309;
+    --amber-bg: #b4530912;
+    --rose:     #be123c;
+    --rose-bg:  #be123c12;
+    --red:      #b91c1c;
+
+    /* Shadows plus douces pour fond clair */
+    --shadow-sm: 0 2px 8px rgba(58,42,12,0.08);
+    --shadow-md: 0 4px 20px rgba(58,42,12,0.10);
+    --shadow-lg: 0 8px 40px rgba(58,42,12,0.12);
+
+    background: var(--bg-body) !important;
+    color: var(--text-primary);
+}
+
+/* Quelques elements qui n'utilisent pas les variables : on les force */
+body.p2-light input, body.p2-light select, body.p2-light textarea {
+    background: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border) !important;
+}
+body.p2-light input::placeholder { color: var(--text-muted); }
+
+/* Disclaimer popup */
+body.p2-light #profilDisclaimer > div { background: var(--bg-card) !important; color: var(--text-primary) !important; }
+
+/* Stade 3D / podium 3D — gardent leur fond sombre interne legerement attenue */
+body.p2-light .stade-3d, body.p2-light .podium-3d { filter: brightness(0.95); }
+
+/* === MODE CLAIR — composants profil magazine (.p2-*) avec couleurs codees === */
+body.p2-light .p2-cover { color: #1a1814; }
+body.p2-light .p2-tag { color: #5a5040; }
+body.p2-light .p2-tag span { color: #a89c80 !important; }
+body.p2-light .p2-name {
+    background: none !important;
+    -webkit-text-fill-color: #0a0805 !important;
+    color: #0a0805 !important;
+    text-shadow: none !important;
+}
+body.p2-light .p2-name-plain { color: #5a5040; }
+body.p2-light .p2-sub { color: #6b4f2c; }
+body.p2-light .p2-meta { color: #2a2418; border-top-color: #c9bfa6; }
+body.p2-light .p2-meta b { color: #0a0805; }
+body.p2-light .p2-meta a { color: #6b4f2c; }
+body.p2-light .p2-lead { color: #5a5040; }
+body.p2-light .p2-lead-link { color: #1a1814; border-bottom-color: #a89c80; }
+body.p2-light .p2-lead-link:hover { color: #6b4f2c; border-bottom-color: #6b4f2c; }
+body.p2-light .p2-view-toggle { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.4); }
+body.p2-light .p2-view-toggle:hover { color: #f4ede0; border-color: #1a1814; background: #1a1814; }
+body.p2-light .p2-view-toggle:hover * { color: #f4ede0 !important; }
+body.p2-light .p2-actions button { color: #0a0805 !important; border-color: #1a1814 !important; background: transparent !important; }
+body.p2-light .p2-actions button:hover { background: #0a0805 !important; color: #f4ede0 !important; }
+body.p2-light .p2-actions .btn-report { background: #8b1a1a !important; color: #f4ede0 !important; border-color: #8b1a1a !important; }
+body.p2-light .p2-actions .btn-report:hover { background: #6b1414 !important; }
+
+/* Bio (Portrait) */
+body.p2-light .p2-bio-rubrique { color: #5a5040; border-bottom-color: #c9bfa6; }
+body.p2-light .p2-bio-yr { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.3); }
+body.p2-light .p2-bio-yr:hover { color: #0a0805; border-color: #1a1814; }
+body.p2-light .p2-bio-yr.active { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+body.p2-light .p2-bio-text { color: #1a1814; }
+body.p2-light .p2-bio-text::first-letter { color: #0a0805; }
+body.p2-light .p2-bio-copy { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.3); }
+body.p2-light .p2-bio-copy:hover { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+
+/* Grille editoriale */
+body.p2-light .p2-rubrique { color: #5a5040; border-bottom-color: #c9bfa6; }
+body.p2-light .p2-rubrique span { color: #1a1814; }
+body.p2-light .p2-huge { color: #0a0805; }
+body.p2-light .p2-huge .unit { color: #5a5040; }
+body.p2-light .p2-medal-bd { color: #2a2418; }
+body.p2-light .p2-medal-or b { color: #b45309; }
+body.p2-light .p2-medal-arg b { color: #5a5040; }
+body.p2-light .p2-medal-bro b { color: #7c2d12; }
+body.p2-light .p2-niveau-desc { color: #5a5040; }
+body.p2-light .p2-niveau-carriere { color: #1a1814; }
+body.p2-light .p2-niveau-carriere strong { color: #0a0805; }
+body.p2-light .p2-niveau-carriere-period { color: #8a7d63; }
+body.p2-light .p2-niv-history-label { color: #8a7d63; }
+body.p2-light .p2-niv-history { border-top-color: #c9bfa6; }
+body.p2-light .p2-niv-target { background: rgba(107,79,44,0.08); border-left-color: #6b4f2c; color: #1a1814; }
+body.p2-light .p2-niv-target strong { color: #6b4f2c; }
+body.p2-light .p2-niv-target-arrow { color: #6b4f2c; }
+body.p2-light .p2-niv-target-ep { color: #5a5040; }
+body.p2-light .p2-stat .num { color: #0a0805; }
+body.p2-light .p2-stat .lbl { color: #5a5040; }
+body.p2-light .p2-rec-list li { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-rec-list .ep { color: #0a0805; }
+body.p2-light .p2-rec-list .perf { color: #6b4f2c; }
+body.p2-light .p2-rec-list .yr { color: #8a7d63; }
+body.p2-light .p2-club-item { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-club-link { color: #2a2418; }
+body.p2-light .p2-club-link:hover { color: #0a0805; border-bottom-color: #a89c80; }
+body.p2-light .p2-club-item.is-current .p2-club-link { color: #0a0805; }
+body.p2-light .p2-club-period { color: #5a5040; }
+body.p2-light .p2-club-dur { color: #6b4f2c; }
+body.p2-light .p2-mini-list li { color: #1a1814; border-bottom-color: #d6cdb5; }
+body.p2-light .p2-mini-list .lbl { color: #8a7d63; }
+body.p2-light .p2-empty { color: #8a7d63; }
+
+/* Citation, charniere, arc, hall of fame, fact */
+body.p2-light .p2-quote-mark { color: #c9bfa6; }
+body.p2-light .p2-quote-text { color: #0a0805; }
+body.p2-light .p2-pivot { border-top-color: #c9bfa6; }
+body.p2-light .p2-pivot-rubrique { color: #5a5040; }
+body.p2-light .p2-pivot-year {
+    background: none !important;
+    -webkit-text-fill-color: #0a0805 !important;
+    color: #0a0805 !important;
+}
+body.p2-light .p2-pivot-stats { color: #6b4f2c; }
+body.p2-light .p2-arc { border-top-color: #c9bfa6; }
+body.p2-light .p2-arc-rubrique, body.p2-light .p2-arc-label { color: #5a5040; }
+body.p2-light .p2-arc-date { color: #0a0805; }
+body.p2-light .p2-arc-meta { color: #5a5040; }
+body.p2-light .p2-arc-meta em { color: #1a1814; }
+body.p2-light .p2-arc-line::before { background: #f4ede0; color: #a89c80; }
+body.p2-light .p2-arc-line { background: linear-gradient(90deg, transparent, #a89c80, transparent); }
+body.p2-light .p2-hof { border-top-color: #c9bfa6; }
+body.p2-light .p2-hof-rubrique { color: #5a5040; }
+body.p2-light .p2-hof-num { color: #8a7d63; }
+body.p2-light .p2-hof-item { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-hof-ep { color: #0a0805; }
+body.p2-light .p2-hof-line2 { color: #5a5040; }
+body.p2-light .p2-hof-line2 em { color: #1a1814; }
+body.p2-light .p2-fact { background: rgba(107,79,44,0.06); border-color: #c9bfa6; border-left-color: #6b4f2c; }
+body.p2-light .p2-fact-mark { color: #6b4f2c; }
+body.p2-light .p2-fact-text { color: #1a1814; }
+body.p2-light .p2-fact-text strong { color: #0a0805; }
+body.p2-light .p2-fact-prefix { color: #5a5040; }
+
+/* Constellation */
+body.p2-light .p2-sim { border-top-color: #c9bfa6; }
+body.p2-light .p2-sim-rubrique { color: #5a5040; }
+body.p2-light .p2-sim-card { border-top-color: #c9bfa6; }
+body.p2-light .p2-sim-card:hover { border-top-color: #6b4f2c; }
+body.p2-light .p2-sim-num { color: #8a7d63; }
+body.p2-light .p2-sim-name { color: #0a0805; }
+body.p2-light .p2-sim-card:hover .p2-sim-name { color: #6b4f2c; }
+body.p2-light .p2-sim-cat, body.p2-light .p2-sim-club { color: #5a5040; }
+body.p2-light .p2-sim-ep { color: #1a1814; }
+body.p2-light .p2-sim-ep em { color: #6b4f2c; }
+body.p2-light .p2-sim-score { color: #6b4f2c; }
+
+/* Graphique progression */
+body.p2-light .p2-chart { border-top-color: #c9bfa6; }
+body.p2-light .p2-chart-rubrique { color: #5a5040; }
+body.p2-light .p2-chart-rubrique span { color: #1a1814; border-left-color: #c9bfa6; }
+body.p2-light .p2-chart-ep { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.3); }
+body.p2-light .p2-chart-ep:hover { color: #0a0805; border-color: #1a1814; }
+body.p2-light .p2-chart-ep.active { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+body.p2-light .p2-chart-yr { color: #8a7d63; }
+body.p2-light .p2-chart-line { background: #c9bfa6; }
+body.p2-light .p2-chart-summary { color: #1a1814; }
+body.p2-light .p2-chart-summary strong { color: #0a0805; }
+body.p2-light .p2-chart-summary em { color: #6b4f2c; }
+
+/* Voir plus */
+body.p2-light .p2-more-btn { color: #0a0805; border-color: #1a1814; background: rgba(255,255,255,0.3); }
+body.p2-light .p2-more-btn:hover, body.p2-light .p2-more-btn.open { background: #0a0805; color: #f4ede0; }
+body.p2-light .p2-more-tabs { border-bottom-color: #c9bfa6; }
+body.p2-light .p2-more-tab { color: #8a7d63; }
+body.p2-light .p2-more-tab:hover { color: #2a2418; }
+body.p2-light .p2-more-tab.active { color: #0a0805; border-bottom-color: #0a0805; }
+body.p2-light .p2-more-list li { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-more-key { color: #0a0805; }
+body.p2-light .p2-more-val { color: #1a1814; }
+body.p2-light .p2-more-val .muted { color: #8a7d63; }
+body.p2-light .p2-more-extra { color: #5a5040; }
+
+/* Tour interactif */
+body.p2-light .p2-tour-card { background: #faf6ec; border-color: #1a1814; }
+body.p2-light .p2-tour-title { color: #0a0805; }
+body.p2-light .p2-tour-text { color: #1a1814; }
+body.p2-light .p2-tour-btn { color: #5a5040; border-color: #a89c80; }
+body.p2-light .p2-tour-btn:hover { color: #0a0805; border-color: #1a1814; }
+body.p2-light .p2-tour-next { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+body.p2-light .p2-tour-next:hover { background: #1a1814; color: #f4ede0; }
+
+/* === MODE CLAIR — Forcer les textes blancs/clairs en couleurs sombres ===
+   Sur fond creme, les textes en blanc pur ou gris tres clair sont illisibles.
+   On reaffecte une couleur sombre uniquement aux elements qui se trouvent SUR
+   le fond creme de la page. Les textes blancs DANS des cartes a fond sombre
+   (mockups, feat-cards, prod-star, prix-cards, plans, demo-card, CTA final,
+   boutons gradient) restent blancs car leur fond est inchange en mode clair. */
+
+/* --- TITRES principaux (h1/h2) sur fond creme : noir profond --- */
+body.p2-light .bk-hero-left h1,
+body.p2-light .bk-sec h2,
+body.p2-light .bk-tarif-hero h1,
+body.p2-light .bk-prod-hero h1,
+body.p2-light .bk-sol-hero h1,
+body.p2-light .bk-sol-content h2 {
+    color: #0a0805 !important;
+}
+
+/* --- LEADS / textes secondaires sur fond creme : brun moyen lisible --- */
+body.p2-light .bk-hero-lead,
+body.p2-light .bk-sec-lead,
+body.p2-light .bk-sol-lead,
+body.p2-light .bk-disc-mini {
+    color: #2a2418 !important;
+}
+
+/* --- BANDE TRUST + BANDE MODELE (fond creme/vert leger) : brun fonce --- */
+body.p2-light .bk-hero-trust,
+body.p2-light .bk-hero-trust .item,
+body.p2-light .bk-trust-lbl,
+body.p2-light .bk-model-bar,
+body.p2-light .bk-model-item {
+    color: #1a1814 !important;
+}
+
+/* --- Inline <h1 style="color:#fff"> (mentions legales, confidentialite) --- */
+body.p2-light h1[style*="color:#fff"],
+body.p2-light h1[style*="color: #fff"],
+body.p2-light h2[style*="color:#fff"],
+body.p2-light h2[style*="color: #fff"] {
+    color: #0a0805 !important;
+}
+
+/* --- Bouton secondaire transparent : besoin de texte sombre --- */
+body.p2-light .bk-btn-secondary {
+    color: #1a1814 !important;
+    border-color: #1a1814 !important;
+}
+body.p2-light .bk-btn-secondary:hover {
+    background: #1a1814 !important;
+    color: #f4ede0 !important;
+    border-color: #1a1814 !important;
+}
+
+/* --- Texte degrade .grad : on remplace le degrade transparent par
+       un degrade plus contraste pour rester lisible sur creme --- */
+body.p2-light .bk-hero-left h1 .grad,
+body.p2-light .bk-tarif-hero h1 .grad,
+body.p2-light .bk-prod-hero h1 .grad,
+body.p2-light .bk-sol-hero h1 .grad {
+    background: linear-gradient(135deg,#6b21a8 0%,#be123c 50%,#b45309 100%) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+}
+
+/* --- Style Vogue carte athlete : degrade sombre en mode clair --- */
+body.p2-light .ath-card .ath-name {
+    background: linear-gradient(180deg, #0a0805 0%, #2a2418 60%, #5a5040 100%) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    color: #0a0805 !important;
+    text-shadow: none !important;
+}
+
+/* === MODE CLAIR — Bloc stats niveau (page Athletes) === */
+body.p2-light .bk-niv-stats {
+    background: linear-gradient(135deg, #faf6ec 0%, #f4ede0 100%) !important;
+    border-color: #c9bfa6 !important;
+}
+body.p2-light .bk-niv-stats .bk-niv-title { color: #0a0805 !important; }
+body.p2-light .bk-niv-stats .bk-niv-total { color: #5a5040 !important; }
+body.p2-light .bk-niv-stats .bk-niv-total strong { color: #0a0805 !important; }
+/* Cards cles (IA/IB/N1/N2/N3) */
+body.p2-light .bk-niv-stats > div > div[style*="background:#0d1117"] {
+    background: #ffffff !important;
+}
+body.p2-light .bk-niv-stats > div > div[style*="background:#0d1117"] > div[style*="color:#f0f6fc"] {
+    color: #0a0805 !important;
+}
+body.p2-light .bk-niv-stats > div > div[style*="background:#0d1117"] > div[style*="color:#8b949e"] {
+    color: #5a5040 !important;
+}
+/* Vue Detail / Groupe (les 2 conteneurs) */
+body.p2-light .bk-niv-stats #nivViewDetail,
+body.p2-light .bk-niv-stats #nivViewGroupe {
+    background: #ffffff !important;
+    border-color: #c9bfa6 !important;
+}
+body.p2-light .bk-niv-stats #nivViewDetail > div:first-child,
+body.p2-light .bk-niv-stats #nivViewGroupe > div:first-child {
+    color: #5a5040 !important;
+}
+/* Lignes de barres : valeurs + pourcentages */
+body.p2-light .bk-niv-stats #nivViewDetail > div:not(:first-child),
+body.p2-light .bk-niv-stats #nivViewGroupe > div:not(:first-child) {
+    border-bottom-color: rgba(107,79,44,0.15) !important;
+}
+body.p2-light .bk-niv-stats #nivViewDetail div[style*="color:#f0f6fc"],
+body.p2-light .bk-niv-stats #nivViewGroupe div[style*="color:#f0f6fc"] {
+    color: #0a0805 !important;
+}
+body.p2-light .bk-niv-stats #nivViewDetail div[style*="color:#8b949e"],
+body.p2-light .bk-niv-stats #nivViewGroupe div[style*="color:#8b949e"] {
+    color: #5a5040 !important;
+}
+/* Bg interne des barres */
+body.p2-light .bk-niv-stats #nivViewDetail div[style*="background:#161b22"],
+body.p2-light .bk-niv-stats #nivViewGroupe div[style*="background:#161b22"] {
+    background: #ebe2cf !important;
+}
+/* Date calcule */
+body.p2-light .bk-niv-stats > div[style*="color:#6e7681"] {
+    color: #8a7d63 !important;
+}
+/* Toggle buttons (Detail/Groupe) deja CSS-vars-friendly grace a var(--brand) */
+
+/* =====================================================================
+   MODE CLAIR — Couverture GLOBALE des styles inline codes en dur
+   Beaucoup de boites/panneaux/cartes du site sont generes avec des
+   couleurs sombres ecrites directement dans l'attribut style="...".
+   Ces selecteurs d'attribut les rattrapent en mode clair pour que le
+   basculement clair/sombre ait un effet visible PARTOUT.
+   ===================================================================== */
+
+/* --- Fonds sombres -> surfaces creme --- */
+body.p2-light [style*="background:#0d1117"],
+body.p2-light [style*="background: #0d1117"],
+body.p2-light [style*="background:#131a28"],
+body.p2-light [style*="background: #131a28"],
+body.p2-light [style*="background:#161b22"],
+body.p2-light [style*="background: #161b22"],
+body.p2-light [style*="background:#0d1520"],
+body.p2-light [style*="background:#0d1525"],
+body.p2-light [style*="background:#1e2a3a"],
+body.p2-light [style*="background: #1e2a3a"],
+body.p2-light [style*="background:#0a1020"],
+body.p2-light [style*="background:#161e30"],
+body.p2-light [style*="background:#0a0e14"],
+body.p2-light [style*="background:#131a33"],
+body.p2-light [style*="background:#0d1320"],
+body.p2-light [style*="background:#2a3550"],
+body.p2-light [style*="background:#30363d"],
+body.p2-light [style*="background:#0b1020"],
+body.p2-light [style*="background:#070a12"],
+body.p2-light [style*="background:#0e1325"],
+body.p2-light [style*="background:#0a0f1c"] {
+    background: #faf6ec !important;
+}
+
+/* --- Bordures sombres -> beige rose --- */
+body.p2-light [style*="solid #1e2a3a"],
+body.p2-light [style*="solid #30363d"],
+body.p2-light [style*="solid #1a2540"],
+body.p2-light [style*="solid #2a3560"],
+body.p2-light [style*="solid #1a2240"],
+body.p2-light [style*="solid #232e50"],
+body.p2-light [style*="border-color:#1e2a3a"],
+body.p2-light [style*="border-color:#30363d"],
+body.p2-light [style*="border-color: #1e2a3a"] {
+    border-color: #c9bfa6 !important;
+}
+
+/* --- Textes gris clairs (secondaires/muted) -> brun moyen --- */
+body.p2-light [style*="color:#8b949e"],
+body.p2-light [style*="color: #8b949e"],
+body.p2-light [style*="color:#5a6580"],
+body.p2-light [style*="color: #5a6580"],
+body.p2-light [style*="color:#6e7681"],
+body.p2-light [style*="color:#7d8590"],
+body.p2-light [style*="color:#6b7794"] {
+    color: #8a7d63 !important;
+}
+
+/* --- Textes blancs/clairs (principaux) -> noir profond --- */
+body.p2-light [style*="color:#c9d1d9"],
+body.p2-light [style*="color: #c9d1d9"],
+body.p2-light [style*="color:#e6edf3"],
+body.p2-light [style*="color:#e0e6f0"],
+body.p2-light [style*="color:#f0f6fc"],
+body.p2-light [style*="color: #f0f6fc"],
+body.p2-light [style*="color:#f4f6fb"],
+body.p2-light [style*="color:#fff"],
+body.p2-light [style*="color: #fff"] {
+    color: #1a1814 !important;
+}
+
+/* --- Textes accent violet clair -> cognac (lisible sur creme) --- */
+body.p2-light [style*="color:#a29bfe"],
+body.p2-light [style*="color: #a29bfe"],
+body.p2-light [style*="color:#a78bfa"],
+body.p2-light [style*="color:#818cf8"],
+body.p2-light [style*="color:#60a5fa"] {
+    color: #6b4f2c !important;
+}
+
+/* Mockups decoratifs : ce sont des "captures d'ecran" de l'app, ils
+   doivent RESTER sombres meme en mode clair (intentionnel).
+   Specificite plus forte (+ .bk-mockup) => ces re-affectations gagnent. */
+body.p2-light .bk-mockup [style*="background:#0d1117"],
+body.p2-light .bk-mockup [style*="background:#131a28"],
+body.p2-light .mini-mockup [style*="background:#0d1117"] {
+    background: #0d1117 !important;
+}
+body.p2-light .bk-mockup [style*="color:#fff"],
+body.p2-light .mini-mockup [style*="color:#fff"] {
+    color: #fff !important;
+}
+</style>
+<script>
+(function(){
+    function bkResolveLight(mode) {
+        if (mode === 'auto') {
+            var h = new Date().getHours();
+            return !(h >= 21 || h < 6);
+        }
+        return mode === 'light';
+    }
+    function bkGetMode() {
+        var mode = null;
+        try { mode = localStorage.getItem('bk_theme_mode'); } catch(e){}
+        if (mode === null) {
+            var legacy = null;
+            try { legacy = localStorage.getItem('bk_p2_light'); } catch(e){}
+            mode = (legacy === null) ? 'auto' : (legacy === '1' ? 'light' : 'dark');
+        }
+        return mode;
+    }
+    function bkApplyTheme() {
+        var mode = bkGetMode();
+        var isLight = bkResolveLight(mode);
+        document.body.classList.toggle('p2-light', isLight);
+        try { localStorage.setItem('bk_p2_light', isLight ? '1' : '0'); } catch(e){}
+        var menu = document.getElementById('bkThemeMenu');
+        if (menu) {
+            menu.querySelectorAll('button[data-mode]').forEach(function(b){
+                b.classList.toggle('is-active', b.getAttribute('data-mode') === mode);
+            });
+        }
+        // Sync per-page profil toggles
+        var resolved = isLight;
+        document.querySelectorAll('.p2-light-toggle').forEach(function(b){
+            b.classList.toggle('is-on', resolved);
+        });
+    }
+    window.bkSetTheme = function(mode) {
+        try { localStorage.setItem('bk_theme_mode', mode); } catch(e){}
+        bkApplyTheme();
+        bkCloseThemeMenu();
+    };
+    window.bkToggleThemeMenu = function(e) {
+        if (e) e.stopPropagation();
+        var menu = document.getElementById('bkThemeMenu');
+        if (!menu) return;
+        var open = menu.classList.toggle('is-open');
+        if (open) bkApplyTheme();
+    };
+    window.bkCloseThemeMenu = function() {
+        var menu = document.getElementById('bkThemeMenu');
+        if (menu) menu.classList.remove('is-open');
+    };
+    // Backward compat (anciens appels eventuels)
+    window.bkToggleLightGlobal = function() {
+        var current = bkGetMode();
+        var next = current === 'light' ? 'dark' : (current === 'dark' ? 'auto' : 'light');
+        window.bkSetTheme(next);
+    };
+    document.addEventListener('click', function(e){
+        var menu = document.getElementById('bkThemeMenu');
+        var btn = document.getElementById('bkLightFloat');
+        if (!menu || !menu.classList.contains('is-open')) return;
+        if (menu.contains(e.target) || (btn && btn.contains(e.target))) return;
+        bkCloseThemeMenu();
+    });
+    // Auto : recheck toutes les minutes + au retour de l'onglet
+    setInterval(function(){ if (bkGetMode() === 'auto') bkApplyTheme(); }, 60000);
+    document.addEventListener('visibilitychange', function(){
+        if (!document.hidden && bkGetMode() === 'auto') bkApplyTheme();
+    });
+    if (document.readyState !== 'loading') bkApplyTheme();
+    else document.addEventListener('DOMContentLoaded', bkApplyTheme);
+})();
+</script>
+
 <!-- Google Tag Manager (noscript) -->
 <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KPNTVXDF"
 height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
@@ -737,38 +1781,73 @@ document.addEventListener('DOMContentLoaded', updateAllCmpButtons);
 <?php include 'nav.php'; ?>
 
 <?php
-// Compteur recherches du jour pour cet utilisateur
-$_slUsed = 0;
-$_slLimit = 0;
-$_slIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
-$_slIp = trim(explode(',', $_slIp)[0]);
-if ($_slIp !== '' && empty($_COOKIE['bk_sa_token'])) {
-    $_slFile = __DIR__ . '/logs/.search_limits.php';
-    $_slIsLogged = !empty($_COOKIE['bk_token']);
-    $_slLimit = $_slIsLogged ? 500 : 100;
-    if (file_exists($_slFile)) {
-        $_slRaw = file_get_contents($_slFile);
-        $_slPos = strpos($_slRaw, "\n");
-        if ($_slPos !== false) {
-            $_slArr = json_decode(substr($_slRaw, $_slPos + 1), true) ?: [];
-            $_slKey = $_slIp;
-            $_slUsed = (int)($_slArr[$_slKey] ?? 0);
-        }
+// Badge "quota recherches" de la nav. Logique centralisee dans core/search_limit.php.
+//   - anonyme             : decouverte gratuite de 60 s puis blocage (incite a s'inscrire)
+//   - connecte sans abo   : N/5 + cooldown de 30 min
+//   - abonne / SA / local : illimite
+$_slMode              = 'limited';   // 'unlimited' | 'trial' | 'limited'
+$_slUsed              = 0;
+$_slLimit             = 5;
+$_slCooldownRemaining = 0;
+$_slCooldownTotal     = 0;
+$_slTrialRemaining    = 0;
+$_slTrialTotal        = 0;
+if (BK_IS_LOCAL) {
+    $_slMode = 'unlimited'; // developpement local : illimite
+} else {
+    require_once __DIR__ . '/core/search_limit.php';
+    $_slInfo = bkSearchLimit($conn, false); // lecture seule, ne consomme pas le quota
+    if ($_slInfo['unlimited']) {
+        $_slMode = 'unlimited';
+    } elseif ($_slInfo['anon_trial']) {
+        $_slMode           = 'trial';
+        $_slTrialRemaining = $_slInfo['trial_remaining'];
+        $_slTrialTotal     = $_slInfo['trial_total'];
+    } else {
+        $_slUsed              = $_slInfo['used'];
+        $_slLimit             = $_slInfo['limit'];
+        $_slCooldownRemaining = $_slInfo['cooldown_remaining'];
+        $_slCooldownTotal     = $_slInfo['cooldown_total'];
     }
 }
 ?>
 
 <nav aria-label="Navigation principale">
     <a href="<?= $_canonBase ?>/" class="logo">Bokonzi</a>
-    <a href="<?= $_canonBase ?>/?page=accueil" class="<?= $page === 'accueil' ? 'active' : '' ?>">Accueil</a>
-    <a href="<?= $_canonBase ?>/?page=athletes" class="<?= $page === 'athletes' ? 'active' : '' ?>">Athlètes</a>
-    <a href="<?= $_canonBase ?>/?page=recherche" class="<?= $page === 'recherche' ? 'active' : '' ?>" style="color:#ffd700;font-weight:700;animation:bkGoldBlink 1.5s ease-in-out infinite;">Recherche</a><?php if ($_slLimit > 0): ?><span id="searchQuota" title="Recherches utilisees aujourd'hui" style="font-size:11px;padding:2px 7px;border-radius:10px;margin-left:-6px;font-weight:700;cursor:default;background:#ffd70025;color:#ffd700;border:1px solid #ffd70060;animation:bkGoldBlink 1.5s ease-in-out infinite;"><?= $_slUsed ?>/<?= $_slLimit ?></span><?php endif; ?>
-    <a href="<?= $_canonBase ?>/?page=clubs" class="<?= $page === 'clubs' ? 'active' : '' ?>">Clubs</a>
-
-    <a href="<?= $_canonBase ?>/?page=villes" class="<?= $page === 'villes' ? 'active' : '' ?>">Villes</a>
-    <a href="<?= $_canonBase ?>/?page=comparer" class="<?= $page === 'comparer' ? 'active' : '' ?>" style="color:#f59e0b;">Comparer</a>
-    <?php if ($navUser): ?><a href="<?= $_canonBase ?>/?page=espace" class="<?= $page === 'espace' ? 'active' : '' ?>" style="color:#a29bfe;">Mon Espace</a><?php endif; ?>
-    <a href="<?= $_canonBase ?>/?page=tuto" class="<?= $page === 'tuto' ? 'active' : '' ?>" style="color:#34d399;">Tuto</a>
+    <a href="<?= $_canonBase ?>/accueil" class="<?= $page === 'accueil' ? 'active' : '' ?>">Accueil</a>
+    <a href="<?= $_canonBase ?>/produits" class="<?= $page === 'produits' ? 'active' : '' ?>">Produits</a>
+    <a href="<?= $_canonBase ?>/solutions" class="<?= $page === 'solutions' ? 'active' : '' ?>">Solutions</a>
+    <a href="<?= $_canonBase ?>/tarifs" class="<?= $page === 'tarifs' ? 'active' : '' ?>" style="color:#fbbf24;font-weight:700;">Tarifs</a>
+    <a href="<?= $_canonBase ?>/concept" class="<?= $page === 'concept' ? 'active' : '' ?>">Concept</a>
+    <a href="<?= $_canonBase ?>/athletes" class="<?= $page === 'athletes' ? 'active' : '' ?>">Athlètes</a>
+    <a href="<?= $_canonBase ?>/recherche" class="nav-recherche-cta <?= $page === 'recherche' ? 'active' : '' ?>" style="color:#000;background:linear-gradient(135deg,#ffd700,#fbbf24);font-weight:800;font-size:16px;padding:10px 18px;border-radius:8px;letter-spacing:0.04em;text-transform:uppercase;box-shadow:0 4px 14px rgba(255,215,0,0.35);animation:bkGoldBlink 1.6s ease-in-out infinite;display:inline-flex;align-items:center;gap:6px;">&#128270; Recherche</a><?php
+        if ($_slMode === 'unlimited') {
+            echo '<span id="searchQuota" title="Recherches illimitees" style="display:inline-block;font-size:11px;padding:3px 9px;border-radius:10px;margin-left:4px;font-weight:800;cursor:default;background:#10b98125;color:#34d399;border:1px solid #10b98160;white-space:nowrap;">&infin;</span>';
+        } elseif ($_slMode === 'trial') {
+            // Visiteur anonyme : minuteur de decouverte gratuite (60 s) puis cadenas
+            $_slOver  = $_slTrialRemaining <= 0;
+            $_slCdTxt = sprintf('%d:%02d', intdiv($_slTrialRemaining, 60), $_slTrialRemaining % 60);
+            $_slLabel = $_slOver ? '&#128274; Connexion' : '&#9203; ' . $_slCdTxt;
+            $_slTitle = $_slOver
+                ? 'Decouverte gratuite terminee — connectez-vous pour rechercher'
+                : 'Decouverte gratuite : ' . $_slCdTxt . ' de recherche libre, puis connexion requise';
+            echo '<span id="searchQuota" data-trial="' . (int)$_slTrialRemaining . '" data-trial-total="' . (int)$_slTrialTotal . '" title="' . htmlspecialchars($_slTitle, ENT_QUOTES) . '" style="display:inline-block;font-size:11px;padding:3px 9px;border-radius:10px;margin-left:4px;font-weight:800;cursor:default;white-space:nowrap;background:#ef444430;color:#ff7675;border:1px solid #ef4444;animation:bkGoldBlink 0.9s ease-in-out infinite;">' . $_slLabel . '</span>';
+        } elseif ($_slLimit > 0) {
+            $_slInCd  = $_slCooldownRemaining > 0;
+            $_slCdTxt = sprintf('%d:%02d', intdiv($_slCooldownRemaining, 60), $_slCooldownRemaining % 60);
+            $_slLabel = $_slInCd ? '&#9203; ' . $_slCdTxt : $_slUsed . '/' . $_slLimit;
+            $_slTitle = $_slInCd
+                ? 'Prochaine recherche dans ' . $_slCdTxt
+                : $_slUsed . ' recherches sur ' . $_slLimit . ' aujourd\'hui';
+            $_slStyle = ($_slInCd || $_slUsed > $_slLimit * 0.8)
+                ? 'background:#ef444430;color:#ff7675;border:1px solid #ef4444;animation:bkGoldBlink 0.8s ease-in-out infinite;'
+                : 'background:#ffd70025;color:#ffd700;border:1px solid #ffd70060;animation:bkGoldBlink 1.5s ease-in-out infinite;';
+            echo '<span id="searchQuota" data-cooldown="' . $_slCooldownRemaining . '" data-cooldown-total="' . $_slCooldownTotal . '" data-used="' . $_slUsed . '" data-limit="' . $_slLimit . '" title="' . htmlspecialchars($_slTitle, ENT_QUOTES) . '" style="display:inline-block;font-size:11px;padding:3px 9px;border-radius:10px;margin-left:4px;font-weight:800;cursor:default;white-space:nowrap;' . $_slStyle . '">' . $_slLabel . '</span>';
+        }
+    ?>
+    <a href="<?= $_canonBase ?>/comparer" class="<?= $page === 'comparer' ? 'active' : '' ?>" style="color:#f59e0b;">Comparer</a>
+    <?php if ($navUser): ?><a href="<?= $_canonBase ?>/espace" class="<?= $page === 'espace' ? 'active' : '' ?>" style="color:#a29bfe;">Mon Espace</a><?php endif; ?>
+    <a href="<?= $_canonBase ?>/contact" class="<?= $page === 'contact' ? 'active' : '' ?>">Contact</a>
 </nav>
 
 <div class="container">
@@ -778,610 +1857,708 @@ if ($_slIp !== '' && empty($_COOKIE['bk_sa_token'])) {
 //  ACCUEIL — Stats globales
 // ================================================================
 if ($page === 'accueil'):
-    $data = apiCall("$BASE_API/stats.php");
+    // Landing statique - pas d'appel API pour garantir l'indexation par les bots de recherche
 ?>
 
-<h1>Base de Donnees Athletisme Francais — Athletes, Clubs, Records</h1>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-<div style="background:#f59e0b15;border:2px solid #f59e0b;border-radius:12px;padding:14px 20px;margin-bottom:20px;text-align:center;">
-    <p style="color:#f59e0b;font-size:14px;font-weight:700;line-height:1.6;margin:0;">
-        &#9888; Plateforme independante a caractere informatif — Bokonzi n'est affilie ni a la FFA ni a athle.fr.<br>
-        <span style="font-size:12px;font-weight:500;">Donnees issues de sources publiques, a des fins informatives et statistiques. <a href="#footerDisclaimer" style="color:#fbbf24;text-decoration:underline;">En savoir plus</a></span>
-    </p>
-</div>
-
-<?php if ($data && ($data['success'] ?? false)): ?>
-
-<!-- ======== STAT CARDS ======== -->
-<div class="grid" style="grid-template-columns:repeat(4,1fr);text-align:center;">
-    <a href="?page=athletes" class="card-link"><div class="card">
-        <div class="num"><?= number_format($data['comptages']['athletes']['count'], 0, ',', ' ') ?></div>
-        <div class="label">Athlètes</div>
-    </div></a>
-    <a href="?page=clubs" class="card-link"><div class="card accent-green">
-        <div class="num"><?= number_format($data['comptages']['clubs']['count'], 0, ',', ' ') ?></div>
-        <div class="label">Clubs</div>
-    </div></a>
-    <a href="?page=epreuves" class="card-link"><div class="card accent-purple">
-        <div class="num"><?= number_format($data['comptages']['epreuves']['count'], 0, ',', ' ') ?></div>
-        <div class="label">Épreuves</div>
-    </div></a>
-    <a href="?page=villes" class="card-link"><div class="card accent-green">
-        <div class="num"><?= number_format($data['comptages']['villes']['count'], 0, ',', ' ') ?></div>
-        <div class="label">Villes</div>
-    </div></a>
-</div>
-
-<!-- ======== TOP 30 ATHLETES ======== -->
-<?php if ($detailData && !empty($detailData['top_athletes'])): ?>
-<div style="margin-top:24px;margin-bottom:24px;">
-    <h2 style="margin:0 0 12px;"><span class="chart-icon" style="background:#ec489920;color:#f472b6;">&#127939;</span> Top 30 Athl&#232;tes</h2>
-    <div class="table-wrap">
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Sexe</th><th>Records</th><th>Podiums</th></tr></table>
-    <table class="bk-table">
-    <?php foreach (array_slice($detailData['top_athletes'], 0, 30) as $idx => $a): ?>
-        <tr>
-            <td style="color:#5a6580;"><?= $idx + 1 ?></td>
-            <td><a href="?page=profil&id=<?= $a['athlete_id'] ?>" style="color:#a29bfe;text-decoration:none;font-weight:600;"><?= htmlspecialchars($a['nom']) ?></a></td>
-            <td style="color:#8b949e;font-size:12px;"><?= htmlspecialchars(rtrim($a['club'] ?? '', '* ')) ?></td>
-            <td><span class="badge badge-<?= strtolower($a['sexe'] ?? '') ?>" style="font-size:11px;"><?= htmlspecialchars($a['sexe'] ?? '-') ?></span></td>
-            <td><?= ($a['nb_records'] ?? 0) > 0 ? '<span class="badge badge-perf">' . $a['nb_records'] . '</span>' : '-' ?></td>
-            <td><?= ($a['nb_podiums'] ?? 0) > 0 ? '<span style="color:#34d399;font-weight:600;">' . $a['nb_podiums'] . '</span>' : '-' ?></td>
-        </tr>
-    <?php endforeach; ?>
-    </table>
-    <table class="bk-table"><tr><th style="width:40px;">#</th><th>Athl&#232;te</th><th>Club</th><th>Sexe</th><th>Records</th><th>Podiums</th></tr></table>
-    </div>
-</div>
-<?php endif; ?>
-
-<!-- ======== STADE 3D CSS ======== -->
-<div style="margin-bottom:24px;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#0a0e14 0%,#131a24 60%,#1a2332 100%);padding:30px 0;position:relative;">
-    <!-- Etoiles -->
-    <div style="position:absolute;top:0;left:0;width:100%;height:50%;overflow:hidden;pointer-events:none;" id="stadeStars"></div>
-    <!-- Scene 3D -->
-    <div style="perspective:1000px;display:flex;justify-content:center;align-items:center;height:500px;">
-        <div id="stadeRotate" style="transform-style:preserve-3d;transform:rotateX(55deg) rotateZ(0deg);width:620px;height:430px;position:relative;animation:stadeRotation 90s linear infinite;">
-            <!-- Sol ombre -->
-            <div style="position:absolute;width:680px;height:490px;left:-30px;top:-30px;border-radius:200px;background:radial-gradient(ellipse,rgba(20,10,40,0.5) 0%,transparent 70%);transform:translateZ(-2px);"></div>
-            <!-- Piste rouge (stade = rectangle + 2 demi-cercles) -->
-            <div style="position:absolute;width:620px;height:350px;left:0;top:40px;border-radius:175px;background:linear-gradient(135deg,#a83232,#c0392b,#e74c3c);box-shadow:0 0 40px rgba(192,57,43,0.3);transform:translateZ(0px);"></div>
-            <!-- Couloirs (8 lignes) -->
-            <div style="position:absolute;width:594px;height:324px;left:13px;top:53px;border-radius:162px;border:1px solid rgba(255,255,255,0.15);transform:translateZ(1px);"></div>
-            <div style="position:absolute;width:568px;height:298px;left:26px;top:66px;border-radius:149px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
-            <div style="position:absolute;width:542px;height:272px;left:39px;top:79px;border-radius:136px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
-            <div style="position:absolute;width:516px;height:246px;left:52px;top:92px;border-radius:123px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
-            <div style="position:absolute;width:490px;height:220px;left:65px;top:105px;border-radius:110px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
-            <div style="position:absolute;width:464px;height:194px;left:78px;top:118px;border-radius:97px;border:1px solid rgba(255,255,255,0.12);transform:translateZ(1px);"></div>
-            <div style="position:absolute;width:438px;height:168px;left:91px;top:131px;border-radius:84px;border:1px solid rgba(255,255,255,0.15);transform:translateZ(1px);"></div>
-            <!-- Pelouse interieure (forme piste) -->
-            <div style="position:absolute;width:418px;height:148px;left:101px;top:141px;border-radius:74px;background:linear-gradient(135deg,#1a6b3c,#27ae60,#2ecc71);box-shadow:inset 0 0 25px rgba(0,0,0,0.3);transform:translateZ(1px);"></div>
-            <!-- Terrain de foot rectangulaire -->
-            <div style="position:absolute;width:290px;height:120px;left:165px;top:155px;border:2px solid rgba(255,255,255,0.5);transform:translateZ(2px);"></div>
-            <!-- Ligne mediane foot -->
-            <div style="position:absolute;width:0px;height:120px;left:310px;top:155px;border-left:1px solid rgba(255,255,255,0.4);transform:translateZ(2px);"></div>
-            <!-- Rond central foot -->
-            <div style="position:absolute;width:50px;height:50px;left:285px;top:190px;border-radius:50%;border:1px solid rgba(255,255,255,0.4);transform:translateZ(2px);"></div>
-            <!-- Point central -->
-            <div style="position:absolute;width:4px;height:4px;left:308px;top:213px;border-radius:50%;background:rgba(255,255,255,0.5);transform:translateZ(2px);"></div>
-            <!-- Surface reparation gauche -->
-            <div style="position:absolute;width:44px;height:66px;left:165px;top:182px;border-right:1px solid rgba(255,255,255,0.35);border-top:1px solid rgba(255,255,255,0.35);border-bottom:1px solid rgba(255,255,255,0.35);transform:translateZ(2px);"></div>
-            <!-- Surface but gauche -->
-            <div style="position:absolute;width:18px;height:34px;left:165px;top:198px;border-right:1px solid rgba(255,255,255,0.3);border-top:1px solid rgba(255,255,255,0.3);border-bottom:1px solid rgba(255,255,255,0.3);transform:translateZ(2px);"></div>
-            <!-- Surface reparation droite -->
-            <div style="position:absolute;width:44px;height:66px;left:411px;top:182px;border-left:1px solid rgba(255,255,255,0.35);border-top:1px solid rgba(255,255,255,0.35);border-bottom:1px solid rgba(255,255,255,0.35);transform:translateZ(2px);"></div>
-            <!-- Surface but droite -->
-            <div style="position:absolute;width:18px;height:34px;left:437px;top:198px;border-left:1px solid rgba(255,255,255,0.3);border-top:1px solid rgba(255,255,255,0.3);border-bottom:1px solid rgba(255,255,255,0.3);transform:translateZ(2px);"></div>
-            <!-- Ligne arrivee piste -->
-            <div style="position:absolute;width:2px;height:95px;right:100px;top:168px;background:rgba(255,255,255,0.5);transform:translateZ(2px);"></div>
-            <!-- Tribune haut -->
-            <div style="position:absolute;width:400px;height:20px;left:110px;top:-38px;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#5238ba,#3f2896);transform:translateZ(24px);box-shadow:0 4px 15px rgba(82,56,186,0.4);"></div>
-            <div style="position:absolute;width:430px;height:16px;left:95px;top:-18px;border-radius:2px;background:linear-gradient(180deg,#362180,#2d1b69);transform:translateZ(16px);"></div>
-            <div style="position:absolute;width:460px;height:14px;left:80px;top:0px;border-radius:2px;background:#2d1b69;transform:translateZ(9px);"></div>
-            <!-- Tribune bas -->
-            <div style="position:absolute;width:400px;height:20px;left:110px;bottom:-38px;border-radius:0 0 4px 4px;background:linear-gradient(0deg,#5238ba,#3f2896);transform:translateZ(24px);box-shadow:0 -4px 15px rgba(82,56,186,0.4);"></div>
-            <div style="position:absolute;width:430px;height:16px;left:95px;bottom:-18px;border-radius:2px;background:linear-gradient(0deg,#362180,#2d1b69);transform:translateZ(16px);"></div>
-            <div style="position:absolute;width:460px;height:14px;left:80px;bottom:0px;border-radius:2px;background:#2d1b69;transform:translateZ(9px);"></div>
-            <!-- Tribune gauche -->
-            <div style="position:absolute;width:18px;height:240px;left:-36px;top:95px;border-radius:4px 0 0 4px;background:linear-gradient(90deg,#5238ba,#3f2896);transform:translateZ(22px);box-shadow:-4px 0 15px rgba(82,56,186,0.4);"></div>
-            <div style="position:absolute;width:14px;height:265px;left:-18px;top:82px;border-radius:2px;background:#362180;transform:translateZ(14px);"></div>
-            <!-- Tribune droite -->
-            <div style="position:absolute;width:18px;height:240px;right:-36px;top:95px;border-radius:0 4px 4px 0;background:linear-gradient(270deg,#5238ba,#3f2896);transform:translateZ(22px);box-shadow:4px 0 15px rgba(82,56,186,0.4);"></div>
-            <div style="position:absolute;width:14px;height:265px;right:-18px;top:82px;border-radius:2px;background:#362180;transform:translateZ(14px);"></div>
-            <!-- Projecteurs -->
-            <div style="position:absolute;left:-56px;top:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
-            <div style="position:absolute;right:-56px;top:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
-            <div style="position:absolute;left:-56px;bottom:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
-            <div style="position:absolute;right:-56px;bottom:-56px;width:12px;height:12px;border-radius:50%;background:#ffee88;box-shadow:0 0 30px #ffdd44,0 0 60px rgba(255,221,68,0.3);transform:translateZ(40px);"></div>
-        </div>
-    </div>
-    <!-- Texte -->
-    <div style="text-align:center;margin-top:10px;">
-        <div style="color:#a78bfa;font-size:16px;font-weight:700;letter-spacing:2px;">BOKONZI</div>
-        <div style="color:#5a6580;font-size:11px;margin-top:2px;">Base de Données Athlétisme Français</div>
-    </div>
-</div>
 <style>
-@keyframes stadeRotation {
-    from { transform: rotateX(55deg) rotateZ(0deg); }
-    to { transform: rotateX(55deg) rotateZ(360deg); }
+/* ============================================================ */
+/*  LANDING BOKONZI — SaaS Style                                 */
+/* ============================================================ */
+.bk-land,.bk-land *{font-family:'Inter','Segoe UI',system-ui,sans-serif;box-sizing:border-box;}
+.bk-land{max-width:1180px;margin:0 auto;padding:0 20px;}
+
+/* --- HERO 2 colonnes --------------------------------------- */
+.bk-hero2{display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:center;padding:80px 0 64px 0;position:relative;}
+.bk-hero2::before{content:"";position:absolute;top:-50px;left:-100px;width:700px;height:700px;background:radial-gradient(circle at center,rgba(108,92,231,0.15) 0%,transparent 60%);pointer-events:none;z-index:-1;}
+.bk-hero2::after{content:"";position:absolute;bottom:-100px;right:-100px;width:500px;height:500px;background:radial-gradient(circle at center,rgba(236,72,153,0.12) 0%,transparent 60%);pointer-events:none;z-index:-1;}
+.bk-hero-left{position:relative;z-index:1;}
+.bk-hero-right{position:relative;z-index:1;}
+.bk-tag{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:2px;color:#a78bfa;text-transform:uppercase;margin-bottom:24px;padding:7px 16px;border:1px solid #6c5ce740;border-radius:100px;background:#6c5ce710;}
+.bk-tag .dot{width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 10px #10b981;animation:pulseDot 2s infinite;}
+@keyframes pulseDot{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.bk-hero-left h1{font-size:clamp(36px,4.5vw,58px);font-weight:800;margin:0 0 20px 0;color:#fff;line-height:1.05;letter-spacing:-1.8px;}
+.bk-hero-left h1 .grad{background:linear-gradient(135deg,#a78bfa 0%,#ec4899 50%,#f59e0b 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.bk-hero-lead{font-size:18px;line-height:1.65;color:#8b949e;margin:0 0 32px 0;max-width:520px;font-weight:400;}
+.bk-hero-ctas{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px;}
+.bk-btn-primary{display:inline-flex;align-items:center;gap:10px;padding:15px 30px;font-size:15px;font-weight:700;text-decoration:none;color:#fff;background:linear-gradient(135deg,#6c5ce7 0%,#ec4899 100%);border-radius:12px;box-shadow:0 12px 32px rgba(108,92,231,0.35);transition:transform .2s,box-shadow .2s;}
+.bk-btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 42px rgba(236,72,153,0.45);}
+.bk-btn-primary .arr{transition:transform .2s;}
+.bk-btn-primary:hover .arr{transform:translateX(4px);}
+.bk-btn-secondary{display:inline-flex;align-items:center;gap:10px;padding:15px 26px;font-size:15px;font-weight:700;text-decoration:none;color:#a78bfa;background:transparent;border:1.5px solid #6c5ce760;border-radius:12px;transition:all .2s;}
+.bk-btn-secondary:hover{background:#6c5ce710;border-color:#a78bfa;color:#fff;}
+.bk-hero-trust{display:flex;align-items:center;gap:20px;flex-wrap:wrap;color:#5a6580;font-size:13px;font-weight:500;}
+.bk-hero-trust .item{display:flex;align-items:center;gap:6px;}
+.bk-hero-trust .chk{color:#10b981;font-weight:800;}
+
+/* --- MOCKUP FICHE ATHLETE (cote droit) --------------------- */
+.bk-mockup{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:20px;padding:24px;box-shadow:0 32px 80px rgba(108,92,231,0.25),0 0 0 1px rgba(108,92,231,0.15);position:relative;transform:perspective(1200px) rotateY(-4deg) rotateX(2deg);}
+.bk-mockup::before{content:"";position:absolute;top:12px;left:24px;display:flex;gap:6px;}
+.bk-mockup-dots{display:flex;gap:6px;margin-bottom:18px;}
+.bk-mockup-dots span{width:9px;height:9px;border-radius:50%;background:#2a3550;}
+.bk-mockup-dots span:first-child{background:#ef4444;}
+.bk-mockup-dots span:nth-child(2){background:#f59e0b;}
+.bk-mockup-dots span:nth-child(3){background:#10b981;}
+.bk-mockup-profile{display:flex;align-items:center;gap:14px;padding:14px;background:#0d1117;border:1px solid #1e2a3a;border-radius:14px;margin-bottom:14px;}
+.bk-mockup-avatar{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#6c5ce7,#ec4899);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:800;flex-shrink:0;}
+.bk-mockup-info{flex:1;min-width:0;}
+.bk-mockup-name{color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;}
+.bk-mockup-meta{display:flex;gap:6px;flex-wrap:wrap;}
+.bk-mockup-meta span{font-size:10px;padding:2px 7px;border-radius:100px;background:#6c5ce720;color:#a78bfa;font-weight:600;}
+.bk-mockup-badge{font-size:10px;padding:3px 9px;border-radius:100px;background:#c026d320;color:#e879f9;border:1px solid #c026d340;font-weight:700;}
+.bk-mockup-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+.bk-mockup-stat{background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;padding:10px;text-align:center;}
+.bk-mockup-stat .n{color:#fff;font-size:16px;font-weight:800;line-height:1;}
+.bk-mockup-stat .l{color:#5a6580;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-weight:600;}
+.bk-mockup-chart{background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;padding:12px;margin-bottom:12px;}
+.bk-mockup-chart .title{color:#8b949e;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;font-weight:600;}
+.bk-mockup-bars{display:flex;align-items:flex-end;gap:5px;height:70px;}
+.bk-mockup-bars .bar{flex:1;background:linear-gradient(180deg,#a78bfa,#6c5ce7);border-radius:3px 3px 0 0;position:relative;transition:all .3s;}
+.bk-mockup-bars .bar:nth-child(1){height:35%;}
+.bk-mockup-bars .bar:nth-child(2){height:45%;}
+.bk-mockup-bars .bar:nth-child(3){height:60%;}
+.bk-mockup-bars .bar:nth-child(4){height:50%;}
+.bk-mockup-bars .bar:nth-child(5){height:75%;}
+.bk-mockup-bars .bar:nth-child(6){height:65%;}
+.bk-mockup-bars .bar:nth-child(7){height:90%;background:linear-gradient(180deg,#ec4899,#c026d3);}
+.bk-mockup-row{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;font-size:11px;}
+.bk-mockup-row .lbl{color:#8b949e;}
+.bk-mockup-row .val{color:#34d399;font-weight:700;font-size:13px;}
+.bk-mockup-float{position:absolute;top:-15px;right:-15px;background:linear-gradient(135deg,#10b981,#34d399);color:#fff;padding:8px 14px;border-radius:100px;font-size:11px;font-weight:800;box-shadow:0 10px 25px rgba(16,185,129,0.4);letter-spacing:0.5px;text-transform:uppercase;}
+.bk-mockup-tabs{display:flex;gap:4px;padding:4px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;margin-bottom:14px;}
+.bk-mockup-tab{flex:1;padding:7px;text-align:center;font-size:10px;color:#5a6580;font-weight:600;border-radius:7px;transition:all .2s;}
+.bk-mockup-tab.active{background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;font-weight:700;box-shadow:0 4px 10px rgba(108,92,231,0.25);}
+.bk-mockup-records{margin-top:12px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;padding:8px;}
+.bk-mockup-rec-row{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px dashed #1e2a3a;}
+.bk-mockup-rec-row:last-child{border-bottom:none;}
+.bk-mockup-rec-ico{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6c5ce7,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+.bk-mockup-rec-body{flex:1;min-width:0;}
+.bk-mockup-rec-ep{color:#c9d1d9;font-size:11px;font-weight:700;}
+.bk-mockup-rec-date{color:#5a6580;font-size:9px;margin-top:2px;font-weight:500;}
+.bk-mockup-rec-perf{color:#34d399;font-size:13px;font-weight:800;flex-shrink:0;}
+
+/* --- TRUST (chiffres) --------------------------------------- */
+.bk-trust{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;padding:48px 32px;background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:20px;margin-bottom:80px;position:relative;overflow:hidden;}
+.bk-trust::before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120%;height:200%;background:radial-gradient(ellipse at center,rgba(108,92,231,0.05) 0%,transparent 60%);pointer-events:none;}
+.bk-trust-item{text-align:center;position:relative;}
+.bk-trust-num{font-size:clamp(28px,3.5vw,42px);font-weight:800;background:linear-gradient(135deg,#a78bfa 0%,#ec4899 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;line-height:1;letter-spacing:-1.2px;}
+.bk-trust-lbl{color:#8b949e;font-size:12px;margin-top:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;}
+
+/* --- SECTIONS ----------------------------------------------- */
+.bk-sec{padding:72px 0;}
+.bk-sec-head{text-align:center;max-width:640px;margin:0 auto 56px auto;}
+.bk-eyebrow{font-size:12px;font-weight:700;letter-spacing:3px;color:#6c5ce7;text-transform:uppercase;margin:0 0 14px 0;display:inline-block;}
+.bk-sec h2{font-size:clamp(26px,3.2vw,38px);font-weight:800;color:#fff;margin:0 0 16px 0;line-height:1.15;letter-spacing:-0.8px;}
+.bk-sec-lead{font-size:17px;color:#8b949e;line-height:1.65;margin:0;}
+
+/* --- FONCTIONNALITES (4 cards avec mini-mockups) ----------- */
+.bk-feats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;}
+.bk-feat-card{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:18px;padding:28px;transition:all .3s;position:relative;overflow:hidden;}
+.bk-feat-card:hover{border-color:#6c5ce760;transform:translateY(-4px);box-shadow:0 20px 50px rgba(108,92,231,0.18);}
+.bk-feat-card .mini-mockup{background:#0a0e14;border:1px solid #1e2a3a;border-radius:12px;padding:14px;margin-bottom:20px;height:140px;overflow:hidden;position:relative;}
+
+/* Mockup : Fiche */
+.mm-profile{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
+.mm-avatar{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#6c5ce7,#ec4899);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;}
+.mm-lines{flex:1;}
+.mm-line{height:8px;border-radius:4px;background:#1e2a3a;margin-bottom:5px;}
+.mm-line.w60{width:60%;}
+.mm-line.w40{width:40%;background:#2a3550;}
+.mm-stats{display:flex;gap:6px;margin-top:8px;}
+.mm-stat-box{flex:1;background:#131a28;border:1px solid #1e2a3a;border-radius:6px;padding:6px 4px;text-align:center;}
+.mm-stat-box .sn{color:#a78bfa;font-size:11px;font-weight:800;}
+.mm-stat-box .sl{color:#5a6580;font-size:7px;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px;}
+
+/* Mockup : Recherche */
+.mm-search-bar{background:#131a28;border:1px solid #6c5ce740;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.mm-search-bar .ico{color:#a78bfa;font-size:12px;}
+.mm-search-bar .txt{color:#8b949e;font-size:11px;font-weight:500;}
+.mm-search-bar .caret{width:1px;height:12px;background:#a78bfa;animation:mmBlink 1s infinite;}
+@keyframes mmBlink{0%,50%{opacity:1;}51%,100%{opacity:0;}}
+.mm-filters{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;}
+.mm-filter{padding:3px 9px;background:#6c5ce720;border:1px solid #6c5ce740;border-radius:100px;color:#a78bfa;font-size:9px;font-weight:600;}
+.mm-result{display:flex;align-items:center;gap:8px;padding:6px 8px;background:#131a28;border-radius:6px;margin-bottom:4px;}
+.mm-result .dot2{width:6px;height:6px;border-radius:50%;background:#a78bfa;}
+.mm-result .res-line{flex:1;height:5px;border-radius:3px;background:#1e2a3a;}
+
+/* Mockup : Comparateur */
+.mm-compare{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.mm-comp-col{text-align:center;}
+.mm-comp-avatar{width:28px;height:28px;border-radius:8px;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;}
+.mm-comp-col:first-child .mm-comp-avatar{background:linear-gradient(135deg,#6c5ce7,#a78bfa);}
+.mm-comp-col:last-child .mm-comp-avatar{background:linear-gradient(135deg,#ec4899,#f59e0b);}
+.mm-comp-bar{height:50px;background:#131a28;border:1px solid #1e2a3a;border-radius:6px;position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:4px;}
+.mm-comp-bar .fill{width:100%;border-radius:3px;}
+.mm-comp-col:first-child .fill{height:70%;background:linear-gradient(180deg,#a78bfa,#6c5ce7);}
+.mm-comp-col:last-child .fill{height:90%;background:linear-gradient(180deg,#f59e0b,#ec4899);}
+.mm-comp-val{color:#fff;font-size:10px;font-weight:700;margin-top:6px;}
+
+/* Mockup : Club */
+.mm-club{display:grid;grid-template-columns:40px 1fr;gap:10px;margin-bottom:10px;}
+.mm-club-ico{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#10b981,#34d399);display:flex;align-items:center;justify-content:center;font-size:16px;}
+.mm-club-body{flex:1;}
+.mm-club-name{color:#fff;font-size:11px;font-weight:700;margin-bottom:4px;}
+.mm-club-stats{display:flex;gap:6px;}
+.mm-club-stats span{color:#5a6580;font-size:9px;}
+.mm-club-tabs{display:flex;gap:4px;padding:4px;background:#131a28;border-radius:6px;}
+.mm-tab{flex:1;padding:4px;font-size:8px;color:#8b949e;text-align:center;border-radius:4px;font-weight:600;}
+.mm-tab.active{background:#6c5ce730;color:#a78bfa;}
+
+.bk-feat-ico{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,#6c5ce725,#ec489925);border:1px solid #6c5ce740;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px;}
+.bk-feat-card h3{margin:0 0 8px 0;font-size:19px;color:#fff;font-weight:700;}
+.bk-feat-card p{margin:0 0 16px 0;font-size:14px;color:#8b949e;line-height:1.65;}
+.bk-feat-link{display:inline-flex;align-items:center;gap:6px;color:#a78bfa;font-size:13px;font-weight:700;text-decoration:none;transition:transform .2s;}
+.bk-feat-link:hover{transform:translateX(4px);color:#fff;}
+
+/* --- CAS D'USAGE -------------------------------------------- */
+.bk-usecases{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.bk-usecase{background:#0d1117;border:1px solid #1e2a3a;border-radius:18px;padding:32px 24px;text-align:center;transition:all .3s;}
+.bk-usecase:hover{border-color:#6c5ce760;transform:translateY(-3px);}
+.bk-usecase-ico{width:64px;height:64px;margin:0 auto 16px;border-radius:16px;background:linear-gradient(135deg,#6c5ce7,#ec4899);display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 10px 28px rgba(108,92,231,0.3);}
+.bk-usecase h3{margin:0 0 10px 0;font-size:18px;color:#fff;font-weight:700;}
+.bk-usecase p{margin:0;font-size:14px;color:#8b949e;line-height:1.65;}
+
+/* --- DEMO PLEINE LARGEUR ------------------------------------ */
+.bk-demo{position:relative;}
+.bk-demo-frame{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:18px;overflow:hidden;box-shadow:0 40px 100px rgba(108,92,231,0.25),0 0 0 1px rgba(108,92,231,0.15);}
+.bk-demo-topbar{display:flex;align-items:center;gap:14px;padding:12px 18px;background:#0a0e14;border-bottom:1px solid #1e2a3a;}
+.bk-demo-dots{display:flex;gap:6px;}
+.bk-demo-dots span{width:10px;height:10px;border-radius:50%;background:#2a3550;}
+.bk-demo-dots span:first-child{background:#ef4444;}
+.bk-demo-dots span:nth-child(2){background:#f59e0b;}
+.bk-demo-dots span:nth-child(3){background:#10b981;}
+.bk-demo-urlbar{flex:1;display:flex;align-items:center;gap:8px;background:#131a28;border:1px solid #1e2a3a;border-radius:8px;padding:7px 14px;color:#8b949e;font-size:12px;font-family:'Menlo','Monaco',monospace;}
+.bk-demo-urlbar .lock{color:#10b981;font-size:11px;}
+.bk-demo-body{display:grid;grid-template-columns:200px 1fr;min-height:500px;}
+.bk-demo-sidebar{background:#0a0e14;border-right:1px solid #1e2a3a;padding:20px 12px;display:flex;flex-direction:column;gap:4px;}
+.bk-demo-logo{font-size:16px;font-weight:800;color:#a78bfa;padding:10px 14px;letter-spacing:-0.5px;margin-bottom:10px;}
+.bk-demo-nav{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;color:#8b949e;font-size:13px;font-weight:600;cursor:default;}
+.bk-demo-nav .ico{width:16px;text-align:center;}
+.bk-demo-nav.active{background:#6c5ce720;color:#a78bfa;border-left:2px solid #6c5ce7;padding-left:12px;}
+.bk-demo-main{padding:28px;display:flex;flex-direction:column;gap:14px;}
+.bk-demo-profile{display:flex;align-items:center;gap:16px;padding:18px;background:#0d1117;border:1px solid #1e2a3a;border-radius:14px;}
+.bk-demo-avatar-big{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#6c5ce7,#ec4899);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:800;flex-shrink:0;box-shadow:0 10px 24px rgba(108,92,231,0.3);}
+.bk-demo-prof-body{flex:1;min-width:0;}
+.bk-demo-prof-name{color:#fff;font-size:18px;font-weight:800;margin-bottom:6px;}
+.bk-demo-prof-meta{display:flex;gap:6px;flex-wrap:wrap;}
+.bk-demo-prof-meta .mt{font-size:11px;padding:3px 10px;background:#1e2a3a;color:#8b949e;border-radius:100px;font-weight:600;}
+.bk-demo-prof-meta .mt.purple{background:#6c5ce720;color:#a78bfa;}
+.bk-demo-prof-meta .mt.green{background:#10b98118;color:#34d399;}
+.bk-demo-follow{padding:8px 18px;background:#1e2a3a;border:1px solid #2a3550;border-radius:8px;color:#c9d1d9;font-size:12px;font-weight:700;cursor:default;}
+.bk-demo-statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.bk-demo-stat{background:#0d1117;border:1px solid #1e2a3a;border-radius:12px;padding:16px 12px;text-align:center;}
+.bk-demo-stat .v{color:#fff;font-size:22px;font-weight:800;line-height:1;}
+.bk-demo-stat .l{color:#5a6580;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;margin-top:6px;font-weight:700;}
+.bk-demo-row{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;}
+.bk-demo-card{background:#0d1117;border:1px solid #1e2a3a;border-radius:12px;padding:16px;}
+.bk-demo-card-head{color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;}
+.bk-demo-chart-big{display:flex;align-items:flex-end;gap:4px;height:120px;}
+.bk-demo-chart-big .cb{flex:1;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#a78bfa,#6c5ce7);}
+.bk-demo-chart-big .cb:nth-child(1){height:30%;}
+.bk-demo-chart-big .cb:nth-child(2){height:45%;}
+.bk-demo-chart-big .cb:nth-child(3){height:38%;}
+.bk-demo-chart-big .cb:nth-child(4){height:55%;}
+.bk-demo-chart-big .cb:nth-child(5){height:48%;}
+.bk-demo-chart-big .cb:nth-child(6){height:65%;}
+.bk-demo-chart-big .cb:nth-child(7){height:72%;}
+.bk-demo-chart-big .cb:nth-child(8){height:68%;}
+.bk-demo-chart-big .cb:nth-child(9){height:82%;}
+.bk-demo-chart-big .cb:nth-child(10){height:95%;background:linear-gradient(180deg,#ec4899,#c026d3);}
+.bk-demo-rec{display:flex;flex-direction:column;gap:8px;}
+.bk-demo-rec-item{display:flex;justify-content:space-between;align-items:center;padding:10px;background:#131a28;border-radius:8px;}
+.bk-demo-rec-item .ep{color:#c9d1d9;font-size:12px;font-weight:600;}
+.bk-demo-rec-item .pf{color:#34d399;font-size:14px;font-weight:800;}
+.bk-demo-table{width:100%;border-collapse:collapse;font-size:12px;}
+.bk-demo-table th{text-align:left;padding:10px 12px;color:#5a6580;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;border-bottom:1px solid #1e2a3a;}
+.bk-demo-table td{padding:10px 12px;color:#c9d1d9;border-bottom:1px dashed #1e2a3a;}
+.bk-demo-table tr:last-child td{border-bottom:none;}
+.bk-demo-table .lvl{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:800;}
+.bk-demo-table .lvl.n{background:#e11d4820;color:#fb7185;border:1px solid #e11d4840;}
+.bk-demo-table .lvl.r{background:#0891b220;color:#22d3ee;border:1px solid #0891b240;}
+.bk-demo-cta{text-align:center;margin-top:28px;}
+@media(max-width:860px){
+    .bk-demo-body{grid-template-columns:1fr;}
+    .bk-demo-sidebar{display:flex;flex-direction:row;overflow-x:auto;padding:12px;gap:2px;}
+    .bk-demo-logo{display:none;}
+    .bk-demo-nav{flex-shrink:0;padding:8px 12px;}
+    .bk-demo-main{padding:18px;}
+    .bk-demo-statgrid{grid-template-columns:repeat(2,1fr);}
+    .bk-demo-row{grid-template-columns:1fr;}
 }
-@keyframes bkGoldBlink {
-    0%, 100% { opacity: 1; text-shadow: 0 0 8px rgba(255,215,0,0.6); }
-    50% { opacity: 0.6; text-shadow: none; }
+
+/* --- CTA FINAL ---------------------------------------------- */
+.bk-cta-final{background:linear-gradient(135deg,#6c5ce7 0%,#ec4899 100%);border-radius:24px;padding:64px 32px;text-align:center;margin:40px 0;box-shadow:0 24px 60px rgba(108,92,231,0.3);position:relative;overflow:hidden;}
+.bk-cta-final::before{content:"";position:absolute;top:-50%;left:-10%;width:120%;height:200%;background:radial-gradient(ellipse at center,rgba(255,255,255,0.1) 0%,transparent 60%);pointer-events:none;}
+.bk-cta-final h2{color:#fff;font-size:clamp(26px,3.2vw,36px);margin:0 0 14px 0;font-weight:800;letter-spacing:-0.5px;position:relative;}
+.bk-cta-final p{color:rgba(255,255,255,0.92);font-size:16px;margin:0 0 30px 0;max-width:520px;margin-left:auto;margin-right:auto;line-height:1.6;position:relative;}
+.bk-cta-ctas{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;position:relative;}
+.bk-cta-btn-w{display:inline-flex;align-items:center;gap:10px;padding:15px 32px;background:#fff;color:#6c5ce7;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;transition:transform .2s,box-shadow .2s;box-shadow:0 10px 28px rgba(0,0,0,0.25);}
+.bk-cta-btn-w:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(0,0,0,0.35);}
+.bk-cta-btn-gh{display:inline-flex;align-items:center;gap:10px;padding:15px 28px;background:transparent;color:#fff;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;border:1.5px solid rgba(255,255,255,0.3);transition:all .2s;}
+.bk-cta-btn-gh:hover{background:rgba(255,255,255,0.1);border-color:#fff;}
+
+/* --- DISCLAIMER --------------------------------------------- */
+.bk-disc-mini{margin:32px 0;padding:14px 22px;background:#f59e0b08;border:1px solid #f59e0b30;border-radius:12px;text-align:center;font-size:12px;color:#8b949e;line-height:1.7;}
+.bk-disc-mini strong{color:#f59e0b;font-weight:700;}
+.bk-disc-mini a{color:#a78bfa;text-decoration:none;font-weight:600;}
+.bk-disc-mini a:hover{text-decoration:underline;}
+
+/* --- RESPONSIVE --------------------------------------------- */
+@media(max-width:940px){
+    .bk-hero2{grid-template-columns:1fr;gap:48px;padding:56px 0 40px 0;}
+    .bk-hero-right{order:2;max-width:520px;margin:0 auto;width:100%;}
+    .bk-hero-left{order:1;text-align:center;}
+    .bk-hero-lead{margin:0 auto 28px auto;}
+    .bk-hero-ctas,.bk-hero-trust{justify-content:center;}
+    .bk-mockup{transform:none;}
+    .bk-trust{grid-template-columns:repeat(2,1fr);gap:28px 14px;padding:32px 20px;}
+    .bk-feats-grid{grid-template-columns:1fr;}
+    .bk-usecases{grid-template-columns:1fr;}
+    .bk-sec{padding:48px 0;}
 }
+@media(max-width:560px){
+    .bk-mockup-stats{grid-template-columns:repeat(3,1fr);}
+}
+@keyframes bkGoldBlink{0%,100%{opacity:1;text-shadow:0 0 8px rgba(255,215,0,0.6);}50%{opacity:0.6;text-shadow:none;}}
 </style>
-<script>
-(function(){
-    var c=document.getElementById('stadeStars');if(!c)return;
-    var h='';for(var i=0;i<50;i++){
-        var x=Math.random()*100,y=Math.random()*100,s=Math.random()*2+0.5,d=Math.random()*3+1;
-        h+='<div style="position:absolute;left:'+x+'%;top:'+y+'%;width:'+s+'px;height:'+s+'px;background:#fff;border-radius:50%;opacity:'+(Math.random()*0.5+0.2)+';animation:stadeStar '+d+'s ease-in-out infinite alternate;"></div>';
-    }
-    c.innerHTML=h;
-    if(!document.getElementById('stadeStarStyle')){
-        var st=document.createElement('style');st.id='stadeStarStyle';
-        st.textContent='@keyframes stadeStar{from{opacity:0.1;}to{opacity:0.6;}}';
-        document.head.appendChild(st);
-    }
-})();
-</script>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<!-- ======== TABLEAUX DETAILS (chargés en AJAX) ======== -->
-<div id="clubDetailPanelAccueil" class="club-detail-panel">
-    <div class="club-detail-header">
-        <h2 id="clubDetailNameAccueil"></h2>
-        <span class="meta-info" id="clubDetailMetaAccueil"></span>
-        <button class="btn-follow btn-follow-club" id="btnFollowClubAccueil" style="display:none;">&#9825; Suivre</button>
-        <button onclick="closeClubDetailAccueil()" class="btn-close-detail">&times; Fermer</button>
-    </div>
-    <div class="club-detail-tabs">
-        <button class="club-detail-tab active" data-tab="epreuves" onclick="switchClubTabAccueil('epreuves')">Épreuves</button>
-        <button class="club-detail-tab" data-tab="nationalites" onclick="switchClubTabAccueil('nationalites')">Nationalités</button>
-        <button class="club-detail-tab" data-tab="stats" onclick="switchClubTabAccueil('stats')">Stats</button>
-        <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabAccueil('performances')">Performances</button>
-        <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabAccueil('resume')">Resume</button>
-        <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTabAccueil('sprint')" style="color:#ff6b6b;">Sprint</button>
-    </div>
-    <div class="club-search-bar" id="clubSearchBarAccueil" style="display:none;padding:8px 16px;">
-        <div style="position:relative;">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#5a6580;font-size:14px;">&#128269;</span>
-            <input type="text" id="clubSearchInputAccueil" placeholder="Rechercher un athlète dans ce club..." autocomplete="off" style="width:100%;padding:8px 12px 8px 32px;border-radius:8px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;outline:none;transition:border-color .2s;">
+<div class="bk-land">
+
+    <!-- ============ HERO 2 COLONNES ============ -->
+    <section class="bk-hero2">
+        <div class="bk-hero-left">
+            <div class="bk-tag"><span class="dot"></span>Bokonzi &middot; Data sportive</div>
+            <h1>Analysez et comparez les <span class="grad">performances sportives</span> en quelques secondes.</h1>
+            <p class="bk-hero-lead">Bokonzi centralise la data de l'athletisme francais : athletes, clubs, epreuves, records. Version gratuite complete, offres Pro pour les usages avances.</p>
+            <div class="bk-hero-ctas">
+                <a href="<?= BK_BASE ?>/athletes" class="bk-btn-primary">Commencer gratuitement <span class="arr">&rarr;</span></a>
+                <a href="#fonctionnalites" class="bk-btn-secondary">Voir les fonctionnalites</a>
+            </div>
+            <div class="bk-hero-trust">
+                <span class="item"><span class="chk">&#10003;</span>Version gratuite</span>
+                <span class="item"><span class="chk">&#10003;</span>Sans inscription</span>
+                <span class="item"><span class="chk">&#10003;</span>Donnees publiques</span>
+            </div>
         </div>
+
+        <div class="bk-hero-right">
+            <div class="bk-mockup">
+                <div class="bk-mockup-dots"><span></span><span></span><span></span></div>
+                <div class="bk-mockup-tabs">
+                    <div class="bk-mockup-tab active">Fiche</div>
+                    <div class="bk-mockup-tab">Records</div>
+                    <div class="bk-mockup-tab">Progression</div>
+                    <div class="bk-mockup-tab">Comparer</div>
+                </div>
+                <div class="bk-mockup-profile">
+                    <div class="bk-mockup-avatar">BK</div>
+                    <div class="bk-mockup-info">
+                        <div class="bk-mockup-name">Apercu du service</div>
+                        <div class="bk-mockup-meta">
+                            <span>Exemple</span>
+                            <span class="bk-mockup-badge">Demo</span>
+                            <span style="font-size:10px;padding:2px 7px;border-radius:100px;background:#10b98118;color:#34d399;font-weight:700;">Actif</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bk-mockup-stats">
+                    <div class="bk-mockup-stat"><div class="n">&mdash;&mdash;</div><div class="l">Records</div></div>
+                    <div class="bk-mockup-stat"><div class="n">&mdash;&mdash;</div><div class="l">Medailles</div></div>
+                    <div class="bk-mockup-stat"><div class="n">&mdash;&mdash;</div><div class="l">Podiums</div></div>
+                    <div class="bk-mockup-stat"><div class="n">&mdash;&mdash;</div><div class="l">Selections</div></div>
+                </div>
+                <div class="bk-mockup-chart">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div class="title" style="margin:0;">Aperc&#807;u progression</div>
+                        <div style="display:flex;gap:4px;">
+                            <span style="font-size:8px;padding:2px 6px;background:#6c5ce720;color:#a78bfa;border-radius:4px;font-weight:700;">2024</span>
+                            <span style="font-size:8px;padding:2px 6px;background:#ec489920;color:#f472b6;border-radius:4px;font-weight:700;">2025</span>
+                        </div>
+                    </div>
+                    <div class="bk-mockup-bars" style="height:90px;">
+                        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:8px;color:#5a6580;font-weight:600;">
+                        <span>S1</span><span>S2</span><span>S3</span><span>S4</span><span>S5</span><span>S6</span><span>S7</span>
+                    </div>
+                </div>
+                <div class="bk-mockup-records">
+                    <div class="bk-mockup-rec-row">
+                        <div class="bk-mockup-rec-ico">&#127939;</div>
+                        <div class="bk-mockup-rec-body">
+                            <div class="bk-mockup-rec-ep">Aperc&#807;u epreuve 1</div>
+                            <div class="bk-mockup-rec-date">&mdash;&mdash;/&mdash;&mdash;/&mdash;&mdash;</div>
+                        </div>
+                        <div class="bk-mockup-rec-perf">&mdash;&mdash;</div>
+                    </div>
+                    <div class="bk-mockup-rec-row">
+                        <div class="bk-mockup-rec-ico" style="background:linear-gradient(135deg,#ec4899,#f59e0b);">&#127945;</div>
+                        <div class="bk-mockup-rec-body">
+                            <div class="bk-mockup-rec-ep">Aperc&#807;u epreuve 2</div>
+                            <div class="bk-mockup-rec-date">&mdash;&mdash;/&mdash;&mdash;/&mdash;&mdash;</div>
+                        </div>
+                        <div class="bk-mockup-rec-perf">&mdash;&mdash;</div>
+                    </div>
+                </div>
+                <div class="bk-mockup-float">Apercu</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ TRUST SIGNALS ============ -->
+    <section class="bk-trust">
+        <div class="bk-trust-item">
+            <div class="bk-trust-num">+300k</div>
+            <div class="bk-trust-lbl">Athletes referencees</div>
+        </div>
+        <div class="bk-trust-item">
+            <div class="bk-trust-num">+3 000</div>
+            <div class="bk-trust-lbl">Clubs repertories</div>
+        </div>
+        <div class="bk-trust-item">
+            <div class="bk-trust-num">+400</div>
+            <div class="bk-trust-lbl">Epreuves couvertes</div>
+        </div>
+        <div class="bk-trust-item">
+            <div class="bk-trust-num">+2 000</div>
+            <div class="bk-trust-lbl">Villes indexees</div>
+        </div>
+    </section>
+
+    <!-- ============ FONCTIONNALITES ============ -->
+    <section class="bk-sec" id="fonctionnalites">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Fonctionnalites</div>
+            <h2>Tout ce qu'il faut pour explorer<br>la data sportive.</h2>
+            <p class="bk-sec-lead">Quatre outils cles pour comprendre, chercher, comparer et suivre les performances.</p>
+        </div>
+        <div class="bk-feats-grid">
+
+            <!-- Card 1 : Fiche Athlete -->
+            <div class="bk-feat-card">
+                <div class="mini-mockup">
+                    <div class="mm-profile">
+                        <div class="mm-avatar">BK</div>
+                        <div class="mm-lines">
+                            <div class="mm-line w60"></div>
+                            <div class="mm-line w40"></div>
+                        </div>
+                    </div>
+                    <div class="mm-stats">
+                        <div class="mm-stat-box"><div class="sn">&mdash;&mdash;</div><div class="sl">Records</div></div>
+                        <div class="mm-stat-box"><div class="sn">&mdash;&mdash;</div><div class="sl">Medailles</div></div>
+                        <div class="mm-stat-box"><div class="sn">&mdash;&mdash;</div><div class="sl">Podiums</div></div>
+                    </div>
+                </div>
+                <div class="bk-feat-ico">&#128100;</div>
+                <h3>Fiche athlete</h3>
+                <p>Analysez instantanement toutes les performances d'un athlete : bio, records, progressions et historique reunis.</p>
+                <a href="<?= BK_BASE ?>/athletes" class="bk-feat-link">Voir un exemple <span>&rarr;</span></a>
+            </div>
+
+            <!-- Card 2 : Recherche -->
+            <div class="bk-feat-card">
+                <div class="mini-mockup">
+                    <div class="mm-search-bar">
+                        <span class="ico">&#128269;</span>
+                        <span class="txt">Rechercher un athlete...</span>
+                        <span class="caret"></span>
+                    </div>
+                    <div class="mm-filters">
+                        <span class="mm-filter">Epreuve</span>
+                        <span class="mm-filter">Categorie</span>
+                        <span class="mm-filter">Ville</span>
+                    </div>
+                    <div class="mm-result"><div class="dot2"></div><div class="res-line"></div></div>
+                    <div class="mm-result"><div class="dot2"></div><div class="res-line"></div></div>
+                </div>
+                <div class="bk-feat-ico">&#128269;</div>
+                <h3>Recherche intelligente</h3>
+                <p>Trouvez un athlete ou un club en quelques secondes avec 12 filtres combinables et une recherche live.</p>
+                <a href="<?= BK_BASE ?>/recherche" class="bk-feat-link">Essayer la recherche <span>&rarr;</span></a>
+            </div>
+
+            <!-- Card 3 : Comparateur -->
+            <div class="bk-feat-card">
+                <div class="mini-mockup">
+                    <div class="mm-compare">
+                        <div class="mm-comp-col">
+                            <div class="mm-comp-avatar">A</div>
+                            <div class="mm-comp-bar"><div class="fill"></div></div>
+                            <div class="mm-comp-val">&mdash;&mdash;</div>
+                        </div>
+                        <div class="mm-comp-col">
+                            <div class="mm-comp-avatar">B</div>
+                            <div class="mm-comp-bar"><div class="fill"></div></div>
+                            <div class="mm-comp-val">&mdash;&mdash;</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bk-feat-ico">&#9878;&#65039;</div>
+                <h3>Comparateur</h3>
+                <p>Comparez plusieurs profils en un clic : performances, records et medailles cote a cote, avec graphiques interactifs.</p>
+                <a href="<?= BK_BASE ?>/comparer" class="bk-feat-link">Tester le comparateur <span>&rarr;</span></a>
+            </div>
+
+            <!-- Card 4 : Panneau Club -->
+            <div class="bk-feat-card">
+                <div class="mini-mockup">
+                    <div class="mm-club">
+                        <div class="mm-club-ico">&#127963;</div>
+                        <div class="mm-club-body">
+                            <div class="mm-club-name">Club Apercu</div>
+                            <div class="mm-club-stats"><span>&mdash;&mdash; athletes</span><span>&middot;</span><span>&mdash;&mdash; records</span></div>
+                        </div>
+                    </div>
+                    <div class="mm-club-tabs">
+                        <div class="mm-tab active">Epreuves</div>
+                        <div class="mm-tab">Stats</div>
+                        <div class="mm-tab">Records</div>
+                        <div class="mm-tab">Resume</div>
+                    </div>
+                </div>
+                <div class="bk-feat-ico">&#127963;</div>
+                <h3>Analyse club</h3>
+                <p>Suivez l'ensemble des performances d'un club : nationalites, records, medailles, evolutions par annee.</p>
+                <a href="<?= BK_BASE ?>/clubs" class="bk-feat-link">Explorer les clubs <span>&rarr;</span></a>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ============ DEMO PLEINE LARGEUR ============ -->
+    <section class="bk-sec" id="demo">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Demo</div>
+            <h2>Un aperc&#807;u du produit<br>en action.</h2>
+            <p class="bk-sec-lead">Reconstruction visuelle d'une fiche athlete. Les donnees reelles sont anonymisees dans cet apercu.</p>
+        </div>
+        <div class="bk-demo">
+            <div class="bk-demo-frame">
+                <div class="bk-demo-topbar">
+                    <div class="bk-demo-dots"><span></span><span></span><span></span></div>
+                    <div class="bk-demo-urlbar">
+                        <span class="lock">&#128274;</span>
+                        <span>bokonzi.com/profil/&mdash;&mdash;&mdash;</span>
+                    </div>
+                </div>
+                <div class="bk-demo-body">
+                    <aside class="bk-demo-sidebar">
+                        <div class="bk-demo-logo">Bokonzi</div>
+                        <a class="bk-demo-nav active"><span class="ico">&#128100;</span>Athletes</a>
+                        <a class="bk-demo-nav"><span class="ico">&#128269;</span>Recherche</a>
+                        <a class="bk-demo-nav"><span class="ico">&#127963;</span>Clubs</a>
+                        <a class="bk-demo-nav"><span class="ico">&#127961;</span>Villes</a>
+                        <a class="bk-demo-nav"><span class="ico">&#9878;&#65039;</span>Comparer</a>
+                        <a class="bk-demo-nav"><span class="ico">&#128200;</span>Classement</a>
+                    </aside>
+                    <main class="bk-demo-main">
+                        <div class="bk-demo-profile">
+                            <div class="bk-demo-avatar-big">BK</div>
+                            <div class="bk-demo-prof-body">
+                                <div class="bk-demo-prof-name">Apercu du service</div>
+                                <div class="bk-demo-prof-meta">
+                                    <span class="mt">Exemple</span>
+                                    <span class="mt">SE Hommes</span>
+                                    <span class="mt purple">Club Apercu</span>
+                                    <span class="mt green">Actif</span>
+                                </div>
+                            </div>
+                            <button class="bk-demo-follow">&#9825; Suivre</button>
+                        </div>
+                        <div class="bk-demo-statgrid">
+                            <div class="bk-demo-stat"><div class="v">&mdash;&mdash;</div><div class="l">Records</div></div>
+                            <div class="bk-demo-stat"><div class="v">&mdash;&mdash;</div><div class="l">Medailles</div></div>
+                            <div class="bk-demo-stat"><div class="v">&mdash;&mdash;</div><div class="l">Podiums</div></div>
+                            <div class="bk-demo-stat"><div class="v">&mdash;&mdash;</div><div class="l">Selections</div></div>
+                        </div>
+                        <div class="bk-demo-row">
+                            <div class="bk-demo-card">
+                                <div class="bk-demo-card-head">Progression par annee</div>
+                                <div class="bk-demo-chart-big">
+                                    <div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div>
+                                </div>
+                            </div>
+                            <div class="bk-demo-card">
+                                <div class="bk-demo-card-head">Records personnels</div>
+                                <div class="bk-demo-rec">
+                                    <div class="bk-demo-rec-item">
+                                        <div class="ep">Aperc&#807;u epreuve 1</div>
+                                        <div class="pf">&mdash;&mdash;</div>
+                                    </div>
+                                    <div class="bk-demo-rec-item">
+                                        <div class="ep">Aperc&#807;u epreuve 2</div>
+                                        <div class="pf">&mdash;&mdash;</div>
+                                    </div>
+                                    <div class="bk-demo-rec-item">
+                                        <div class="ep">Aperc&#807;u epreuve 3</div>
+                                        <div class="pf">&mdash;&mdash;</div>
+                                    </div>
+                                    <div class="bk-demo-rec-item">
+                                        <div class="ep">Aperc&#807;u epreuve 4</div>
+                                        <div class="pf">&mdash;&mdash;</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bk-demo-card" style="margin-top:14px;">
+                            <div class="bk-demo-card-head">Derniers resultats</div>
+                            <table class="bk-demo-table">
+                                <tr><th>Competition</th><th>Epreuve</th><th>Perf</th><th>Niveau</th></tr>
+                                <tr><td>Aperc&#807;u competition 1</td><td>Aperc&#807;u</td><td>&mdash;&mdash;</td><td><span class="lvl n">N1</span></td></tr>
+                                <tr><td>Aperc&#807;u competition 2</td><td>Aperc&#807;u</td><td>&mdash;&mdash;</td><td><span class="lvl r">R1</span></td></tr>
+                                <tr><td>Aperc&#807;u competition 3</td><td>Aperc&#807;u</td><td>&mdash;&mdash;</td><td><span class="lvl n">N2</span></td></tr>
+                            </table>
+                        </div>
+                    </main>
+                </div>
+            </div>
+            <div class="bk-demo-cta">
+                <a href="<?= BK_BASE ?>/athletes" class="bk-btn-primary">Voir les vraies fiches <span class="arr">&rarr;</span></a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CAS D'USAGE ============ -->
+    <section class="bk-sec">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Cas d'usage</div>
+            <h2>Un outil pour<br>plusieurs profils.</h2>
+            <p class="bk-sec-lead">Bokonzi sert aussi bien l'athlete qui veut suivre sa progression que le club qui analyse ses effectifs.</p>
+        </div>
+        <div class="bk-usecases">
+            <div class="bk-usecase">
+                <div class="bk-usecase-ico">&#127939;</div>
+                <h3>Athletes &amp; coachs</h3>
+                <p>Suivez vos performances, comparez-vous a d'autres, identifiez les records a battre.</p>
+            </div>
+            <div class="bk-usecase">
+                <div class="bk-usecase-ico">&#127963;</div>
+                <h3>Clubs &amp; fediations</h3>
+                <p>Analysez vos effectifs, suivez les progressions, valorisez les resultats de vos licencies.</p>
+            </div>
+            <div class="bk-usecase">
+                <div class="bk-usecase-ico">&#128221;</div>
+                <h3>Journalistes &amp; passionnes</h3>
+                <p>Trouvez rapidement les chiffres, historiques, records et classements pour illustrer vos articles.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ TARIFS ACCUEIL (masques temporairement) ============ -->
+    <?php if (false): // Retirer "false" pour reactiver la section tarifs ?>
+    <section class="bk-sec" id="tarifs-accueil">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Tarifs</div>
+            <h2>Gratuit pour commencer,<br>Pro pour aller plus loin.</h2>
+            <p class="bk-sec-lead">Trois formules adaptees a chaque usage. Sans engagement, annulable a tout moment.</p>
+        </div>
+        <style>
+        .bk-prix{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:1080px;margin:0 auto;}
+        .bk-prix-card{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:14px;padding:22px 18px;transition:all .25s;display:flex;flex-direction:column;position:relative;}
+        .bk-prix-card:hover{transform:translateY(-3px);border-color:#6c5ce760;}
+        .bk-prix-card.pop{border-color:#6c5ce7;box-shadow:0 10px 30px rgba(108,92,231,0.2);}
+        .bk-prix-card.pop::before{content:"Populaire";position:absolute;top:-10px;right:14px;background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;padding:3px 10px;border-radius:100px;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;box-shadow:0 5px 12px rgba(108,92,231,0.4);}
+        .bk-prix-name{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#8b949e;margin-bottom:6px;}
+        .bk-prix-card.pop .bk-prix-name{color:#a78bfa;}
+        .bk-prix-card.starter .bk-prix-name{color:#22d3ee;}
+        .bk-prix-card.club .bk-prix-name{color:#fbbf24;}
+        .bk-prix-amount{display:flex;align-items:baseline;gap:3px;margin-bottom:6px;}
+        .bk-prix-amount .n{font-size:28px;font-weight:800;color:#fff;letter-spacing:-1.2px;}
+        .bk-prix-amount .p{color:#8b949e;font-size:11px;font-weight:600;}
+        .bk-prix-sub{color:#5a6580;font-size:11px;margin:0 0 12px 0;line-height:1.45;min-height:32px;}
+        .bk-prix-list{list-style:none;padding:0;margin:0 0 16px 0;flex:1;}
+        .bk-prix-list li{font-size:11px;color:#c9d1d9;padding:4px 0;display:flex;align-items:center;gap:6px;line-height:1.35;}
+        .bk-prix-list li::before{content:"\2713";color:#34d399;font-weight:800;flex-shrink:0;}
+        .bk-prix-cta{padding:9px;text-align:center;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none;transition:all .2s;}
+        .bk-prix-cta.free{background:transparent;border:1px solid #1e2a3a;color:#c9d1d9;}
+        .bk-prix-cta.free:hover{border-color:#6c5ce7;color:#a78bfa;}
+        .bk-prix-cta.starter{background:#06b6d418;border:1px solid #06b6d460;color:#22d3ee;}
+        .bk-prix-cta.starter:hover{background:#06b6d430;border-color:#22d3ee;}
+        .bk-prix-cta.pro{background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;}
+        .bk-prix-cta.pro:hover{transform:translateY(-1px);}
+        .bk-prix-cta.club{background:transparent;border:1px solid #f59e0b60;color:#fbbf24;}
+        .bk-prix-cta.club:hover{background:#f59e0b10;border-color:#fbbf24;}
+        .bk-prix-more{text-align:center;margin-top:28px;}
+        .bk-prix-more a{color:#a78bfa;font-size:14px;font-weight:700;text-decoration:none;}
+        .bk-prix-more a:hover{text-decoration:underline;}
+        @media(max-width:1020px){.bk-prix{grid-template-columns:repeat(2,1fr);}}
+        @media(max-width:560px){.bk-prix{grid-template-columns:1fr;}}
+        </style>
+        <div class="bk-prix">
+            <div class="bk-prix-card">
+                <div class="bk-prix-name">Free</div>
+                <div class="bk-prix-amount"><span class="n">0&euro;</span><span class="p">/ toujours</span></div>
+                <p class="bk-prix-sub">L'essentiel pour consulter.</p>
+                <ul class="bk-prix-list">
+                    <li>Fiches athletes</li>
+                    <li>Recherche simple</li>
+                    <li>Consultation clubs</li>
+                    <li>5 recherches/jour</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/athletes" class="bk-prix-cta free">Commencer</a>
+            </div>
+            <div class="bk-prix-card starter">
+                <div class="bk-prix-name">Starter</div>
+                <div class="bk-prix-amount"><span class="n">3&euro;</span><span class="p">/ mois</span></div>
+                <p class="bk-prix-sub">Un peu plus que Free.</p>
+                <ul class="bk-prix-list">
+                    <li>5 filtres de recherche</li>
+                    <li>Suivi 10 athletes</li>
+                    <li>Comparateur basique</li>
+                    <li>100 recherches/jour</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/tarifs" class="bk-prix-cta starter">Choisir Starter</a>
+            </div>
+            <div class="bk-prix-card pop">
+                <div class="bk-prix-name">Pro</div>
+                <div class="bk-prix-amount"><span class="n">9&euro;</span><span class="p">/ mois</span></div>
+                <p class="bk-prix-sub">Utilisateurs avances.</p>
+                <ul class="bk-prix-list">
+                    <li>12 filtres complets</li>
+                    <li>Comparateur illimite</li>
+                    <li>Export PDF</li>
+                    <li>Suivi illimite</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/tarifs" class="bk-prix-cta pro">Choisir Pro</a>
+            </div>
+            <div class="bk-prix-card club">
+                <div class="bk-prix-name">Club</div>
+                <div class="bk-prix-amount"><span class="n">49&euro;</span><span class="p">/ mois</span></div>
+                <p class="bk-prix-sub">Clubs &amp; federations.</p>
+                <ul class="bk-prix-list">
+                    <li>Tout Pro inclus</li>
+                    <li>Dashboard club</li>
+                    <li>Rapports PDF</li>
+                    <li>Multi-utilisateurs</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/contact" class="bk-prix-cta club">Demander demo</a>
+            </div>
+        </div>
+        <div class="bk-prix-more">
+            <a href="<?= BK_BASE ?>/tarifs">Comparer en detail &middot; Voir toutes les options &rarr;</a>
+        </div>
+    </section>
+    <?php endif; // fin section tarifs masquee ?>
+
+    <!-- ============ CTA FINAL ============ -->
+    <section class="bk-cta-final">
+        <h2>Pret a explorer la data sportive ?</h2>
+        <p>Un clic pour acceder a la version gratuite complete.</p>
+        <div class="bk-cta-ctas">
+            <a href="<?= BK_BASE ?>/athletes" class="bk-cta-btn-w">Commencer gratuitement <span>&rarr;</span></a>
+        </div>
+    </section>
+
+    <!-- ============ DISCLAIMER ============ -->
+    <div class="bk-disc-mini">
+        <strong>Plateforme independante a caractere informatif</strong> &middot; Bokonzi n'est affilie a aucune federation. Donnees issues de sources publiques. <a href="<?= BK_BASE ?>/mentions-legales">Mentions legales</a> &middot; <a href="<?= BK_BASE ?>/confidentialite">Confidentialite</a>
     </div>
-    <div id="clubDetailContentAccueil" class="club-detail-content"></div>
-    <div id="clubQRAccueil"></div>
+
 </div>
-
-<!-- Top Clubs -->
-<div id="accueilClubsWrap" style="margin-bottom:24px;">
-    <h2>Top Clubs <span id="accueilClubsCount" style="font-size:13px;color:#5a6580;font-weight:normal;"></span></h2>
-    <div class="table-wrap">
-    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th><th>Médailles</th><th></th></tr></table>
-    <table class="bk-table"><tbody id="topClubsBody"><tr><td colspan="6" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr></tbody></table>
-    <table class="bk-table"><tr><th>#</th><th>Club</th><th>Athlètes</th><th>Records</th><th>Médailles</th><th></th></tr></table>
-    </div>
-    <div id="topClubsPag" style="display:flex;justify-content:center;gap:8px;margin-top:12px;"></div>
-</div>
-
-<!-- ======== PODIUM 3D ======== -->
-<div style="margin-bottom:24px;border-radius:16px;overflow:hidden;background:#0d1117;">
-    <div id="scene3d" style="width:100%;height:350px;"></div>
-</div>
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-    var el = document.getElementById('scene3d');
-    if (!el || typeof THREE === 'undefined') return;
-
-    var w = el.clientWidth || 800, h = el.clientHeight || 350;
-    var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0d1117);
-    scene.fog = new THREE.Fog(0x0d1117, 14, 28);
-
-    var camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
-    camera.position.set(0, 5, 12);
-    camera.lookAt(0, 1, 0);
-
-    var renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(w, h);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    el.appendChild(renderer.domElement);
-
-    // Lumieres
-    scene.add(new THREE.AmbientLight(0x334466, 0.7));
-    var sun = new THREE.DirectionalLight(0xffffff, 1.3);
-    sun.position.set(3, 8, 5); sun.castShadow = true;
-    scene.add(sun);
-    var spotGold = new THREE.PointLight(0xffd700, 1.2, 15);
-    spotGold.position.set(0, 6, 3);
-    scene.add(spotGold);
-    scene.add(new THREE.PointLight(0xa78bfa, 0.5, 12, 2).position.set(-4, 4, 0) || scene.children[scene.children.length-1]);
-    scene.add(new THREE.PointLight(0xec4899, 0.4, 12, 2).position.set(4, 4, 0) || scene.children[scene.children.length-1]);
-
-    // Sol
-    var ground = new THREE.Mesh(
-        new THREE.CircleGeometry(12, 64),
-        new THREE.MeshStandardMaterial({ color: 0x8b1a1a, roughness: 0.9 })
-    );
-    ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
-    scene.add(ground);
-
-    // Lignes couloirs
-    for (var li = 1; li <= 5; li++) {
-        var ring = new THREE.Mesh(
-            new THREE.RingGeometry(li * 1.6 - 0.02, li * 1.6 + 0.02, 64),
-            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.1, side: THREE.DoubleSide })
-        );
-        ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01;
-        scene.add(ring);
-    }
-
-    // === PODIUM (plus grand, bien visible) ===
-    var podGroup = new THREE.Group();
-
-    // 1er — OR (centre)
-    var p1 = new THREE.Mesh(
-        new THREE.BoxGeometry(2.2, 2.8, 1.8),
-        new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.75, roughness: 0.2 })
-    );
-    p1.position.set(0, 1.4, 0); p1.castShadow = true; p1.receiveShadow = true;
-    podGroup.add(p1);
-
-    // 2e — ARGENT (gauche)
-    var p2 = new THREE.Mesh(
-        new THREE.BoxGeometry(2.2, 2, 1.8),
-        new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.85, roughness: 0.15 })
-    );
-    p2.position.set(-2.3, 1, 0); p2.castShadow = true; p2.receiveShadow = true;
-    podGroup.add(p2);
-
-    // 3e — BRONZE (droite)
-    var p3 = new THREE.Mesh(
-        new THREE.BoxGeometry(2.2, 1.4, 1.8),
-        new THREE.MeshStandardMaterial({ color: 0xcd7f32, metalness: 0.7, roughness: 0.25 })
-    );
-    p3.position.set(2.3, 0.7, 0); p3.castShadow = true; p3.receiveShadow = true;
-    podGroup.add(p3);
-
-    // Numeros sur les marches (face avant, texture canvas)
-    function _makeNumberPlane(txt, bgColor, txtColor) {
-        var c = document.createElement('canvas'); c.width = 128; c.height = 128;
-        var cx = c.getContext('2d');
-        cx.fillStyle = bgColor; cx.fillRect(0, 0, 128, 128);
-        cx.fillStyle = txtColor;
-        cx.font = 'bold 90px Arial'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
-        cx.fillText(txt, 64, 68);
-        var tex = new THREE.CanvasTexture(c);
-        return new THREE.Mesh(
-            new THREE.PlaneGeometry(1, 1),
-            new THREE.MeshBasicMaterial({ map: tex, transparent: true })
-        );
-    }
-    var n1 = _makeNumberPlane('1', 'rgba(218,165,32,0.9)', '#ffffff');
-    n1.position.set(0, 1, 0.91); podGroup.add(n1);
-    var n2 = _makeNumberPlane('2', 'rgba(160,160,160,0.9)', '#ffffff');
-    n2.position.set(-2.3, 0.6, 0.91); podGroup.add(n2);
-    var n3 = _makeNumberPlane('3', 'rgba(176,112,48,0.9)', '#ffffff');
-    n3.position.set(2.3, 0.3, 0.91); podGroup.add(n3);
-
-    scene.add(podGroup);
-
-    // === MEDAILLES flottantes ===
-    var medals = [];
-    var mColors = [0xffd700, 0xc0c0c0, 0xcd7f32];
-    var mX = [0, -2.3, 2.3];
-    var mBaseY = [3.6, 2.8, 2.3];
-    for (var mi = 0; mi < 3; mi++) {
-        var mg = new THREE.Group();
-        mg.add(new THREE.Mesh(
-            new THREE.TorusGeometry(0.35, 0.1, 24, 48),
-            new THREE.MeshStandardMaterial({ color: mColors[mi], metalness: 0.9, roughness: 0.1 })
-        ));
-        mg.add(new THREE.Mesh(
-            new THREE.CircleGeometry(0.28, 48),
-            new THREE.MeshStandardMaterial({ color: mColors[mi], metalness: 0.8, roughness: 0.15, side: THREE.DoubleSide })
-        ));
-        var rib = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.1, 0.8),
-            new THREE.MeshStandardMaterial({ color: 0x6c5ce7, side: THREE.DoubleSide })
-        );
-        rib.position.y = 0.7; mg.add(rib);
-        mg.position.set(mX[mi], mBaseY[mi], 0);
-        scene.add(mg);
-        medals.push({ mesh: mg, baseY: mBaseY[mi], phase: mi * 1.3 });
-    }
-
-    // === PARTICULES dorees ===
-    var pGeo = new THREE.BufferGeometry();
-    var pPos = new Float32Array(120 * 3);
-    for (var pi = 0; pi < 120; pi++) {
-        pPos[pi*3] = (Math.random() - 0.5) * 14;
-        pPos[pi*3+1] = Math.random() * 8;
-        pPos[pi*3+2] = (Math.random() - 0.5) * 8 - 2;
-    }
-    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-    var particles = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xffd700, size: 0.05, transparent: true, opacity: 0.5 }));
-    scene.add(particles);
-
-    // === ANIMATION ===
-    function animate() {
-        requestAnimationFrame(animate);
-        var t = Date.now() * 0.001;
-        // Medailles flottent et tournent
-        medals.forEach(function(m) {
-            m.mesh.position.y = m.baseY + Math.sin(t * 1.5 + m.phase) * 0.18;
-            m.mesh.rotation.y += 0.015;
-        });
-        // Lumiere pulse
-        spotGold.intensity = 1 + Math.sin(t * 2) * 0.3;
-        // Particules montent
-        var pos = particles.geometry.attributes.position.array;
-        for (var i = 1; i < pos.length; i += 3) { pos[i] += 0.004; if (pos[i] > 8) pos[i] = 0; }
-        particles.geometry.attributes.position.needsUpdate = true;
-        // Camera oscillation douce
-        camera.position.x = Math.sin(t * 0.12) * 1.5;
-        camera.lookAt(0, 1, 0);
-        renderer.render(scene, camera);
-    }
-    animate();
-
-    window.addEventListener('resize', function() {
-        var nw = el.clientWidth, nh = el.clientHeight;
-        if (nw > 0 && nh > 0) { camera.aspect = nw / nh; camera.updateProjectionMatrix(); renderer.setSize(nw, nh); }
-    });
-});
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-    function _esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-    function _nivBar(np) {
-        if (!np) return '-';
-        var h = '<div style="display:flex;align-items:center;gap:2px;min-width:120px;" title="D:'+np.D+'% R:'+np.R+'% N:'+np.N+'% I:'+np.I+'% ('+np.total+' rés.)">';
-        h += '<div style="display:flex;height:8px;flex:1;border-radius:4px;overflow:hidden;background:#1a2540;">';
-        if (np.D > 0) h += '<div style="width:'+np.D+'%;background:#fb923c;"></div>';
-        if (np.R > 0) h += '<div style="width:'+np.R+'%;background:#22d3ee;"></div>';
-        if (np.N > 0) h += '<div style="width:'+np.N+'%;background:#fb7185;"></div>';
-        if (np.I > 0) h += '<div style="width:'+np.I+'%;background:#e879f9;"></div>';
-        h += '</div>';
-        h += '<div style="display:flex;gap:3px;font-size:9px;white-space:nowrap;">';
-        if (np.D > 0) h += '<span style="color:#fb923c;">D'+np.D+'</span>';
-        if (np.R > 0) h += '<span style="color:#22d3ee;">R'+np.R+'</span>';
-        if (np.N > 0) h += '<span style="color:#fb7185;">N'+np.N+'</span>';
-        if (np.I > 0) h += '<span style="color:#e879f9;">I'+np.I+'</span>';
-        h += '</div></div>';
-        return h;
-    }
-    function _paginator(items, bodyId, pagId, perPage, renderRow) {
-        var pg = 0;
-        function render() {
-            var start = pg * perPage, end = Math.min(start + perPage, items.length);
-            var html = '';
-            for (var i = start; i < end; i++) html += renderRow(items[i], i);
-            document.getElementById(bodyId).innerHTML = html;
-            var totalPages = Math.ceil(items.length / perPage);
-            var ph = '';
-            if (pg > 0) ph += '<button onclick="window._pg_' + bodyId + '(' + (pg-1) + ')" style="padding:6px 14px;background:#1a2540;border:1px solid #253560;border-radius:6px;color:#d0d7e0;cursor:pointer;">Précédent</button>';
-            ph += '<span style="color:#5a6580;font-size:13px;padding:6px 8px;">' + (pg+1) + ' / ' + totalPages + '</span>';
-            if (pg < totalPages - 1) ph += '<button onclick="window._pg_' + bodyId + '(' + (pg+1) + ')" style="padding:6px 14px;background:#1a2540;border:1px solid #253560;border-radius:6px;color:#d0d7e0;cursor:pointer;">Suivant</button>';
-            document.getElementById(pagId).innerHTML = ph;
-        }
-        window['_pg_' + bodyId] = function(p) { pg = p; render(); };
-        render();
-    }
-
-    // ---- Données detail injectées par PHP (cache local ou AJAX fallback) ----
-    <?php
-    // Lire le cache detail directement en PHP (0 HTTP, 0 MySQL)
-    $detailCache = __DIR__ . '/cache/stats_detail_30.json';
-    $detailData = null;
-    if (file_exists($detailCache) && (time() - filemtime($detailCache)) < 86400) { // 24h
-        $detailJson = @file_get_contents($detailCache);
-        if ($detailJson) $detailData = json_decode($detailJson, true);
-    }
-    ?>
-    function _buildAccueilTables(d) {
-        if (!d || !d.success) return;
-
-        // Top Clubs
-        if (d.top_clubs && d.top_clubs.length > 0) {
-            document.getElementById('accueilClubsCount').textContent = '(' + d.top_clubs.length + ' clubs)';
-            _paginator(d.top_clubs, 'topClubsBody', 'topClubsPag', 10, function(c, i) {
-                return '<tr><td>' + (i+1) + '</td>'
-                    + '<td><a href="?page=clubs&open=' + encodeURIComponent(c.club) + '" style="color:#a29bfe;text-decoration:none;cursor:pointer;">' + _esc(c.club) + '</a></td>'
-                    + '<td>' + (c.nb_athletes||0).toLocaleString('fr-FR') + '</td>'
-                    + '<td>' + (c.nb_records||0).toLocaleString('fr-FR') + '</td>'
-                    + '<td>' + (c.nb_medailles > 0 ? '<span style="color:#fbbf24;font-weight:600;">' + c.nb_medailles + '</span>' : '-') + '</td>'
-                    + '<td><a href="?page=clubs&open=' + encodeURIComponent(c.club) + '" style="color:#5a6580;font-size:12px;">Détails →</a></td>'
-                    + '</tr>';
-            });
-        }
-
-    }
-
-    <?php if ($detailData): ?>
-    // Cache disponible → injection directe (0 HTTP)
-    _buildAccueilTables(<?= json_encode($detailData, JSON_UNESCAPED_UNICODE) ?>);
-    window._topFallbackData = <?= json_encode(['top_athletes' => $detailData['top_athletes'] ?? [], 'top_clubs' => $detailData['top_clubs'] ?? []], JSON_UNESCAPED_UNICODE) ?>;
-    <?php else: ?>
-    // Pas de cache → AJAX fallback (1er visiteur uniquement)
-    fetch(BASE_API + '/stats.php?detail=1&top=30')
-        .then(function(r) { return r.json(); })
-        .then(function(d) { _buildAccueilTables(d); })
-        .catch(function() {
-            ['topClubsBody','topAthletesBody','topVillesBody','topEpreuvesBody'].forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el) el.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#ef4444;padding:20px;">Erreur de chargement</td></tr>';
-            });
-        });
-    <?php endif; ?>
-});
-</script>
-
-<!-- ======== TOP CONSULTES JS ======== -->
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-    function _esc2(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-    // Fallback : si search_tracking vide, utilise stats_detail_30 (top_athletes/top_clubs par score)
-    function _fbMapAth(athletes) {
-        return athletes.map(function(a) {
-            return { id: a.athlete_id, nom: a.nom, club: (a.club || '').replace(/\*\s*$/, ''), categorie: a.categorie || '', sexe: a.sexe || '', vues: (a.nb_medailles||0)*5 + (a.nb_podiums||0)*3 + (a.nb_selections||0)*4 + (a.nb_records||0) };
-        });
-    }
-    function _fbMapClubs(clubs) {
-        return clubs.map(function(c) {
-            return { id: 0, nom: (c.club || '').replace(/\*\s*$/, ''), nb_athletes: c.nb_athletes || 0, vues: c.nb_athletes || 0 };
-        });
-    }
-
-    function _topSearchPag(items, bodyId, pagId, perPage, maxPages, renderRow) {
-        var pg = 0, expanded = false;
-        function render() {
-            var pp = expanded ? 25 : perPage;
-            var maxItems = expanded ? items.length : Math.min(items.length, perPage * maxPages);
-            var visible = items.slice(0, maxItems);
-            var totalPages = Math.ceil(visible.length / pp);
-            var start = pg * pp, end = Math.min(start + pp, visible.length);
-            var html = '';
-            for (var i = start; i < end; i++) html += renderRow(visible[i], i);
-            if (!html) html = '<tr><td colspan="3" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
-            document.getElementById(bodyId).innerHTML = html;
-            var ph = '';
-            if (totalPages > 1) {
-                if (pg > 0) ph += '<button onclick="window._tsp_'+bodyId+'('+(pg-1)+')" style="padding:5px 12px;background:#1a2540;border:1px solid #253560;border-radius:6px;color:#d0d7e0;cursor:pointer;font-size:12px;">\u2190</button>';
-                ph += '<span style="color:#5a6580;font-size:12px;padding:4px 8px;">'+(pg+1)+' / '+totalPages+'</span>';
-                if (pg < totalPages - 1) ph += '<button onclick="window._tsp_'+bodyId+'('+(pg+1)+')" style="padding:5px 12px;background:#1a2540;border:1px solid #253560;border-radius:6px;color:#d0d7e0;cursor:pointer;font-size:12px;">\u2192</button>';
-            }
-            if (!expanded && items.length > perPage * maxPages) {
-                ph += '<button onclick="window._tse_'+bodyId+'()" style="padding:5px 14px;background:#6c5ce722;border:1px solid #6c5ce7;border-radius:6px;color:#a29bfe;cursor:pointer;font-size:12px;margin-left:8px;">Voir tout ('+items.length+')</button>';
-            }
-            if (expanded && totalPages > 1) {
-                ph += '<button onclick="window._tsc_'+bodyId+'()" style="padding:5px 14px;background:transparent;border:1px solid #253560;border-radius:6px;color:#5a6580;cursor:pointer;font-size:11px;margin-left:8px;">R\u00e9duire</button>';
-            }
-            document.getElementById(pagId).innerHTML = ph;
-        }
-        window['_tsp_'+bodyId] = function(p) { pg = p; render(); };
-        window['_tse_'+bodyId] = function() { expanded = true; pg = 0; render(); };
-        window['_tsc_'+bodyId] = function() { expanded = false; pg = 0; render(); };
-        render();
-    }
-
-    // ---- Period tabs ----
-    var _topPeriods = [{d:1,l:'Jour'},{d:7,l:'Semaine'},{d:30,l:'Mois'},{d:365,l:'Ann\u00e9e'}];
-    var _clubDays = 1, _athDays = 1;
-    var _tabStyle = 'padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #253560;transition:all .2s;';
-    var _tabActiveStyle = 'background:#6c5ce7;color:#fff;border-color:#6c5ce7;';
-    var _tabInactiveStyle = 'background:transparent;color:#5a6580;border-color:#253560;';
-
-    function _renderTabs(containerId, current, onClick) {
-        var h = '';
-        _topPeriods.forEach(function(p) {
-            var active = p.d === current;
-            h += '<button onclick="'+onClick+'('+p.d+')" style="'+_tabStyle+(active?_tabActiveStyle:_tabInactiveStyle)+'">'+p.l+'</button>';
-        });
-        document.getElementById(containerId).innerHTML = h;
-    }
-
-    // ---- Load & render clubs ----
-    window._switchClubDays = function(d) { _clubDays = d; _renderTabs('topClubsTabs', _clubDays, '_switchClubDays'); _loadTopClubs(true); };
-    function _loadTopClubs(nc) {
-        document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
-        document.getElementById('topSearchClubsPag').innerHTML = '';
-        fetch(BASE_API + '/top_searched.php?type=clubs&days=' + _clubDays + (nc ? '&nocache' : ''))
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (d.success && d.items && d.items.length) {
-                    _renderTopClubs(d.items);
-                } else if (window._topFallbackData && window._topFallbackData.top_clubs && window._topFallbackData.top_clubs.length) {
-                    _renderTopClubs(_fbMapClubs(window._topFallbackData.top_clubs));
-                } else {
-                    _renderTopClubs([]);
-                }
-            })
-            .catch(function() {
-                if (window._topFallbackData && window._topFallbackData.top_clubs && window._topFallbackData.top_clubs.length) {
-                    _renderTopClubs(_fbMapClubs(window._topFallbackData.top_clubs));
-                } else { _renderTopClubs([]); }
-            });
-    }
-    function _renderTopClubs(items) {
-        if (!items || !items.length) {
-            document.getElementById('topSearchClubsBody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
-            document.getElementById('topSearchClubsCount').textContent = '';
-            return;
-        }
-        document.getElementById('topSearchClubsCount').textContent = '(' + items.length + ')';
-        _topSearchPag(items, 'topSearchClubsBody', 'topSearchClubsPag', 10, 5, function(c, i) {
-            return '<tr>'
-                + '<td style="color:#5a6580;width:40px;">' + (i+1) + '</td>'
-                + '<td><a href="?page=recherche&club=' + encodeURIComponent(c.nom) + '" style="color:#a29bfe;text-decoration:none;font-weight:600;">' + _esc2(c.nom) + '</a></td>'
-                + '<td style="color:#8b949e;font-size:12px;">' + (c.nb_athletes || '-') + '</td>'
-                + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:600;">' + c.vues + '</span></td>'
-                + '</tr>';
-        });
-    }
-
-    // ---- Load & render athletes (depuis search_tracking) ----
-    window._switchAthDays = function(d) { _athDays = d; _renderTabs('topAthTabs', _athDays, '_switchAthDays'); _loadTopAth(true); };
-    function _loadTopAth(nc) {
-        document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:20px;">Chargement...</td></tr>';
-        document.getElementById('topSearchAthPag').innerHTML = '';
-        fetch(BASE_API + '/top_searched.php?type=athletes&days=' + _athDays + (nc ? '&nocache' : ''))
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (d.success && d.items && d.items.length) {
-                    _renderTopAth(d.items);
-                } else {
-                    _renderTopAth([]);
-                }
-            })
-            .catch(function() { _renderTopAth([]); });
-    }
-    function _renderTopAth(items) {
-        if (!items || !items.length) {
-            document.getElementById('topSearchAthBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#5a6580;padding:20px;">Aucune donn\u00e9e</td></tr>';
-            document.getElementById('topSearchAthCount').textContent = '';
-            return;
-        }
-        document.getElementById('topSearchAthCount').textContent = '(' + items.length + ')';
-        _topSearchPag(items, 'topSearchAthBody', 'topSearchAthPag', 10, 5, function(a, i) {
-            return '<tr>'
-                + '<td style="color:#5a6580;width:40px;">' + (i+1) + '</td>'
-                + '<td><a href="?page=profil&id=' + a.id + '" style="color:#a29bfe;text-decoration:none;font-weight:600;">' + _esc2(a.nom) + '</a></td>'
-                + '<td style="color:#8b949e;font-size:12px;">' + _esc2(a.club || '-') + '</td>'
-                + '<td><span class="badge badge-' + ((a.sexe||'').toLowerCase()) + '" style="font-size:11px;">' + _esc2(a.sexe || '-') + '</span></td>'
-                + '<td style="text-align:center;"><span style="color:#f59e0b;font-weight:600;">' + a.vues + '</span></td>'
-                + '</tr>';
-        });
-    }
-
-    // Init tabs + load + auto-refresh toutes les 60s
-    _renderTabs('topClubsTabs', _clubDays, '_switchClubDays');
-    _renderTabs('topAthTabs', _athDays, '_switchAthDays');
-    _loadTopClubs();
-    _loadTopAth();
-    setInterval(function() { _loadTopClubs(true); _loadTopAth(true); }, 60000);
-});
-</script>
-
-<!-- ======== INIT CHARTS (données légères, chargement immédiat) ======== -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    Chart.defaults.color = '#8892a8';
-    Chart.defaults.borderColor = '#1e2a3a';
-    Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
-
-    // --- Categories (Bar horizontal) ---
-});
-</script>
-
-<?php else: ?>
-<div class="error">Impossible de contacter l'API. Verifiez que le serveur est en ligne.</div>
-<?php endif; ?>
-
 
 <?php
 // ================================================================
@@ -1389,20 +2566,315 @@ document.addEventListener('DOMContentLoaded', function() {
 // ================================================================
 elseif ($page === 'athletes'):
     $epreuves = '100m|200m|400m Haies (76)|400m Haies (91)|110m Haies (91)|110m Haies (99)|110m Haies (106)|Longueur|Triple saut|Perche';
-    $data = apiCall("$BASE_API/liste.php?limit=100&ordre=medailles&niveau=IA,IB&epreuve=" . urlencode($epreuves));
+    $allowedTri = ['medailles','podiums','date','records','selections','nom'];
+    $tri = $_GET['tri'] ?? 'medailles';
+    if (!in_array($tri, $allowedTri, true)) $tri = 'medailles';
+
+    // Lire les filtres niveaux + annee + nombres + layout + club/epreuve depuis le panel
+    $afFile = __DIR__ . '/logs/.athletes_filter.php';
+    $afNiveaux = ['IA','IB'];
+    $afAnnee = (int)date('Y');
+    $afNbH = 50;
+    $afNbF = 50;
+    $afLayout = 'magazine';
+    $afClubFilter = '';
+    $afEpreuveFilter = '';
+    $afFilterCibleEnabled = false;
+    $allowedLayouts = ['magazine','grid','list','flex'];
+    if (file_exists($afFile)) {
+        $afRaw = @file_get_contents($afFile);
+        $afPos = $afRaw ? strpos($afRaw, "\n") : false;
+        if ($afPos !== false) {
+            $afData = json_decode(substr($afRaw, $afPos + 1), true);
+            if (is_array($afData)) {
+                if (!empty($afData['niveaux']) && is_array($afData['niveaux'])) $afNiveaux = $afData['niveaux'];
+                if (isset($afData['annee'])) $afAnnee = (int)$afData['annee']; // 0 = toutes annees
+                if (isset($afData['nb_hommes'])) $afNbH = max(0, min(200, (int)$afData['nb_hommes']));
+                if (isset($afData['nb_femmes'])) $afNbF = max(0, min(200, (int)$afData['nb_femmes']));
+                if (isset($afData['layout']) && in_array($afData['layout'], $allowedLayouts, true)) $afLayout = $afData['layout'];
+                if (!empty($afData['club_filter'])) $afClubFilter = trim((string)$afData['club_filter']);
+                if (!empty($afData['epreuve_filter'])) $afEpreuveFilter = trim((string)$afData['epreuve_filter']);
+                $afFilterCibleEnabled = !empty($afData['filter_cible_enabled']);
+            }
+        }
+    }
+    // Si toggle OFF, on ignore les valeurs club/epreuve meme si elles sont sauvegardees
+    if (!$afFilterCibleEnabled) {
+        $afClubFilter = '';
+        $afEpreuveFilter = '';
+    }
+    // Permettre override par URL (?layout=grid pour preview)
+    if (isset($_GET['layout']) && in_array($_GET['layout'], $allowedLayouts, true)) $afLayout = $_GET['layout'];
+    $currentYear = $afAnnee;
+    $recentYearMin = $afAnnee;
+
+    // Si l'admin a defini une epreuve specifique, on remplace la liste hardcoded
+    // ET on active le mode strict : niveau filtre = niveau ATTEINT SUR cette epreuve
+    $strictMode = false;
+    if ($afEpreuveFilter !== '') {
+        $epreuves = $afEpreuveFilter;
+        $strictMode = true;
+    }
+    $epUrl = urlencode($epreuves);
+    $clubUrlParam = $afClubFilter !== '' ? '&club=' . urlencode($afClubFilter) : '';
+    $strictParam = $strictMode ? '&niveau_strict_ep=1' : '';
+    $nbLvls = max(1, count($afNiveaux));
+    // Repartition equilibree : si 50 hommes et 2 niveaux → 25 par niveau
+    $perLvlH = (int)ceil($afNbH / $nbLvls);
+    $perLvlF = (int)ceil($afNbF / $nbLvls);
+
+    $athsM = [];
+    $athsF = [];
+    foreach ($afNiveaux as $lvl) {
+        if ($afNbH > 0) {
+            $rM = apiCall("$BASE_API/liste.php?limit=$perLvlH&ordre=$tri&niveau=" . urlencode($lvl) . "&sexe=M&annee_exact=$recentYearMin&epreuve=$epUrl$clubUrlParam$strictParam");
+            if (!empty($rM['athletes'])) $athsM = array_merge($athsM, $rM['athletes']);
+        }
+        if ($afNbF > 0) {
+            $rF = apiCall("$BASE_API/liste.php?limit=$perLvlF&ordre=$tri&niveau=" . urlencode($lvl) . "&sexe=F&annee_exact=$recentYearMin&epreuve=$epUrl$clubUrlParam$strictParam");
+            if (!empty($rF['athletes'])) $athsF = array_merge($athsF, $rF['athletes']);
+        }
+    }
+    // Dedup par athlete_id (un meme athlete peut remonter sur plusieurs niveaux en mode any)
+    $_dedupAth = function($arr) {
+        $seen = [];
+        $out = [];
+        foreach ($arr as $a) {
+            $id = (int)($a['athlete_id'] ?? 0);
+            if ($id <= 0 || isset($seen[$id])) continue;
+            $seen[$id] = true;
+            $out[] = $a;
+        }
+        return $out;
+    };
+    $athsM = $_dedupAth($athsM);
+    $athsF = $_dedupAth($athsF);
+    // Limiter au nombre exactement demande
+    $athsM = array_slice($athsM, 0, $afNbH);
+    $athsF = array_slice($athsF, 0, $afNbF);
+    $merged = [];
+    $maxLen = max(count($athsM), count($athsF));
+    for ($i = 0; $i < $maxLen; $i++) {
+        if (isset($athsM[$i])) $merged[] = $athsM[$i];
+        if (isset($athsF[$i])) $merged[] = $athsF[$i];
+    }
+    $data = ['success' => true, 'athletes' => $merged, 'total' => count($merged)];
+    // Mapping nationalite -> drapeau
+    $_athNatMap = include __DIR__ . '/core/nationalites_map.php';
+
+    // Calcul age depuis date_naissance (YYYY-MM-DD ou YYYY)
+    function _athComputeAge($dateNaissance) {
+        if (empty($dateNaissance)) return null;
+        try {
+            $dn = new DateTime($dateNaissance);
+            $now = new DateTime('today');
+            return $now->diff($dn)->y;
+        } catch (Exception $e) { return null; }
+    }
+
+    // === STATS NIVEAUX (calculees par admin depuis le panel) ===
+    $nivStats = null;
+    $nivStatsFile = __DIR__ . '/logs/.niveaux_stats.php';
+    if (file_exists($nivStatsFile)) {
+        $rawStats = @file_get_contents($nivStatsFile);
+        if ($rawStats) {
+            $pos = strpos($rawStats, "\n");
+            if ($pos !== false) {
+                $nivStats = json_decode(substr($rawStats, $pos + 1), true);
+            }
+        }
+    }
 ?>
 
 <!-- Mention legale visible immediatement -->
 <div style="background:#f59e0b15;border:2px solid #f59e0b;border-radius:12px;padding:14px 20px;margin-bottom:20px;text-align:center;">
     <p style="color:#f59e0b;font-size:14px;font-weight:700;line-height:1.6;margin:0;">
-        &#9888; Site informatif independant — Bokonzi n'est pas affilie a la FFA ni a athle.fr.<br>
+        &#9888; Site informatif independant — Bokonzi n'est affilie a aucune federation ni organisme officiel.<br>
         <span style="font-size:12px;font-weight:500;">Donnees issues de sources publiques, a but informatif et statistique uniquement.</span>
     </p>
 </div>
 
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
-    <h1 style="margin:0;">Top 100 Athlètes</h1>
+    <?php
+        $_clubLabels = $afClubFilter !== '' ? array_filter(array_map('trim', explode('|', $afClubFilter)), 'strlen') : [];
+        $_epLabels   = $afEpreuveFilter !== '' ? array_filter(array_map('trim', explode('|', $afEpreuveFilter)), 'strlen') : [];
+    ?>
+    <h1 style="margin:0;">Athlètes <?= $afAnnee ?> <span style="font-size:13px;font-weight:500;color:var(--text-muted);"> &middot; <?= htmlspecialchars(implode(' / ', $afNiveaux)) ?><?php if (!empty($_clubLabels)): ?> &middot; <span style="color:#22d3ee;">&#127963; <?= htmlspecialchars(implode(' / ', $_clubLabels)) ?></span><?php endif; ?><?php if (!empty($_epLabels)): ?> &middot; <span style="color:#22d3ee;">&#127939; <?= htmlspecialchars(implode(' / ', $_epLabels)) ?></span><?php endif; ?></span></h1>
     <a href="?page=recherche" style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;background:var(--brand);color:#fff;border-radius:20px;font-size:14px;font-weight:700;text-decoration:none;transition:all .2s;box-shadow:0 2px 12px var(--brand-glow);" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 20px var(--brand-glow)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px var(--brand-glow)'">&#128269; Rechercher un athlète</a>
+</div>
+
+<!-- Indication filtre -->
+<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;padding:8px 14px;background:#0d1117;border:1px solid #21262d;border-radius:8px;">
+    Niveaux : <strong style="color:#a78bfa;"><?= htmlspecialchars(implode(', ', $afNiveaux)) ?></strong>
+    &nbsp;&middot;&nbsp; Activité en <strong style="color:#34d399;"><?= $afAnnee ?></strong>
+    &nbsp;&middot;&nbsp; <?= count($data['athletes']) ?> athlète<?= count($data['athletes']) > 1 ? 's' : '' ?> trouvé<?= count($data['athletes']) > 1 ? 's' : '' ?>
+</div>
+
+<?php if ($nivStats && !empty($nivStats['par_niveau'])):
+    $_totalAth = (int)($nivStats['total_athletes'] ?? 0);
+    $_byNiv = $nivStats['par_niveau'];
+    $_keyLevels = ['IA','IB','N1','N2','N3'];
+    $_colors = [
+        'IA'=>'#c026d3','IB'=>'#a21caf','IE'=>'#86198f',
+        'IR'=>'#701a75','IR1'=>'#6b1d65','IR2'=>'#581c87','IR3'=>'#4a0e6b','IR4'=>'#3d0855',
+        'N1'=>'#e11d48','N2'=>'#be123c','N3'=>'#9f1239','N4'=>'#881337',
+        'R1'=>'#0891b2','R2'=>'#0e7490','R3'=>'#155e75','R4'=>'#164e63','R5'=>'#0c4a6e','R6'=>'#082f49',
+        'D1'=>'#f97316','D2'=>'#ea580c','D3'=>'#c2410c','D4'=>'#9a3412','D5'=>'#7c2d12','D6'=>'#6b1d0e','D7'=>'#5a1808','D8'=>'#3f1106',
+    ];
+    // Hierarchie a afficher (sans la categorie "N/A" / sans niveau)
+    $_chartHierarchy = $nivStats['hierarchy'] ?? array_keys($_byNiv);
+    // Calculer le max pour la largeur des barres
+    $_maxNb = 0;
+    foreach ($_chartHierarchy as $_c) {
+        $_v = (int)($_byNiv[$_c] ?? 0);
+        if ($_v > $_maxNb) $_maxNb = $_v;
+    }
+?>
+<div class="bk-niv-stats" style="background:linear-gradient(135deg,#1e2a3a 0%,#161b22 100%);border:1px solid #30363d;border-radius:14px;padding:20px 22px;margin-bottom:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+        <div class="bk-niv-title" style="color:#f0f6fc;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;">📊 Repartition par niveau (sans doublons)</div>
+        <div class="bk-niv-total" style="color:#8b949e;font-size:11px;">
+            <strong style="color:#f0f6fc;font-size:18px;font-weight:800;"><?= number_format($_totalAth, 0, ',', ' ') ?></strong> athletes au total
+        </div>
+    </div>
+
+    <!-- Niveaux cles (cards) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:18px;">
+    <?php foreach ($_keyLevels as $code):
+        $nb = (int)($_byNiv[$code] ?? 0);
+        $col = $_colors[$code] ?? '#8b949e';
+        $pct = $_totalAth > 0 ? ($nb / $_totalAth * 100) : 0;
+    ?>
+        <div style="background:#0d1117;border:1px solid <?= $col ?>40;border-left:3px solid <?= $col ?>;border-radius:8px;padding:10px 12px;">
+            <div style="color:<?= $col ?>;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;"><?= $code ?></div>
+            <div style="color:#f0f6fc;font-size:18px;font-weight:800;line-height:1;"><?= number_format($nb, 0, ',', ' ') ?></div>
+            <div style="color:#8b949e;font-size:10px;margin-top:3px;"><?= number_format($pct, 2, ',', ' ') ?> %</div>
+        </div>
+    <?php endforeach; ?>
+    </div>
+
+    <!-- Toggle Detail / Groupe (Groupe par defaut) -->
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button type="button" id="nivToggleGroupe" onclick="_nivShow('groupe')" style="padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;background:var(--brand);color:#fff;box-shadow:0 2px 10px var(--brand-glow);transition:all .15s;">Groupe (par famille)</button>
+        <button type="button" id="nivToggleDetail" onclick="_nivShow('detail')" style="padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);transition:all .15s;">Detail (chaque niveau)</button>
+    </div>
+
+    <!-- Detail complet en barres horizontales (sans la ligne N/A "non repertorie") -->
+    <div id="nivViewDetail" style="display:none;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:14px 16px;">
+        <div style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Detail par niveau</div>
+        <?php foreach ($_chartHierarchy as $_code):
+            $_nb = (int)($_byNiv[$_code] ?? 0);
+            if ($_nb === 0) continue; // Skip niveaux a 0
+            $_col = $_colors[$_code] ?? '#8b949e';
+            $_pct = $_totalAth > 0 ? ($_nb / $_totalAth * 100) : 0;
+            $_barW = $_maxNb > 0 ? ($_nb / $_maxNb * 100) : 0;
+        ?>
+        <div style="display:grid;grid-template-columns:50px 1fr 90px 60px;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #161b22;font-size:12px;">
+            <div style="color:<?= $_col ?>;font-weight:800;letter-spacing:0.5px;"><?= $_code ?></div>
+            <div style="background:#161b22;border-radius:4px;height:12px;overflow:hidden;">
+                <div style="background:<?= $_col ?>;height:100%;width:<?= number_format($_barW, 2, '.', '') ?>%;transition:width .4s;"></div>
+            </div>
+            <div style="color:#f0f6fc;font-weight:700;text-align:right;"><?= number_format($_nb, 0, ',', ' ') ?></div>
+            <div style="color:#8b949e;text-align:right;font-size:10px;"><?= number_format($_pct, 2, ',', ' ') ?> %</div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+
+    <!-- Vue Groupe (par famille) -->
+    <?php
+    $_groups = [
+        ['key'=>'IA-IB','label'=>'Internationale Elite','codes'=>['IA','IB'],'color'=>'#c026d3'],
+        ['key'=>'N1-N4','label'=>'Nationale','codes'=>['N1','N2','N3','N4'],'color'=>'#e11d48'],
+        ['key'=>'IE-R6','label'=>'Regionale (IE / IR / R1-R6)','codes'=>['IE','IR','IR1','IR2','IR3','IR4','R1','R2','R3','R4','R5','R6'],'color'=>'#0891b2'],
+        ['key'=>'D1-D8','label'=>'Departementale','codes'=>['D1','D2','D3','D4','D5','D6','D7','D8'],'color'=>'#f97316'],
+    ];
+    $_groupTotals = [];
+    $_maxGroup = 0;
+    foreach ($_groups as $g) {
+        $sum = 0;
+        foreach ($g['codes'] as $c) $sum += (int)($_byNiv[$c] ?? 0);
+        $_groupTotals[$g['key']] = $sum;
+        if ($sum > $_maxGroup) $_maxGroup = $sum;
+    }
+    ?>
+    <div id="nivViewGroupe" style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:14px 16px;">
+        <div style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Repartition par famille</div>
+        <?php foreach ($_groups as $g):
+            $_nb = $_groupTotals[$g['key']];
+            if ($_nb === 0) continue;
+            $_pct = $_totalAth > 0 ? ($_nb / $_totalAth * 100) : 0;
+            $_barW = $_maxGroup > 0 ? ($_nb / $_maxGroup * 100) : 0;
+            $_col = $g['color'];
+            $_codesStr = implode(', ', $g['codes']);
+        ?>
+        <div style="display:grid;grid-template-columns:120px 1fr 100px 70px;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid #161b22;font-size:13px;">
+            <div>
+                <div style="color:<?= $_col ?>;font-weight:800;font-size:13px;"><?= $g['key'] ?></div>
+                <div style="color:#8b949e;font-size:10px;font-weight:500;margin-top:2px;"><?= $g['label'] ?></div>
+            </div>
+            <div style="background:#161b22;border-radius:5px;height:18px;overflow:hidden;position:relative;">
+                <div style="background:linear-gradient(90deg,<?= $_col ?>,<?= $_col ?>cc);height:100%;width:<?= number_format($_barW, 2, '.', '') ?>%;transition:width .4s;"></div>
+            </div>
+            <div style="color:#f0f6fc;font-weight:800;text-align:right;font-size:14px;"><?= number_format($_nb, 0, ',', ' ') ?></div>
+            <div style="color:<?= $_col ?>;text-align:right;font-size:13px;font-weight:700;"><?= number_format($_pct, 2, ',', ' ') ?> %</div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+
+    <script>
+    function _nivShow(mode) {
+        var detail = document.getElementById('nivViewDetail');
+        var groupe = document.getElementById('nivViewGroupe');
+        var btnD = document.getElementById('nivToggleDetail');
+        var btnG = document.getElementById('nivToggleGroupe');
+        if (mode === 'groupe') {
+            detail.style.display = 'none';
+            groupe.style.display = 'block';
+            btnG.style.cssText = 'padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;background:var(--brand);color:#fff;box-shadow:0 2px 10px var(--brand-glow);transition:all .15s;';
+            btnD.style.cssText = 'padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);transition:all .15s;';
+            try { localStorage.setItem('bk_niv_view', 'groupe'); } catch(e){}
+        } else {
+            detail.style.display = 'block';
+            groupe.style.display = 'none';
+            btnD.style.cssText = 'padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;background:var(--brand);color:#fff;box-shadow:0 2px 10px var(--brand-glow);transition:all .15s;';
+            btnG.style.cssText = 'padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);transition:all .15s;';
+            try { localStorage.setItem('bk_niv_view', 'detail'); } catch(e){}
+        }
+    }
+    // Restaurer le choix de l'utilisateur (Groupe par defaut)
+    (function(){
+        try {
+            var saved = localStorage.getItem('bk_niv_view');
+            if (saved === 'detail') _nivShow('detail');
+            // sinon, on reste en mode Groupe (deja affiche par defaut dans le HTML)
+        } catch(e){}
+    })();
+    </script>
+
+    <div style="color:#6e7681;font-size:10px;margin-top:10px;text-align:right;">
+        Calcule le <?= htmlspecialchars($nivStats['computed_at'] ?? '') ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Selecteur de tri (AJAX) -->
+<div class="ath-sort" id="athSortBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
+    <span style="color:var(--text-muted);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-right:4px;">Trier par</span>
+    <?php
+    $triOpts = [
+        'medailles'  => '🥇 Médailles',
+        'podiums'    => '🏆 Podiums',
+        'date'       => '🎂 Âge (jeunes)',
+        'records'    => '⚡ Records',
+        'selections' => '🎯 Sélections',
+        'nom'        => '🔤 Nom',
+    ];
+    foreach ($triOpts as $k => $lbl):
+        $active = ($k === $tri);
+    ?>
+    <button type="button" data-tri="<?= $k ?>" onclick="_athChangeSort('<?= $k ?>')" class="ath-tri-btn<?= $active ? ' is-active' : '' ?>" style="display:inline-block;padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);transition:all .15s;<?= $active ? 'background:var(--brand);color:#fff;border-color:transparent;box-shadow:0 2px 10px var(--brand-glow);' : 'background:var(--bg-card);color:var(--text-secondary);' ?>"><?= $lbl ?></button>
+    <?php endforeach; ?>
+    <span id="athSortSpinner" style="display:none;color:var(--text-muted);font-size:12px;margin-left:8px;">Chargement…</span>
 </div>
 
 <?php if ($data && ($data['success'] ?? false) && !empty($data['athletes'])): ?>
@@ -1416,7 +2888,7 @@ elseif ($page === 'athletes'):
         <h3 style="color:#f59e0b;font-size:18px;margin:0 0 14px;">Avertissement legal</h3>
         <div style="color:#c9d1d9;font-size:13px;line-height:1.7;margin:0 0 20px;text-align:left;">
             <p style="margin:0 0 10px;">Le site <strong style="color:#f59e0b;">Bokonzi</strong> est une plateforme independante a caractere informatif et statistique consacree a l'athletisme.</p>
-            <p style="margin:0 0 10px;color:#8b949e;">Ce site ne constitue en aucun cas un site officiel et n'entretient aucun lien juridique, institutionnel ou commercial avec la Federation Francaise d'Athletisme ni avec le site athle.fr, ni avec toute autre instance officielle.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Ce site ne constitue en aucun cas un site officiel et n'entretient aucun lien juridique, institutionnel ou commercial avec une quelconque federation sportive ou instance officielle.</p>
             <p style="margin:0 0 10px;color:#8b949e;">Les informations diffusees proviennent exclusivement de sources publiques librement accessibles, a des fins strictement informatives et statistiques.</p>
             <p style="margin:0 0 10px;color:#8b949e;">Aucune volonte de tromper, d'induire en erreur ou de porter atteinte a l'image, a la reputation ou a la vie privee des personnes mentionnees n'est poursuivie.</p>
             <p style="margin:0;color:#8b949e;">Toute personne figurant sur le site peut exercer son droit de suppression via le bouton <span style="color:#f59e0b;">Signaler</span> present sur chaque fiche.</p>
@@ -1447,21 +2919,297 @@ function _athNivBadge($code) {
     elseif ($nc === 'I') { $bg='#c026d320'; $bc='#c026d3'; $tc='#e879f9'; }
     elseif ($nc === 'R') { $bg='#0891b220'; $bc='#0891b2'; $tc='#22d3ee'; }
     else { $bg='#f9731620'; $bc='#f97316'; $tc='#fb923c'; }
-    return '<span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;margin:1px;background:'.$bg.';border:1px solid '.$bc.'40;color:'.$tc.';">'.htmlspecialchars($code).'</span>';
+    return '<span style="display:inline-block;padding:4px 11px;border-radius:6px;font-size:16px;font-weight:700;margin:1px;background:'.$bg.';border:1px solid '.$bc.'40;color:'.$tc.';text-shadow:0 1px 2px rgba(0,0,0,0.7),0 0 4px rgba(0,0,0,0.4);">'.htmlspecialchars($code).'</span>';
+}
+
+// Helper : determiner l'article approprie pour une epreuve (du / de la / de l')
+function _athEpArticle($epName) {
+    $low = strtolower($epName);
+    // Epreuves feminines
+    if (preg_match('/^(longueur|perche|hauteur)/', $low)) return 'de la ';
+    // Voyelles initiales
+    if (preg_match('/^[aeiouéèêh]/', $low)) return "de l'";
+    return 'du ';
+}
+
+// Generation d'un resume editorial pour chaque athlete (style magazine, accordé au sexe)
+function _athNarrative($a, $age) {
+    $name = $a['nom_complet'] ?? '';
+    $sexe = $a['sexe'] ?? 'M';
+    $club = $a['club'] ?? '';
+    $club = $club ? rtrim($club, '* ') : '';
+    $med = $a['medailles'] ?? ['or'=>0,'argent'=>0,'bronze'=>0];
+    $totalMed = ($med['or'] ?? 0) + ($med['argent'] ?? 0) + ($med['bronze'] ?? 0);
+    $podiums = (int)($a['nb_podiums'] ?? 0);
+    $records = (int)($a['nb_records'] ?? 0);
+    $selections = (int)($a['nb_selections'] ?? 0);
+    $best = $a['meilleur_niveau'] ?? '';
+    $topEp = $a['top_epreuve'] ?? null;
+    $latestY = $a['latest_year'] ?? null;
+    $isF = ($sexe === 'F');
+
+    // Phrase d'ouverture
+    $opener = '<strong>' . htmlspecialchars($name) . '</strong>';
+    if ($age && in_array($best, ['IA','IB'], true)) $opener .= ', ' . $age . ' ans';
+    if ($club) {
+        $opener .= ' (' . htmlspecialchars($club) . ')';
+    }
+
+    // Spécialité (avec article correct selon l'epreuve)
+    $spec = '';
+    if ($topEp && !empty($topEp['epreuve'])) {
+        $epName = $topEp['epreuve'];
+        $art = _athEpArticle($epName);
+        $spec = ', spécialiste ' . $art . '<em>' . htmlspecialchars($epName) . '</em>';
+        if (!empty($topEp['best'])) $spec .= ' (RP : <strong>' . htmlspecialchars($topEp['best']) . '</strong>)';
+    }
+
+    // Bilan principal
+    $bilan = [];
+    if ($totalMed > 0) {
+        $details = [];
+        if (!empty($med['or'])) $details[] = $med['or'] . ' or';
+        if (!empty($med['argent'])) $details[] = $med['argent'] . ' argent';
+        if (!empty($med['bronze'])) $details[] = $med['bronze'] . ' bronze';
+        $bilan[] = '<strong>' . $totalMed . ' médaille' . ($totalMed > 1 ? 's' : '') . '</strong> (' . implode(', ', $details) . ')';
+    }
+    if ($podiums > 0) $bilan[] = $podiums . ' podium' . ($podiums > 1 ? 's' : '');
+    if ($selections > 0) $bilan[] = $selections . ' sélection' . ($selections > 1 ? 's' : '') . ' en équipe';
+    if ($records > 0) $bilan[] = $records . ' record' . ($records > 1 ? 's' : '') . ' personnel' . ($records > 1 ? 's' : '');
+
+    $bilanTxt = !empty($bilan) ? '. À son palmarès : ' . implode(', ', $bilan) : '';
+
+    // Niveau (accordé au sexe : Classé / Classée)
+    $classe = $isF ? 'Classée' : 'Classé';
+    $nivTxt = $best ? ('. ' . $classe . ' <strong>' . htmlspecialchars($best) . '</strong>') : '';
+
+    // Année dernière activité
+    $yrTxt = $latestY ? (', dernière activité enregistrée en <strong>' . $latestY . '</strong>') : '';
+
+    return $opener . $spec . $bilanTxt . $nivTxt . $yrTxt . '.';
 }
 ?>
 
-<div class="ath-grid">
+<?php _renderFeaturedSection($featAthletes, $featTitle); ?>
+
+<!-- Toggle vues : Magazine / Grille / Liste / Flexbox -->
+<?php
+$viewBtns = [
+    'magazine' => ['icon' => '📰', 'label' => 'Magazine'],
+    'grid'     => ['icon' => '▦',  'label' => 'Grille'],
+    'list'     => ['icon' => '☰',  'label' => 'Liste'],
+    'flex'     => ['icon' => '⊞',  'label' => 'Flexbox'],
+];
+?>
+<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <?php foreach ($viewBtns as $vKey => $vInfo):
+        $sel = ($afLayout === $vKey);
+    ?>
+    <button id="view-<?= $vKey ?>" class="ath-view-btn<?= $sel ? ' ath-view-active' : '' ?>" data-view="<?= $vKey ?>" onclick="_athSwitchView('<?= $vKey ?>')" style="background:<?= $sel ? '#6c5ce7' : 'transparent' ?>;color:<?= $sel ? '#fff' : '#8b949e' ?>;border:<?= $sel ? 'none' : '1px solid #30363d' ?>;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:<?= $sel ? '700' : '600' ?>;cursor:pointer;transition:all .15s;">
+        <?= $vInfo['icon'] ?> <?= $vInfo['label'] ?>
+    </button>
+    <?php endforeach; ?>
+</div>
+
+<!-- VUE MAGAZINE -->
+<style>
+/* Magazine — mode sombre par defaut */
+.ath-mag {
+    background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+    border: 1px solid #30363d;
+}
+.ath-mag .mag-eyebrow { color: #a78bfa; }
+.ath-mag .mag-title { color: #f0f6fc; }
+.ath-mag .mag-sub { color: #c9d1d9; }
+.ath-mag .mag-sub strong { color: #a78bfa; }
+.ath-mag .mag-meta { color: #8b949e; }
+.ath-mag .mag-divider { border-color: #30363d; }
+.ath-mag .mag-lead { color: #e6edf3; }
+.ath-mag .mag-lead .mag-drop { color: #a78bfa; }
+.ath-mag .mag-rule { border-color: #30363d; }
+.ath-mag .mag-cols { column-rule: 1px solid #21262d; }
+.ath-mag .mag-card { border-bottom: 1px dotted #30363d; }
+.ath-mag .mag-num { color: #a78bfa; }
+.ath-mag .mag-name { color: #f0f6fc; }
+.ath-mag .mag-text { color: #c9d1d9; }
+.ath-mag .mag-foot { border-top: 2px solid #30363d; color: #8b949e; }
+.ath-mag .mag-name:hover { border-bottom: 2px solid #a78bfa !important; }
+
+/* Magazine — mode clair */
+body.p2-light .ath-mag {
+    background: linear-gradient(180deg, #faf7f0 0%, #f4ede0 100%);
+    border-color: #c9bfa6;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+}
+body.p2-light .ath-mag .mag-eyebrow { color: #6c5ce7; }
+body.p2-light .ath-mag .mag-title { color: #1a1814; }
+body.p2-light .ath-mag .mag-sub { color: #3a352b; }
+body.p2-light .ath-mag .mag-sub strong { color: #6c5ce7; }
+body.p2-light .ath-mag .mag-meta { color: #6b5e4a; }
+body.p2-light .ath-mag .mag-divider { border-color: #c9bfa6; }
+body.p2-light .ath-mag .mag-lead { color: #2a251c; }
+body.p2-light .ath-mag .mag-lead .mag-drop { color: #6c5ce7; }
+body.p2-light .ath-mag .mag-rule { border-color: #c9bfa6; }
+body.p2-light .ath-mag .mag-cols { column-rule: 1px solid #d8cdb1; }
+body.p2-light .ath-mag .mag-card { border-bottom-color: #c9bfa6; }
+body.p2-light .ath-mag .mag-num { color: #6c5ce7; }
+body.p2-light .ath-mag .mag-name { color: #1a1814; }
+body.p2-light .ath-mag .mag-text { color: #2a251c; }
+body.p2-light .ath-mag .mag-foot { border-top-color: #c9bfa6; color: #6b5e4a; }
+body.p2-light .ath-mag .mag-name:hover { border-bottom: 2px solid #6c5ce7 !important; }
+</style>
+
+<article id="athMagazine" class="ath-mag" style="border-radius:18px;padding:48px 38px;margin-bottom:32px;font-family:Georgia,'Times New Roman',serif;">
+    <!-- Header magazine -->
+    <header class="mag-divider" style="text-align:center;border-bottom-style:solid;border-bottom-width:2px;padding-bottom:32px;margin-bottom:36px;">
+        <div class="mag-eyebrow" style="font-size:11px;font-weight:900;letter-spacing:6px;text-transform:uppercase;margin-bottom:12px;font-family:'Helvetica Neue',Arial,sans-serif;">— Édition spéciale Bokonzi —</div>
+        <h1 class="mag-title" style="font-size:48px;font-weight:900;margin:0 0 14px;line-height:1.05;letter-spacing:-1px;font-family:Georgia,serif;">
+            ÉLITE <?= $afAnnee ?>
+        </h1>
+        <div class="mag-sub" style="font-size:18px;font-style:italic;font-weight:400;margin-bottom:6px;">
+            Niveau <strong style="font-style:normal;"><?= htmlspecialchars(implode(' &amp; ', $afNiveaux)) ?></strong> &middot; <?= count($data['athletes']) ?> athlètes en lumière
+        </div>
+        <div class="mag-meta" style="font-size:13px;letter-spacing:2px;text-transform:uppercase;font-family:'Helvetica Neue',Arial,sans-serif;margin-top:14px;">
+            Bokonzi Magazine &middot; <?= date('F Y') ?>
+        </div>
+    </header>
+
+    <!-- Lead paragraph -->
+    <?php
+    $totalAth = count($data['athletes']);
+    $nbM = count(array_filter($data['athletes'], fn($a) => ($a['sexe'] ?? '') === 'M'));
+    $nbF = $totalAth - $nbM;
+    $nivLabel = implode(' et ', $afNiveaux);
+    ?>
+    <div class="mag-lead" style="max-width:680px;margin:0 auto 38px;text-align:justify;font-size:17px;line-height:1.75;font-family:Georgia,serif;">
+        <span class="mag-drop" style="float:left;font-size:60px;font-weight:900;line-height:0.9;margin:6px 10px 0 0;font-family:Georgia,serif;">À</span>
+        l'aube de la saison <?= $afAnnee ?>, Bokonzi met en lumière les athlètes français de niveau <strong><?= htmlspecialchars($nivLabel) ?></strong> qui marquent l'année. Sur les disciplines reines du sprint et des sauts (100m, 200m, haies, longueur, triple, perche), <strong><?= $totalAth ?></strong> profils retenus &mdash; <strong><?= $nbM ?> hommes</strong> et <strong><?= $nbF ?> femmes</strong> &mdash; composent ce panorama. Tour d'horizon de celles et ceux qui font vibrer la piste cette saison.
+    </div>
+
+    <hr class="mag-rule" style="border-style:solid;border-width:0 0 1px 0;width:80px;margin:0 auto 32px;">
+
+    <!-- Articles par athlète (2 colonnes) -->
+    <div class="mag-cols" style="column-count:2;column-gap:32px;">
+    <?php foreach ($data['athletes'] as $idx => $a):
+        $athAge = _athComputeAge($a['date_naissance'] ?? null);
+        $narrative = _athNarrative($a, $athAge);
+        $sexeIcon = ($a['sexe'] ?? '') === 'F' ? '&#9792;' : '&#9794;';
+        $sexeColor = ($a['sexe'] ?? '') === 'F' ? '#ec4899' : '#3b82f6';
+    ?>
+        <div class="mag-card" style="break-inside:avoid;margin-bottom:28px;padding-bottom:18px;border-bottom-style:dotted;border-bottom-width:1px;">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
+                <span class="mag-num" style="font-size:22px;font-weight:900;font-family:Georgia,serif;line-height:1;">N°<?= $idx + 1 ?></span>
+                <span style="color:<?= $sexeColor ?>;font-size:14px;"><?= $sexeIcon ?></span>
+                <?php if (!empty($a['meilleur_niveau'])): ?>
+                <span style="margin-left:auto;font-family:'Helvetica Neue',Arial,sans-serif;"><?= _athNivBadge($a['meilleur_niveau']) ?></span>
+                <?php endif; ?>
+            </div>
+            <a class="mag-name" href="?page=profil&id=<?= (int)$a['athlete_id'] ?>" style="display:block;font-size:22px;font-weight:700;text-decoration:none;margin-bottom:10px;line-height:1.2;font-family:Georgia,serif;border-bottom:2px solid transparent;transition:border-color .2s;">
+                <?= htmlspecialchars($a['nom_complet']) ?>
+            </a>
+            <p class="mag-text" style="font-size:14px;line-height:1.7;margin:0 0 10px;font-family:Georgia,serif;text-align:justify;">
+                <?= $narrative ?>
+            </p>
+            <div class="mag-meta" style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:1px;">
+                <?= htmlspecialchars($a['categorie'] ?? '') ?>
+                <?php if (!empty($a['nationalite'])): ?> &middot; <?= htmlspecialchars($a['nationalite']) ?><?php endif; ?>
+                <?php if (!empty($a['latest_year'])): ?> &middot; Saison <?= (int)$a['latest_year'] ?><?php endif; ?>
+            </div>
+        </div>
+    <?php endforeach; ?>
+    </div>
+
+    <footer class="mag-foot" style="text-align:center;margin-top:32px;padding-top:24px;border-top-style:solid;border-top-width:2px;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-family:'Helvetica Neue',Arial,sans-serif;">
+        Article généré automatiquement &middot; Bokonzi <?= date('Y') ?>
+    </footer>
+</article>
+
+<style>
+@media (max-width: 768px) {
+    #athMagazine { column-count: 1 !important; padding: 28px 20px !important; }
+    #athMagazine > div[style*="column-count"] { column-count: 1 !important; }
+    #athMagazine h1 { font-size: 36px !important; }
+}
+.ath-view-btn:hover { border-color: #6c5ce7 !important; color: #fff !important; }
+</style>
+
+<style>
+/* Layouts athletes - 4 modes */
+.ath-grid.layout-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.ath-grid.layout-list { display: flex; flex-direction: column; gap: 14px; }
+.ath-grid.layout-list .ath-card { padding: 18px 22px; }
+.ath-grid.layout-flex { display: flex; flex-wrap: wrap; gap: 18px; }
+.ath-grid.layout-flex .ath-card { flex: 1 1 280px; max-width: 420px; min-width: 240px; }
+@media (max-width: 768px) {
+    .ath-grid.layout-grid { grid-template-columns: 1fr; }
+    .ath-grid.layout-flex .ath-card { flex: 1 1 100%; max-width: 100%; }
+}
+</style>
+<script>
+function _athSwitchView(v) {
+    var mag = document.getElementById('athMagazine');
+    var grid = document.getElementById('athGrid');
+    var allBtns = document.querySelectorAll('.ath-view-btn');
+
+    // Reset tous les boutons
+    allBtns.forEach(function(b) {
+        b.style.background = 'transparent';
+        b.style.color = '#8b949e';
+        b.style.border = '1px solid #30363d';
+        b.style.fontWeight = '600';
+        b.classList.remove('ath-view-active');
+    });
+    var activeBtn = document.getElementById('view-' + v);
+    if (activeBtn) {
+        activeBtn.style.background = '#6c5ce7';
+        activeBtn.style.color = '#fff';
+        activeBtn.style.border = 'none';
+        activeBtn.style.fontWeight = '700';
+        activeBtn.classList.add('ath-view-active');
+    }
+
+    // Reset class layout sur la grille
+    if (grid) {
+        grid.classList.remove('layout-grid','layout-list','layout-flex');
+    }
+
+    if (v === 'magazine') {
+        if (mag) mag.style.display = 'block';
+        if (grid) grid.style.display = 'none';
+    } else {
+        if (mag) mag.style.display = 'none';
+        if (grid) {
+            grid.style.display = '';
+            grid.classList.add('layout-' + v);
+        }
+    }
+}
+// Appliquer le layout par defaut au chargement
+document.addEventListener('DOMContentLoaded', function() {
+    var defaultV = '<?= $afLayout ?>';
+    _athSwitchView(defaultV);
+});
+</script>
+
+<div class="ath-grid layout-<?= $afLayout === 'magazine' ? 'grid' : $afLayout ?>" id="athGrid" style="display:<?= $afLayout === 'magazine' ? 'none' : '' ?>;">
     <?php foreach ($data['athletes'] as $idx => $a):
         $med = $a['medailles'] ?? ['or'=>0,'argent'=>0,'bronze'=>0];
         $totalMedA = $med['or'] + $med['argent'] + $med['bronze'];
         $topEp = $a['top_epreuve'] ?? null;
         $sexeIcon = $a['sexe'] === 'M' ? '&#9794;' : ($a['sexe'] === 'F' ? '&#9792;' : '');
+        $athAge = _athComputeAge($a['date_naissance'] ?? null);
+        $isOld = isset($a['is_recent']) && !$a['is_recent'];
+        $latestYear = $a['latest_year'] ?? null;
     ?>
-    <div class="ath-card">
+    <div class="ath-card<?= $isOld ? ' ath-old' : '' ?> ath-<?= strtolower($a['sexe'] ?? '') ?>" <?php if ($latestYear): ?>title="Derniere activite : <?= $latestYear ?>"<?php endif; ?>>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
             <span style="color:var(--text-muted);font-size:12px;font-weight:700;">#<?= $idx + 1 ?></span>
             <a class="ath-name" href="?page=profil&id=<?= $a['athlete_id'] ?>" style="margin:0;"><?= htmlspecialchars($a['nom_complet']) ?></a>
+            <?php if ($latestYear): ?>
+            <span style="margin-left:auto;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;<?= $isOld ? 'background:#3a322a;color:#d4b896;border:1px solid #5a4a38;' : 'background:#1f3a2e;color:#34d399;border:1px solid #166534;' ?>" title="Dernière année d'activité">
+                <?= $latestYear ?>
+            </span>
+            <?php endif; ?>
         </div>
         <?php if ($a['club']): ?>
         <a class="ath-club" href="?page=recherche&club=<?= urlencode(rtrim($a['club'], '* ')) ?>"><?= htmlspecialchars(rtrim($a['club'], '* ')) ?></a>
@@ -1472,8 +3220,19 @@ function _athNivBadge($code) {
         <div class="ath-badges">
             <span class="badge badge-cat"><?= $a['categorie'] ?></span>
             <span class="badge badge-<?= strtolower($a['sexe']) ?>"><?= $sexeIcon ?> <?= $a['sexe'] ?></span>
-            <?php if ($a['nationalite']): ?>
-            <span class="badge" style="background:#ffffff08;border:1px solid #ffffff15;color:#c9d1d9;"><?= $a['nationalite'] ?></span>
+            <?php
+            // Age affiche uniquement pour les niveaux IA et IB
+            $bestLvl = $a['meilleur_niveau'] ?? '';
+            $showAge = $athAge && in_array($bestLvl, ['IA','IB'], true);
+            if ($showAge): ?>
+            <span class="badge" style="background:#10b98120;border:1px solid #10b98140;color:#34d399;">&#127874; <?= $athAge ?> ans</span>
+            <?php endif; ?>
+            <?php if ($a['nationalite']):
+                $_natInfo = $_athNatMap[$a['nationalite']] ?? null;
+                $_natFlag = $_natInfo ? bk_flag_html($_natInfo['iso2'], 16) : '';
+                $_natNom = $_natInfo['nom'] ?? $a['nationalite'];
+            ?>
+            <span class="badge" style="background:#ffffff08;border:1px solid #ffffff15;color:#c9d1d9;" title="<?= htmlspecialchars($_natNom) ?>"><?= $_natFlag ?><?= htmlspecialchars($a['nationalite']) ?></span>
             <?php endif; ?>
             <?php if ($a['meilleur_niveau']): ?><?= _athNivBadge($a['meilleur_niveau']) ?><?php endif; ?>
         </div>
@@ -1514,6 +3273,264 @@ function _athNivBadge($code) {
     </div>
     <?php endforeach; ?>
 </div>
+
+<style>
+.ath-loader-spinner {
+    width: 38px; height: 38px; margin: 0 auto 14px;
+    border: 3px solid var(--border);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: athSpin 0.8s linear infinite;
+}
+.ath-loader-text { color: var(--text-primary); font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.ath-loader-sub { color: var(--text-muted); font-size: 12px; }
+@keyframes athSpin { to { transform: rotate(360deg); } }
+</style>
+
+
+<script>
+(function(){
+    window._athPage = 1;
+    window._athDone = false;
+    window._athEpreuves = '100m|200m|400m Haies (76)|400m Haies (91)|110m Haies (91)|110m Haies (99)|110m Haies (106)|Longueur|Triple saut|Perche';
+    window._athOrdre = <?= json_encode($tri) ?>;
+    // Mapping ISO3 -> {nom, iso2} pour drapeaux dans les cards JS
+    window._athNatMap = <?= json_encode(array_map(function($v){ return ['nom'=>$v['nom'], 'iso2'=>$v['iso2']]; }, $_athNatMap), JSON_UNESCAPED_UNICODE) ?>;
+    function _athFlag(iso2){
+        if (!iso2 || iso2.length !== 2) return '';
+        var lc = iso2.toLowerCase();
+        return '<img src="https://flagcdn.com/16x12/'+lc+'.png" srcset="https://flagcdn.com/32x24/'+lc+'.png 2x" width="16" height="12" alt="" loading="lazy" style="display:inline-block;vertical-align:-2px;margin-right:4px;border-radius:1px;">';
+    }
+
+    function _athComputeAge(d){
+        if (!d) return null;
+        var dn = new Date(d);
+        if (isNaN(dn.getTime())) return null;
+        var now = new Date();
+        var age = now.getFullYear() - dn.getFullYear();
+        var m = now.getMonth() - dn.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < dn.getDate())) age--;
+        return (age >= 0 && age < 130) ? age : null;
+    }
+
+    function _athNivBadge(code){
+        if (!code) return '';
+        var nc = code.charAt(0);
+        var bg, bc, tc;
+        if (nc === 'N') { bg='#e11d4820'; bc='#e11d48'; tc='#fb7185'; }
+        else if (nc === 'I') { bg='#c026d320'; bc='#c026d3'; tc='#e879f9'; }
+        else if (nc === 'R') { bg='#0891b220'; bc='#0891b2'; tc='#22d3ee'; }
+        else { bg='#f9731620'; bc='#f97316'; tc='#fb923c'; }
+        return '<span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;margin:1px;background:'+bg+';border:1px solid '+bc+'40;color:'+tc+';text-shadow:0 1px 2px rgba(0,0,0,0.7),0 0 4px rgba(0,0,0,0.4);">'+code+'</span>';
+    }
+
+    function _esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function _rtrimStar(s){ return (s||'').replace(/[\s*]+$/,''); }
+
+    function _athCardHTML(a, idx){
+        var med = a.medailles || {or:0,argent:0,bronze:0};
+        var totalMed = (med.or||0) + (med.argent||0) + (med.bronze||0);
+        var topEp = a.top_epreuve;
+        var sexeIcon = a.sexe === 'M' ? '♂' : (a.sexe === 'F' ? '♀' : '');
+        var clubName = _rtrimStar(a.club);
+        var medHTML = '';
+        if (totalMed > 0){
+            if (med.or > 0) medHTML += '🥇'+med.or;
+            if (med.argent > 0) medHTML += ' 🥈'+med.argent;
+            if (med.bronze > 0) medHTML += ' 🥉'+med.bronze;
+        } else { medHTML = '—'; }
+
+        var html = '<div class="ath-card ath-' + (a.sexe || '').toLowerCase() + '">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">';
+        html += '<span style="color:var(--text-muted);font-size:12px;font-weight:700;">#'+(idx+1)+'</span>';
+        html += '<a class="ath-name" href="?page=profil&id='+a.athlete_id+'" style="margin:0;">'+_esc(a.nom_complet)+'</a>';
+        html += '</div>';
+        if (clubName){
+            html += '<a class="ath-club" href="?page=recherche&club='+encodeURIComponent(clubName)+'">'+_esc(clubName)+'</a>';
+        } else {
+            html += '<span class="ath-club">—</span>';
+        }
+        html += '<div class="ath-badges">';
+        html += '<span class="badge badge-cat">'+_esc(a.categorie||'')+'</span>';
+        html += '<span class="badge badge-'+(a.sexe||'').toLowerCase()+'">'+sexeIcon+' '+_esc(a.sexe||'')+'</span>';
+        var age = _athComputeAge(a.date_naissance);
+        var bestLvl = a.meilleur_niveau || '';
+        if (age !== null && (bestLvl === 'IA' || bestLvl === 'IB')){
+            html += '<span class="badge" style="background:#10b98120;border:1px solid #10b98140;color:#34d399;">🎂 '+age+' ans</span>';
+        }
+        if (a.nationalite){
+            var natInfo = window._athNatMap ? window._athNatMap[a.nationalite] : null;
+            var flag = (natInfo && natInfo.iso2) ? _athFlag(natInfo.iso2) : '';
+            var natTitle = natInfo && natInfo.nom ? natInfo.nom : a.nationalite;
+            html += '<span class="badge" style="background:#ffffff08;border:1px solid #ffffff15;color:#c9d1d9;" title="'+_esc(natTitle)+'">'+flag+_esc(a.nationalite)+'</span>';
+        }
+        if (a.meilleur_niveau){ html += _athNivBadge(a.meilleur_niveau); }
+        html += '</div>';
+        html += '<div class="ath-kpis">';
+        html += '<div class="ath-kpi"><div class="kv" style="color:'+(totalMed>0?'#fbbf24':'#2d3a4a')+';">'+medHTML+'</div><div class="kl">M&eacute;dailles</div></div>';
+        html += '<div class="ath-kpi"><div class="kv" style="color:'+((a.nb_podiums||0)>0?'#34d399':'#2d3a4a')+';">'+((a.nb_podiums||0)>0?a.nb_podiums:'—')+'</div><div class="kl">Podiums</div></div>';
+        html += '<div class="ath-kpi"><div class="kv" style="color:'+((a.nb_selections||0)>0?'#818cf8':'#2d3a4a')+';">'+((a.nb_selections||0)>0?a.nb_selections:'—')+'</div><div class="kl">S&eacute;lections</div></div>';
+        html += '<div class="ath-kpi"><div class="kv" style="color:'+((a.nb_records||0)>0?'#a78bfa':'#2d3a4a')+';">'+((a.nb_records||0)>0?a.nb_records:'—')+'</div><div class="kl">Records</div></div>';
+        html += '</div>';
+        if (topEp){
+            html += '<div class="ath-specialty">'+_esc(topEp.epreuve||'')+(topEp.best?' — RP: '+_esc(topEp.best):'')+'</div>';
+        }
+        html += '<div class="ath-actions">';
+        html += '<a href="?page=profil&id='+a.athlete_id+'">Voir le profil</a>';
+        html += '<button class="btn-cmp-add" data-cmp-ath="'+a.athlete_id+'" data-name="'+_esc(a.nom_complet)+'" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)">+ Comparer</button>';
+        html += '</div>';
+        html += '</div>';
+        return html;
+    }
+
+    function _athShowLoader(triLabel){
+        var existing = document.getElementById('athLoader');
+        if (existing) { existing.remove(); }
+        var ov = document.createElement('div');
+        ov.id = 'athLoader';
+        ov.innerHTML = '<div class="ath-loader-spinner"></div><div class="ath-loader-text">Tri par <strong>'+triLabel+'</strong>…</div><div class="ath-loader-sub">Chargement en cours, un instant.</div>';
+        ov.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:28px 36px;box-shadow:0 16px 50px rgba(0,0,0,0.4);text-align:center;min-width:240px;';
+        document.body.appendChild(ov);
+    }
+    function _athHideLoader(){
+        var ov = document.getElementById('athLoader');
+        if (ov) ov.remove();
+    }
+
+    window._athChangeSort = function(tri){
+        if (tri === window._athOrdre) return;
+        var bar = document.getElementById('athSortBar');
+        var grid = document.getElementById('athGrid');
+        var moreWrap = document.getElementById('athMoreWrap');
+        var info = document.getElementById('athMoreInfo');
+
+        // Maj UI : bouton actif + libelle pour le loader
+        var triLabel = tri;
+        bar.querySelectorAll('.ath-tri-btn').forEach(function(b){
+            var isActive = (b.dataset.tri === tri);
+            if (isActive) triLabel = b.textContent.trim();
+            b.classList.toggle('is-active', isActive);
+            if (isActive) {
+                b.style.cssText = 'display:inline-block;padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;background:var(--brand);color:#fff;box-shadow:0 2px 10px var(--brand-glow);';
+            } else {
+                b.style.cssText = 'display:inline-block;padding:7px 16px;border-radius:18px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);transition:all .15s;background:var(--bg-card);color:var(--text-secondary);';
+            }
+        });
+
+        _athShowLoader(triLabel);
+        grid.style.opacity = '0.35';
+        grid.style.pointerEvents = 'none';
+        grid.style.filter = 'blur(2px)';
+
+        var url = 'api/liste.php?page=1&limit=100&ordre='+encodeURIComponent(tri)+'&niveau=IA,IB&epreuve='+encodeURIComponent(window._athEpreuves);
+        fetch(url).then(function(r){ return r.json(); }).then(function(data){
+            _athHideLoader();
+            grid.style.opacity = '';
+            grid.style.pointerEvents = '';
+            grid.style.filter = '';
+
+            if (!data || !data.success || !data.athletes){
+                info.textContent = 'Erreur de chargement.';
+                return;
+            }
+
+            var frag = '';
+            data.athletes.forEach(function(a, i){ frag += _athCardHTML(a, i); });
+            grid.innerHTML = frag;
+
+            window._athOrdre = tri;
+            window._athPage = 1;
+            window._athDone = false;
+
+            // Reset bouton "Voir plus"
+            var btn = document.getElementById('athMoreBtn');
+            var lbl = document.getElementById('athMoreLabel');
+            btn.disabled = false;
+            btn.style.opacity = '';
+            btn.style.cursor = 'pointer';
+            lbl.textContent = "+ Voir plus d'athletes IA / IB";
+            moreWrap.style.display = '';
+
+            var totalAvail = data.total || 0;
+            info.textContent = data.athletes.length + ' affich&eacute;s' + (totalAvail ? ' sur '+totalAvail : '');
+            if (data.athletes.length < 100 || (totalAvail && data.athletes.length >= totalAvail)){
+                window._athDone = true;
+                lbl.textContent = 'Tous les athletes IA/IB sont charges';
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                btn.style.cursor = 'default';
+            }
+
+            // Maj URL sans reload
+            try {
+                var newUrl = '?page=athletes&tri='+tri;
+                window.history.replaceState({}, '', newUrl);
+            } catch(e){}
+
+            grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }).catch(function(){
+            _athHideLoader();
+            grid.style.opacity = '';
+            grid.style.pointerEvents = '';
+            grid.style.filter = '';
+            info.textContent = 'Erreur reseau, reessayez.';
+        });
+    };
+
+    window.loadMoreAthletes = function(){
+        if (window._athDone) return;
+        var btn = document.getElementById('athMoreBtn');
+        var lbl = document.getElementById('athMoreLabel');
+        var spn = document.getElementById('athMoreSpinner');
+        var info = document.getElementById('athMoreInfo');
+        btn.disabled = true;
+        lbl.style.display = 'none';
+        spn.style.display = 'inline';
+        spn.textContent = 'Chargement…';
+
+        var nextPage = window._athPage + 1;
+        var url = 'api/liste.php?page='+nextPage+'&limit=100&ordre='+encodeURIComponent(window._athOrdre)+'&niveau=IA,IB&epreuve='+encodeURIComponent(window._athEpreuves);
+
+        fetch(url).then(function(r){ return r.json(); }).then(function(data){
+            btn.disabled = false;
+            lbl.style.display = 'inline';
+            spn.style.display = 'none';
+
+            if (!data || !data.success || !data.athletes || data.athletes.length === 0){
+                window._athDone = true;
+                document.getElementById('athMoreWrap').style.display = 'none';
+                return;
+            }
+
+            var grid = document.getElementById('athGrid');
+            var startIdx = (nextPage - 1) * 100;
+            var frag = '';
+            data.athletes.forEach(function(a, i){
+                frag += _athCardHTML(a, startIdx + i);
+            });
+            grid.insertAdjacentHTML('beforeend', frag);
+
+            window._athPage = nextPage;
+            var totalShown = grid.querySelectorAll('.ath-card').length;
+            var totalAvail = data.total || 0;
+            info.textContent = totalShown + ' affich&eacute;s' + (totalAvail ? ' sur '+totalAvail : '');
+
+            if (data.athletes.length < 100 || (totalAvail && totalShown >= totalAvail)){
+                window._athDone = true;
+                lbl.textContent = 'Tous les athletes IA/IB sont charges';
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                btn.style.cursor = 'default';
+            }
+        }).catch(function(){
+            btn.disabled = false;
+            lbl.style.display = 'inline';
+            spn.style.display = 'none';
+            info.textContent = 'Erreur de chargement, reessayez.';
+        });
+    };
+})();
+</script>
 
 <?php else: ?>
 <div class="error">Aucun athlète trouvé.</div>
@@ -1565,9 +3582,19 @@ elseif ($page === 'recherche'):
 <h1>Recherche</h1>
 <?php endif; ?>
 
+<!-- Toggle simple : Athletes / Clubs / Villes -->
+<?php $_rchMode = $_GET['mode'] ?? (!empty($_GET['club']) ? 'athletes' : 'athletes'); ?>
+<?php if (empty($_GET['club'])): ?>
+<div style="display:flex;gap:8px;margin-bottom:14px;padding:5px;background:#0d1520;border:1px solid #1e2a3a;border-radius:12px;max-width:460px;">
+    <button type="button" id="rchTabAthletes" onclick="_rchSwitch('athletes')" style="flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;transition:all .2s;">&#127939; Athletes</button>
+    <button type="button" id="rchTabClubs" onclick="_rchSwitch('clubs')" style="flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:#8b949e;transition:all .2s;">&#127963; Clubs</button>
+    <button type="button" id="rchTabVilles" onclick="_rchSwitch('villes')" style="flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:#8b949e;transition:all .2s;">&#127961; Villes</button>
+</div>
+<?php endif; ?>
+
 <div class="live-search" id="lsRechercheWrap">
     <span class="ls-icon">&#128269;</span>
-    <input type="text" id="lsRecherche" placeholder="<?= !empty($_GET['club']) ? 'Rechercher un athlète dans ' . htmlspecialchars($_GET['club']) . '...' : 'Recherche rapide par nom...' ?>" autocomplete="off">
+    <input type="text" id="lsRecherche" placeholder="<?= !empty($_GET['club']) ? 'Rechercher un athlète dans ' . htmlspecialchars($_GET['club']) . '...' : 'Rechercher un athlete...' ?>" autocomplete="off">
     <?php if (!empty($_GET['club'])): ?>
     <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#6c5ce715;border:1px solid #6c5ce740;border-radius:6px;font-size:11px;color:#a29bfe;">&#127963; <?= htmlspecialchars($_GET['club']) ?></span>
@@ -1578,41 +3605,191 @@ elseif ($page === 'recherche'):
 </div>
 <div class="ls-results" id="lsRechercheResults" style="display:none;"></div>
 
-<div id="recherchePaginated">
-<p class="subtitle" style="margin-top:10px;color:#484f58;font-size:12px;">Ou recherche avancee :</p>
-<div class="search-box" style="margin-top:5px;">
-    <form method="get" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-        <input type="hidden" name="page" value="recherche">
-        <input type="text" name="nom" placeholder="Nom / prenom..." value="<?= htmlspecialchars($_GET['nom'] ?? '') ?>" style="width:200px;">
-        <input type="text" name="club" placeholder="Club..." value="<?= htmlspecialchars($_GET['club'] ?? '') ?>" style="width:160px;">
-        <input type="text" name="epreuve" placeholder="Épreuve..." value="<?= htmlspecialchars($_GET['epreuve'] ?? '') ?>" style="width:130px;">
-        <select name="sexe">
-            <option value="">Sexe</option>
-            <option value="M" <?= ($_GET['sexe'] ?? '') === 'M' ? 'selected' : '' ?>>Homme</option>
-            <option value="F" <?= ($_GET['sexe'] ?? '') === 'F' ? 'selected' : '' ?>>Femme</option>
-        </select>
-        <select name="categorie">
-            <option value="">Categorie</option>
-            <?php foreach (['EA','PO','BE','MI','CA','JU','ES','SE','V1','V2','V3','V4'] as $c): ?>
-            <option value="<?= $c ?>" <?= ($_GET['categorie'] ?? '') === $c ? 'selected' : '' ?>><?= $c ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select name="nationalite" style="width:auto;">
-            <option value="">Nationalité</option>
+<?php
+$mcOn = !empty($_GET['multi_clubs']);
+$mdOn = !empty($_GET['multi_disciplines']);
+$epTypeOn = strtolower(trim($_GET['ep_type'] ?? ''));
+$nivOn = trim($_GET['niveau'] ?? '');
+$nivOnArr = $nivOn !== '' ? array_filter(array_map('trim', explode(',', $nivOn))) : [];
+$advOpen = ($mcOn || $mdOn || $epTypeOn !== '' || !empty($nivOnArr));
+$advCount = ($mcOn ? 1 : 0) + ($mdOn ? 1 : 0) + ($epTypeOn !== '' ? 1 : 0) + (!empty($nivOnArr) ? 1 : 0);
+
+// Categories d'epreuves FFA
+$epCategories = [
+    'sprint'    => ['label' => 'Sprint',    'icon' => '&#128640;', 'color' => '#ef4444', 'desc' => '60m, 100m, 200m, 400m'],
+    'demi-fond' => ['label' => 'Demi-fond', 'icon' => '&#127939;', 'color' => '#f97316', 'desc' => '800m, 1500m, Mile'],
+    'fond'      => ['label' => 'Fond',      'icon' => '&#128170;', 'color' => '#eab308', 'desc' => '3000m+, Marathon, Steeple'],
+    'haies'     => ['label' => 'Haies',     'icon' => '&#127937;', 'color' => '#84cc16', 'desc' => '110m, 100m, 400m haies'],
+    'sauts'     => ['label' => 'Sauts',     'icon' => '&#129336;', 'color' => '#06b6d4', 'desc' => 'Longueur, Triple, Hauteur, Perche'],
+    'lancers'   => ['label' => 'Lancers',   'icon' => '&#129352;', 'color' => '#3b82f6', 'desc' => 'Poids, Disque, Marteau, Javelot'],
+    'combines'  => ['label' => 'Combines',  'icon' => '&#127941;', 'color' => '#a855f7', 'desc' => 'Decathlon, Heptathlon'],
+    'marche'    => ['label' => 'Marche',    'icon' => '&#128694;', 'color' => '#ec4899', 'desc' => 'Marche athletique'],
+    'route'     => ['label' => 'Route/Trail','icon'=> '&#127956;', 'color' => '#f43f5e', 'desc' => 'Cross, Trail, Route, Ekiden'],
+];
+?>
+<!-- ============ FILTRES AVANCES ============ -->
+<div id="advFiltersWrap" style="margin-bottom:14px;">
+    <button type="button" id="advFiltersToggle" onclick="_advToggle()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#1e1b4b,#0f0c2e);color:#a78bfa;border:1px solid #6c5ce760;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;">
+        <span style="font-size:14px;">&#128269;</span>
+        <span>Recherche approfondie</span>
+        <?php if ($advCount > 0): ?>
+        <span style="background:#a78bfa;color:#0f0c2e;font-size:10px;font-weight:900;padding:2px 7px;border-radius:10px;letter-spacing:0.5px;"><?= $advCount ?> ACTIF<?= $advCount > 1 ? 'S' : '' ?></span>
+        <?php endif; ?>
+        <span id="advFiltersChev" style="margin-left:4px;transition:transform .2s;<?= $advOpen ? 'transform:rotate(180deg);' : '' ?>">&#9662;</span>
+    </button>
+    <div id="advFiltersPanel" style="<?= $advOpen ? '' : 'display:none;' ?>margin-top:10px;background:#0d1117;border:1px solid #30363d;border-radius:12px;padding:20px 22px;">
+
+        <!-- ===== NIVEAU ===== -->
+        <div style="margin-bottom:22px;">
+            <div style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span>&#127941; Niveau</span>
+                <span style="color:#5a6580;font-weight:500;font-style:italic;text-transform:none;letter-spacing:0;font-size:11px;">— combine avec une epreuve = mode strict (niveau SUR cette epreuve)</span>
+            </div>
             <?php
-            $natRes = $conn->query("SELECT nationalite_athlete, COUNT(*) as c FROM athletes WHERE visible = 1 AND nationalite_athlete IS NOT NULL AND nationalite_athlete != '' GROUP BY nationalite_athlete ORDER BY c DESC");
-            if ($natRes) while ($nr = $natRes->fetch_assoc()):
+            $nivGroups = [
+                'Internationaux' => ['IA','IB','IE','IR','IR1','IR2','IR3','IR4'],
+                'Nationaux'      => ['N1','N2','N3','N4'],
+                'Regionaux'      => ['R1','R2','R3','R4','R5','R6'],
+                'Departementaux' => ['D1','D2','D3','D4','D5','D6','D7','D8'],
+            ];
             ?>
-            <option value="<?= htmlspecialchars($nr['nationalite_athlete']) ?>" <?= ($_GET['nationalite'] ?? '') === $nr['nationalite_athlete'] ? 'selected' : '' ?>><?= htmlspecialchars($nr['nationalite_athlete']) ?> (<?= number_format($nr['c'], 0, ',', ' ') ?>)</option>
-            <?php endwhile; ?>
-        </select>
-        <button type="submit" class="btn">Rechercher</button>
-    </form>
+            <?php foreach ($nivGroups as $grpName => $codes): ?>
+            <div style="margin-bottom:8px;">
+                <div style="color:#5a6580;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;"><?= $grpName ?></div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                <?php foreach ($codes as $code):
+                    $checked = in_array($code, $nivOnArr, true);
+                    $col = $code[0] === 'I' ? '#c026d3' : ($code[0] === 'N' ? '#e11d48' : ($code[0] === 'R' ? '#0891b2' : '#f97316'));
+                ?>
+                <label class="adv-niv-opt" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:<?= $checked ? $col.'30' : '#161b22' ?>;border:1px solid <?= $checked ? $col : '#30363d' ?>;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;color:<?= $checked ? '#fff' : '#8b949e' ?>;transition:all .15s;">
+                    <input type="checkbox" class="adv-niv-cb" value="<?= $code ?>" <?= $checked ? 'checked' : '' ?> style="cursor:pointer;accent-color:<?= $col ?>;">
+                    <?= $code ?>
+                </label>
+                <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- ===== TYPE D'EPREUVE ===== -->
+        <div style="margin-bottom:22px;">
+            <div style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                <span>&#127939; Type d'epreuve</span>
+                <span style="color:#5a6580;font-weight:500;font-style:italic;text-transform:none;letter-spacing:0;font-size:11px;">— filtre par categorie de discipline</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">
+                <?php foreach ($epCategories as $key => $cat):
+                    $sel = ($epTypeOn === $key);
+                ?>
+                <button type="button" class="ep-cat<?= $sel ? ' ep-cat-on' : '' ?>" data-ep="<?= $key ?>" onclick="_advSelectEpType('<?= $key ?>')" style="background:<?= $sel ? $cat['color'] . '22' : '#161b22' ?>;border:1.5px solid <?= $sel ? $cat['color'] : '#30363d' ?>;border-radius:10px;padding:10px 12px;cursor:pointer;transition:all .2s;text-align:left;color:#f0f6fc;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+                        <span style="font-size:18px;"><?= $cat['icon'] ?></span>
+                        <span style="color:<?= $sel ? $cat['color'] : '#f0f6fc' ?>;font-size:13px;font-weight:800;letter-spacing:0.3px;"><?= $cat['label'] ?></span>
+                    </div>
+                    <div style="color:#8b949e;font-size:10px;line-height:1.35;"><?= $cat['desc'] ?></div>
+                </button>
+                <?php endforeach; ?>
+            </div>
+            <input type="hidden" id="advEpType" value="<?= htmlspecialchars($epTypeOn) ?>">
+        </div>
+
+        <!-- ===== CRITERES PROFIL ATHLETE ===== -->
+        <div style="color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">&#128105; Profil athlete</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:14px;">
+
+            <!-- Filtre Multi-clubs -->
+            <label class="adv-opt<?= $mcOn ? ' adv-on' : '' ?>" data-filter="mc" style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:<?= $mcOn ? 'linear-gradient(135deg,#10b98115,#10b98108)' : '#161b22' ?>;border:1.5px solid <?= $mcOn ? '#10b981' : '#30363d' ?>;border-radius:10px;cursor:pointer;transition:all .2s;">
+                <input type="checkbox" id="advMC" <?= $mcOn ? 'checked' : '' ?> style="margin-top:3px;cursor:pointer;accent-color:#10b981;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span style="font-size:18px;">&#127963;</span>
+                        <span style="color:<?= $mcOn ? '#34d399' : '#f0f6fc' ?>;font-size:14px;font-weight:800;">Multi-clubs</span>
+                    </div>
+                    <div style="color:#8b949e;font-size:12px;line-height:1.45;">Athletes ayant porte au moins <strong style="color:#34d399;">2 clubs differents</strong> dans leur carriere (transferts).</div>
+                </div>
+            </label>
+
+            <!-- Filtre Multi-disciplines -->
+            <label class="adv-opt<?= $mdOn ? ' adv-on' : '' ?>" data-filter="md" style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:<?= $mdOn ? 'linear-gradient(135deg,#f59e0b15,#f59e0b08)' : '#161b22' ?>;border:1.5px solid <?= $mdOn ? '#f59e0b' : '#30363d' ?>;border-radius:10px;cursor:pointer;transition:all .2s;">
+                <input type="checkbox" id="advMD" <?= $mdOn ? 'checked' : '' ?> style="margin-top:3px;cursor:pointer;accent-color:#f59e0b;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span style="font-size:18px;">&#127939;</span>
+                        <span style="color:<?= $mdOn ? '#fbbf24' : '#f0f6fc' ?>;font-size:14px;font-weight:800;">Polyvalents</span>
+                    </div>
+                    <div style="color:#8b949e;font-size:12px;line-height:1.45;">Athletes avec des records dans <strong style="color:#fbbf24;">2+ epreuves differentes</strong> (multi-disciplines).</div>
+                </div>
+            </label>
+
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;border-top:1px solid #21262d;padding-top:14px;">
+            <button type="button" onclick="_advApply()" style="background:linear-gradient(135deg,#6c5ce7,#a78bfa);color:#fff;border:none;padding:10px 26px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(108,92,231,0.3);">Appliquer la recherche</button>
+            <?php if ($advCount > 0): ?>
+            <button type="button" onclick="_advReset()" style="background:transparent;color:#f87171;border:1px solid #f8717140;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">&times; Tout effacer</button>
+            <?php endif; ?>
+        </div>
+    </div>
 </div>
+<style>
+.adv-opt:hover { border-color: #a78bfa !important; transform: translateY(-1px); }
+.adv-opt.adv-on { box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
+.ep-cat:hover { border-color: #a78bfa !important; transform: translateY(-1px); }
+.ep-cat-on { box-shadow: 0 4px 14px rgba(0,0,0,0.3); }
+</style>
+<script>
+function _advToggle() {
+    var p = document.getElementById('advFiltersPanel');
+    var c = document.getElementById('advFiltersChev');
+    var open = p.style.display === 'none' || p.style.display === '';
+    p.style.display = open ? 'block' : 'none';
+    if (c) c.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+function _advSelectEpType(key) {
+    var hidden = document.getElementById('advEpType');
+    var current = hidden.value;
+    var newVal = (current === key) ? '' : key;
+    hidden.value = newVal;
+    // Refresh visuel des cards
+    document.querySelectorAll('.ep-cat').forEach(function(btn){
+        btn.classList.toggle('ep-cat-on', btn.dataset.ep === newVal);
+    });
+}
+function _advApply() {
+    var url = new URL(window.location.href);
+    var mc = document.getElementById('advMC').checked;
+    var md = document.getElementById('advMD').checked;
+    var et = document.getElementById('advEpType').value;
+    // Collecte des niveaux coches
+    var nivList = [];
+    document.querySelectorAll('.adv-niv-cb:checked').forEach(function(cb){ nivList.push(cb.value); });
+    var nivStr = nivList.join(',');
+    if (mc) url.searchParams.set('multi_clubs', '1'); else url.searchParams.delete('multi_clubs');
+    if (md) url.searchParams.set('multi_disciplines', '1'); else url.searchParams.delete('multi_disciplines');
+    if (et) url.searchParams.set('ep_type', et); else url.searchParams.delete('ep_type');
+    if (nivStr) url.searchParams.set('niveau', nivStr); else url.searchParams.delete('niveau');
+    url.searchParams.delete('p');
+    var hasOther = ['nom','club','epreuve','sexe','categorie','nationalite','licence','annee','medaille','competition','ville'].some(function(k){return url.searchParams.has(k);});
+    if ((mc || md || et || nivStr) && !hasOther) {
+        if (!confirm('Les filtres avances doivent etre combines avec au moins un autre filtre (nom, sexe, club, etc.). Continuer quand meme ?')) return;
+    }
+    window.location.href = url.toString();
+}
+function _advReset() {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('multi_clubs');
+    url.searchParams.delete('multi_disciplines');
+    url.searchParams.delete('ep_type');
+    url.searchParams.delete('niveau');
+    url.searchParams.delete('p');
+    window.location.href = url.toString();
+}
+</script>
+
+<div id="recherchePaginated">
 
 <?php
 $params = [];
-foreach (['nom','club','epreuve','sexe','categorie','nationalite'] as $key) {
+foreach (['nom','club','epreuve','sexe','categorie','nationalite','multi_clubs','multi_disciplines','ep_type'] as $key) {
     if (!empty($_GET[$key])) $params[$key] = $_GET[$key];
 }
 
@@ -2062,9 +4239,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <?php
 // ================================================================
-//  PROFIL ATHLETE COMPLET
+//  PROFIL ATHLETE COMPLET (ancienne version, accessible via ?page=profil2)
 // ================================================================
-elseif ($page === 'profil' && $id):
+elseif ($page === 'profil2' && $id):
     // Incrementer le compteur de vues (1 seule fois par IP)
     $__ip = $conn->real_escape_string(getVisitorIp());
     $__eid = (int)$id;
@@ -2090,6 +4267,24 @@ elseif ($page === 'profil' && $id):
     }
     $section = $_GET['s'] ?? 'all';
 
+    // Style de la page profil (configurable depuis admin/panel.php)
+    // "flat" = toutes les sections affichees sans onglets ; "tabs" = comportement actuel
+    $_profileStyle = 'tabs';
+    $_psFile = __DIR__ . '/logs/.profile_settings.php';
+    if (file_exists($_psFile)) {
+        $_psRaw = file_get_contents($_psFile);
+        $_psPos = strpos($_psRaw, "\n");
+        if ($_psPos !== false) {
+            $_psData = json_decode(substr($_psRaw, $_psPos + 1), true);
+            if (is_array($_psData) && ($_psData['profile_style'] ?? '') === 'flat') {
+                $_profileStyle = 'flat';
+            }
+        }
+    }
+    if ($_profileStyle === 'flat') {
+        $section = 'all';
+    }
+
     if ($_isProfileHidden && !$_isAdmin):
 ?>
 <div style="text-align:center;padding:60px 24px;">
@@ -2103,6 +4298,36 @@ elseif ($page === 'profil' && $id):
         $i = $data['identite'];
 ?>
 
+<!-- Toggle vers le mode magazine -->
+<div class="p1-view-toggle-wrap">
+    <a class="p1-view-toggle" href="?page=profil&id=<?= (int)$id ?>" title="Afficher la nouvelle version magazine">
+        Mode magazine <span class="p1-view-toggle-arrow">&rarr;</span>
+    </a>
+</div>
+<style>
+.p1-view-toggle-wrap { text-align: right; margin: 0 0 12px; }
+.p1-view-toggle {
+    display: inline-block;
+    font-family: 'Bodoni Moda', serif, Georgia, serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #8b949e;
+    text-decoration: none;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border: 1px solid #30363d;
+    transition: all 0.25s;
+}
+.p1-view-toggle:hover {
+    color: #f0f6fc;
+    border-color: #a29bfe;
+    letter-spacing: 0.26em;
+}
+.p1-view-toggle-arrow { margin-left: 4px; font-style: normal; transition: transform 0.25s; display: inline-block; }
+.p1-view-toggle:hover .p1-view-toggle-arrow { transform: translateX(3px); }
+</style>
+
 <!-- Popup disclaimer profil -->
 <div id="profilDisclaimer" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;">
     <div style="background:#161b22;border:2px solid #f59e0b;border-radius:16px;padding:30px;max-width:520px;text-align:center;margin:20px;">
@@ -2110,20 +4335,20 @@ elseif ($page === 'profil' && $id):
         <h3 style="color:#f59e0b;font-size:18px;margin:0 0 14px;">Avertissement legal</h3>
         <div style="color:#c9d1d9;font-size:13px;line-height:1.7;margin:0 0 20px;text-align:left;">
             <p style="margin:0 0 10px;">Le site <strong style="color:#f59e0b;">Bokonzi</strong> est une plateforme independante a caractere informatif et statistique consacree a l'athletisme.</p>
-            <p style="margin:0 0 10px;color:#8b949e;">Ce site ne constitue en aucun cas un site officiel et n'entretient aucun lien juridique, institutionnel ou commercial avec la Federation Francaise d'Athletisme ni avec le site athle.fr, ni avec toute autre instance officielle.</p>
+            <p style="margin:0 0 10px;color:#8b949e;">Ce site ne constitue en aucun cas un site officiel et n'entretient aucun lien juridique, institutionnel ou commercial avec une quelconque federation sportive ou instance officielle.</p>
             <p style="margin:0 0 10px;color:#8b949e;">Les informations diffusees proviennent exclusivement de sources publiques librement accessibles, a des fins strictement informatives et statistiques.</p>
             <p style="margin:0 0 10px;color:#8b949e;">Aucune volonte de tromper, d'induire en erreur ou de porter atteinte a l'image, a la reputation ou a la vie privee des personnes mentionnees n'est poursuivie.</p>
             <p style="margin:0;color:#8b949e;">Toute personne figurant sur le site peut exercer son droit de suppression via le bouton <span style="color:#f59e0b;">Signaler</span> present sur chaque fiche.</p>
         </div>
         <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
             <button onclick="document.getElementById('profilDisclaimer').style.display='none';" style="background:#1e2a3a;color:#c9d1d9;border:1px solid #2d3a4a;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">J'ai lu</button>
-            <button onclick="document.getElementById('profilDisclaimer').style.display='none';try{localStorage.setItem('bk_profil_disclaimer_ok_v3','1')}catch(e){}" style="background:#f59e0b;color:#000;border:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">J'ai compris, ne plus afficher</button>
+            <button onclick="document.getElementById('profilDisclaimer').style.display='none';try{localStorage.setItem('bk_profil_disclaimer_ok_v4','1')}catch(e){}" style="background:#f59e0b;color:#000;border:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">J'ai compris, ne plus afficher</button>
         </div>
     </div>
 </div>
 <script>
 (function(){
-    if (localStorage.getItem('bk_profil_disclaimer_ok_v3')) return;
+    if (localStorage.getItem('bk_profil_disclaimer_ok_v4')) return;
     var seen = sessionStorage.getItem('bk_profil_disc_seen');
     var delay = seen ? 0 : 2000;
     setTimeout(function(){
@@ -2181,13 +4406,25 @@ elseif ($page === 'profil' && $id):
             <?php if ($i['lieu_naissance']): ?>
                 <b>Lieu de naissance :</b> <a href="?page=villes&open=<?= urlencode($i['lieu_naissance']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($i['lieu_naissance']) ?></a><br>
             <?php endif; ?>
+            <?php if (!empty($i['annee_naissance'])): ?>
+                <b>Annee de naissance :</b> <?= (int)$i['annee_naissance'] ?><?php if (!empty($i['age'])): ?> &nbsp;|&nbsp; <b>Age :</b> <?= (int)$i['age'] ?> ans<?php endif; ?><br>
+            <?php endif; ?>
             <?php if ($i['taille_cm']): ?><b>Taille :</b> <?= $i['taille_cm'] ?> cm | <?php endif; ?>
             <?php if ($i['poids_kg']): ?><b>Poids :</b> <?= $i['poids_kg'] ?> kg | <?php endif; ?>
-            <br><b>ID athle.fr :</b> <a href="https://www.athle.fr/athletes/<?= $i['athlete_id'] ?>/bilans" target="_blank" style="color:#a29bfe;text-decoration:none;"><?= $i['athlete_id'] ?></a>
-            &nbsp;|&nbsp; <a href="pages/profil.php?id=<?= $i['id_athlete'] ?>" target="_blank" style="color:#a29bfe;text-decoration:none;font-size:13px;">&#127760; Profil public</a>
+            <?php /* ID externe et lien source masques — acces reserve admin */ ?>
+            <a href="pages/profil.php?id=<?= $i['id_athlete'] ?>" target="_blank" style="color:#a29bfe;text-decoration:none;font-size:13px;">&#127760; Profil public</a>
         </div>
     </div>
 </div>
+
+<?php if ($section === 'all' || $section === 'resume'): ?>
+<h2>Résumé</h2>
+<div class="chart-card" style="border-left:3px solid #6c5ce7;" id="bioCard">
+    <div id="bioYearSelector" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center;"></div>
+    <p id="bioText" style="color:#c8cfd8;line-height:1.8;font-size:14px;margin:0;">Chargement...</p>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('bioText').textContent).then(function(){alert('Résumé copié !')})" style="margin-top:12px;background:#253049;color:#a29bfe;border:1px solid #6c5ce740;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;">&#128203; Copier le texte</button>
+</div>
+<?php endif; ?>
 
 <script>
 var ATHLETE_DATA = <?= json_encode($data, JSON_UNESCAPED_UNICODE) ?>;
@@ -2460,6 +4697,7 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 
+<?php if ($_profileStyle !== 'flat'): ?>
 <div class="section-tabs">
     <a href="?page=profil&id=<?= $id ?>&s=all" class="<?= $section === 'all' ? 'active' : '' ?>">Tout</a>
     <a href="?page=profil&id=<?= $id ?>&s=clubs" class="<?= $section === 'clubs' ? 'active' : '' ?>">Clubs<span class="count"><?= count($data['clubs']) ?></span></a>
@@ -2473,6 +4711,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <a href="?page=profil&id=<?= $id ?>&s=similaires" class="<?= $section === 'similaires' ? 'active' : '' ?>">Similaires</a>
     <a href="?page=profil&id=<?= $id ?>&s=resume" class="<?= $section === 'resume' ? 'active' : '' ?>">Résumé</a>
 </div>
+<?php endif; ?>
 
 <?php
 // ---- GRAPHIQUES PROFIL ----
@@ -2778,16 +5017,98 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 <?php endif; ?>
 
-<?php if (($section === 'all' || $section === 'records') && !empty($data['records'])): ?>
+<?php if (($section === 'all' || $section === 'records') && !empty($data['records'])):
+    // Categorisation des epreuves
+    if (!function_exists('_flatCategEpreuve')) {
+        function _flatCategEpreuve($nom) {
+            $n = strtolower((string)$nom);
+            if (preg_match('/(poids|disque|javelot|marteau)/', $n))     return 'lancers';
+            if (preg_match('/(hauteur|perche|longueur|triple)/', $n))   return 'sauts';
+            if (preg_match('/haies/', $n))                              return 'haies';
+            if (preg_match('/steeple/', $n))                            return 'steeple';
+            if (preg_match('/(pentathlon|heptathlon|decathlon)/', $n))  return 'combines';
+            if (preg_match('/marathon|semi/', $n))                      return 'fond';
+            if (preg_match('/(\d+)\s*km/', $n))                         return 'fond';
+            if (preg_match('/^\s*(\d+)\s*m\b/', $n, $m)) {
+                $d = (int)$m[1];
+                if ($d <= 400)  return 'sprint';
+                if ($d <= 3000) return 'demi-fond';
+                return 'fond';
+            }
+            return 'autre';
+        }
+    }
+    $_flatCatLabels = ['sprint'=>'Sprint','haies'=>'Haies','sauts'=>'Sauts','lancers'=>'Lancers','demi-fond'=>'Demi-fond','fond'=>'Fond','steeple'=>'Steeple','combines'=>'Combines','autre'=>'Autres'];
+    $_flatCatOrder = ['sprint','haies','sauts','lancers','demi-fond','fond','steeple','combines','autre'];
+    $_flatRecByCat = [];
+    $_flatNivByCat = [];
+    $_flatAllNiv = [];
+    $_flatPushNiv = function($cat, $code) use (&$_flatNivByCat, &$_flatAllNiv) {
+        if (!$code) return;
+        if (!isset($_flatNivByCat[$cat])) $_flatNivByCat[$cat] = [];
+        $_flatNivByCat[$cat][] = $code;
+        $_flatAllNiv[] = $code;
+    };
+    foreach ($data['records'] as $_r) {
+        $_c = _flatCategEpreuve($_r['epreuve'] ?? '');
+        if (!isset($_flatRecByCat[$_c])) $_flatRecByCat[$_c] = 0;
+        $_flatRecByCat[$_c]++;
+        foreach (($_r['niveaux'] ?? []) as $_nv) $_flatPushNiv($_c, $_nv);
+    }
+    // Inclure aussi progressions + niveaux FFA + resultats pour ne pas rater le N1
+    foreach (($data['progressions'] ?? []) as $_p) {
+        $_c = _flatCategEpreuve($_p['epreuve'] ?? '');
+        foreach (($_p['niveaux'] ?? []) as $_nv) $_flatPushNiv($_c, $_nv);
+    }
+    foreach (($data['niveaux'] ?? []) as $_nv) {
+        $_global = $_nv['code_niveau'] ?? '';
+        // Niveaux par epreuve uniquement (pas le code annuel global)
+        // → chaque categorie reflete le niveau atteint specifiquement dans cette categorie
+        foreach (($_nv['performances'] ?? []) as $_perf) {
+            $_c = _flatCategEpreuve($_perf['epreuve'] ?? '');
+            $_code = $_perf['code_niveau'] ?? $_global;
+            $_flatPushNiv($_c, $_code);
+        }
+        // Le code annuel n'enrichit que "Tous" (classification globale de l'annee)
+        if (!empty($_global)) $_flatAllNiv[] = $_global;
+    }
+    foreach (($data['resultats'] ?? []) as $_rs) {
+        $_c = _flatCategEpreuve($_rs['epreuve'] ?? '');
+        $_code = $_rs['niveau'] ?? ($_rs['niveau_resultat'] ?? '');
+        $_flatPushNiv($_c, $_code);
+    }
+    $_flatBestAll = highestNiveau($_flatAllNiv);
+?>
 <h2>Records personnels</h2>
+
+<!-- Onglets de categorie -->
+<div id="flatRecTabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #21262d;">
+    <button type="button" class="flat-rec-tab is-active" data-cat="all" onclick="_flatRecFilter('all',this)" style="background:linear-gradient(135deg,rgba(162,155,254,0.18),rgba(108,92,231,0.08));border:1px solid rgba(162,155,254,0.55);color:#f0f6fc;font-size:12px;font-weight:600;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+        Tous <span style="background:rgba(162,155,254,0.25);color:#fff;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;"><?= count($data['records']) ?></span>
+        <?php if ($_flatBestAll): ?><?= nivBadgeHtml($_flatBestAll) ?><?php endif; ?>
+    </button>
+    <?php foreach ($_flatCatOrder as $_cat):
+        if (empty($_flatRecByCat[$_cat])) continue;
+        $_catBest = highestNiveau($_flatNivByCat[$_cat] ?? []);
+    ?>
+    <button type="button" class="flat-rec-tab" data-cat="<?= $_cat ?>" onclick="_flatRecFilter('<?= $_cat ?>',this)" style="background:transparent;border:1px solid rgba(162,155,254,0.18);color:#8b949e;font-size:12px;font-weight:500;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">
+        <?= $_flatCatLabels[$_cat] ?> <span style="background:rgba(162,155,254,0.12);color:#a29bfe;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;"><?= $_flatRecByCat[$_cat] ?></span>
+        <?php if ($_catBest): ?><?= nivBadgeHtml($_catBest) ?><?php endif; ?>
+    </button>
+    <?php endforeach; ?>
+</div>
+
 <div class="table-wrap">
 <table class="bk-table"><tr><th>#</th><th>Épreuve</th><th>Performance</th><th>Niveaux</th><th>Date</th><th>Club</th><th>Lieu</th><th>Cat</th></tr></table>
 <table class="bk-table">
-    <?php foreach ($data['records'] as $_i => $r): ?>
-    <tr>
-        <td><?= $_i + 1 ?></td>
+    <tbody id="flatRecTbody">
+    <?php foreach ($data['records'] as $_i => $r):
+        $_rcat = _flatCategEpreuve($r['epreuve'] ?? '');
+    ?>
+    <tr data-cat="<?= $_rcat ?>" data-num="<?= $_i + 1 ?>">
+        <td class="num-col"><?= $_i + 1 ?></td>
         <td><a href="?page=recherche&epreuve=<?= urlencode($r['epreuve']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($r['epreuve']) ?></a></td>
-        <td><span class="badge badge-perf"><?= htmlspecialchars($r['performance_brut'] ?: $r['performance']) ?></span></td>
+        <td><?= bkPerfBadge($r['epreuve'] ?? '', $r['performance_brut'] ?? '', $r['performance'] ?? 0) ?></td>
         <td><?= nivBadgeHtml(highestNiveau($r['niveaux'] ?? [])) ?></td>
         <td><?= dateFR($r['date']) ?></td>
         <td><?php if (!empty($r['club'])): ?><a href="?page=recherche&club=<?= urlencode(rtrim($r['club'], '* ')) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($r['club']) ?></a><?php endif; ?></td>
@@ -2795,9 +5116,33 @@ document.addEventListener('DOMContentLoaded', function() {
         <td><a href="?page=recherche&categorie=<?= urlencode($r['categorie']) ?>" style="text-decoration:none;"><span class="badge badge-cat"><?= htmlspecialchars($r['categorie']) ?></span></a></td>
     </tr>
     <?php endforeach; ?>
+    </tbody>
 </table>
 <table class="bk-table"><tr><th>#</th><th>Épreuve</th><th>Performance</th><th>Niveaux</th><th>Date</th><th>Club</th><th>Lieu</th><th>Cat</th></tr></table>
 </div>
+
+<script>
+function _flatRecFilter(cat, btn) {
+    document.querySelectorAll('.flat-rec-tab').forEach(function(t){
+        t.classList.remove('is-active');
+        t.style.cssText = 'background:transparent;border:1px solid rgba(162,155,254,0.18);color:#8b949e;font-size:12px;font-weight:500;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;';
+        var c = t.querySelector('span'); if (c) c.style.cssText = 'background:rgba(162,155,254,0.12);color:#a29bfe;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;';
+    });
+    btn.classList.add('is-active');
+    btn.style.cssText = 'background:linear-gradient(135deg,rgba(162,155,254,0.18),rgba(108,92,231,0.08));border:1px solid rgba(162,155,254,0.55);color:#f0f6fc;font-size:12px;font-weight:600;padding:7px 14px;border-radius:100px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;';
+    var c2 = btn.querySelector('span'); if (c2) c2.style.cssText = 'background:rgba(162,155,254,0.25);color:#fff;font-weight:700;font-size:11px;padding:1px 7px;border-radius:100px;';
+    var n = 0;
+    document.querySelectorAll('#flatRecTbody tr').forEach(function(tr){
+        var visible = (cat === 'all' || tr.dataset.cat === cat);
+        tr.style.display = visible ? '' : 'none';
+        if (visible) {
+            n++;
+            var first = tr.querySelector('.num-col');
+            if (first) first.textContent = n;
+        }
+    });
+}
+</script>
 <?php endif; ?>
 
 <?php if (($section === 'all' || $section === 'progressions') && !empty($data['progressions'])): ?>
@@ -2809,7 +5154,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <tr>
         <td><?= $_i + 1 ?></td>
         <td><a href="?page=recherche&epreuve=<?= urlencode($pr['epreuve']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($pr['epreuve']) ?></a></td>
-        <td><span class="badge badge-perf"><?= htmlspecialchars($pr['performance_brut'] ?: $pr['performance']) ?></span></td>
+        <td><?= bkPerfBadge($pr['epreuve'] ?? '', $pr['performance_brut'] ?? '', $pr['performance'] ?? 0) ?></td>
         <td><?= nivBadgeHtml(highestNiveau($pr['niveaux'] ?? [])) ?></td>
         <td><?= $pr['annee'] ?></td>
         <td><?= htmlspecialchars($pr['vent']) ?></td>
@@ -2833,7 +5178,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <tr>
         <td><?= $_i + 1 ?></td>
         <td><a href="?page=recherche&epreuve=<?= urlencode($pd['epreuve']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($pd['epreuve']) ?></a></td>
-        <td><span class="badge badge-perf"><?= htmlspecialchars($pd['performance_brut'] ?: $pd['performance']) ?></span></td>
+        <td><?= bkPerfBadge($pd['epreuve'] ?? '', $pd['performance_brut'] ?? '', $pd['performance'] ?? 0) ?></td>
         <td><?= htmlspecialchars($pd['place']) ?></td>
         <td><?= $pd['rang'] ?></td>
         <td><?= $pd['annee'] ?></td>
@@ -2863,7 +5208,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <tr>
         <td><?= $_i + 1 ?></td>
         <td><a href="?page=recherche&epreuve=<?= urlencode($r['epreuve']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($r['epreuve']) ?></a></td>
-        <td><span class="badge badge-perf"><?= htmlspecialchars($r['performance_brut'] ?: $r['performance']) ?></span></td>
+        <td><?= bkPerfBadge($r['epreuve'] ?? '', $r['performance_brut'] ?? '', $r['performance'] ?? 0) ?></td>
         <td><?= dateFR($r['date']) ?></td>
         <td><?= $r['place'] ?></td>
         <td><?= htmlspecialchars($r['vent']) ?></td>
@@ -3231,20 +5576,6928 @@ _loadSimilar('niveau');
 </script>
 <?php endif; ?>
 
-<?php if ($section === 'all' || $section === 'resume'): ?>
-<h2>Résumé</h2>
-<div class="chart-card" style="border-left:3px solid #6c5ce7;" id="bioCard">
-    <div id="bioYearSelector" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center;"></div>
-    <p id="bioText" style="color:#c8cfd8;line-height:1.8;font-size:14px;margin:0;">Chargement...</p>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('bioText').textContent).then(function(){alert('R\u00e9sum\u00e9 copi\u00e9 !')})" style="margin-top:12px;background:#253049;color:#a29bfe;border:1px solid #6c5ce740;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;">&#128203; Copier le texte</button>
-</div>
-<?php endif; ?>
-
 <!-- QR Code profil -->
 <div class="qr-share">
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=<?= urlencode('https://bokonzi.com/pages/profil.php?id=' . intval($i['id_athlete'] ?? $id)) ?>" alt="QR Code profil <?= htmlspecialchars($i['nom_complet'] ?? '') ?> — Bokonzi" width="120" height="120">
     <div class="qr-label">Scannez pour partager ce profil</div>
 </div>
+
+<?php else: ?>
+<div class="error">Athlète #<?= htmlspecialchars($id) ?> non trouvé.</div>
+<?php endif; ?>
+
+
+<?php
+// ================================================================
+//  PROFIL ATHLETE — version magazine (par defaut, ?page=profil)
+// ================================================================
+elseif ($page === 'profil' && $id):
+    $__ip = $conn->real_escape_string(getVisitorIp());
+    $__eid = (int)$id;
+    @$conn->query("INSERT IGNORE INTO athlete_vues_ip (ip, athlete_id_ext) VALUES ('$__ip', $__eid)");
+    if ($conn->affected_rows > 0) {
+        @$conn->query("UPDATE athletes SET vues = vues + 1 WHERE athlete_id_externe = $__eid");
+    }
+
+    $_isProfileHidden = false;
+    $_isAdmin = !empty($_COOKIE['bk_sa_token']) || ($_navHasPanel ?? false);
+    $_chkVis = $conn->query("SELECT visible FROM athletes WHERE athlete_id_externe = " . (int)$id);
+    if ($_chkVis && $_chkRow = $_chkVis->fetch_assoc()) {
+        $_isProfileHidden = ((int)$_chkRow['visible'] === 0);
+    }
+
+    if ($_isProfileHidden && $_isAdmin) {
+        $data = apiCall("$BASE_API/athlete.php?id=$id&_all=1");
+    } else {
+        $data = apiCall("$BASE_API/athlete.php?id=$id");
+    }
+
+    // --- Limite offre gratuite : 1 fiche profil par jour + minuteur 2 min ---
+    require_once __DIR__ . '/core/profile_gate.php';
+    $_pGate = ($_isProfileHidden && !$_isAdmin)
+        ? ['allowed' => true, 'exempt' => true, 'reason' => 'hidden', 'remaining' => 0]
+        : bkProfileGateStatus($conn, (int)$id);
+
+    if ($_isProfileHidden && !$_isAdmin):
+?>
+<div style="text-align:center;padding:60px 24px;">
+    <div style="font-size:56px;margin-bottom:20px;">&#128683;</div>
+    <h2 style="color:#ef4444;font-size:22px;margin:0 0 12px;border:none;">Ce profil n'est plus disponible</h2>
+    <p style="color:#5a6580;font-size:14px;max-width:400px;margin:0 auto;line-height:1.6;">Ce profil a ete retire a la demande de l'interesse(e) ou suite a un signalement.</p>
+    <a href="<?= $_canonBase ?>/?page=accueil" style="display:inline-block;margin-top:24px;padding:10px 24px;background:#1e2a3a;border:1px solid #2a3560;border-radius:8px;color:#a29bfe;text-decoration:none;font-size:14px;font-weight:600;">Retour a l'accueil</a>
+</div>
+
+<?php elseif (!$_pGate['allowed']):
+        echo bkProfilePaywallHtml($_pGate['reason']);
+    elseif ($data && ($data['success'] ?? false)):
+        $i = $data['identite'];
+?>
+<?php if (!$_pGate['exempt']) echo bkProfileTimerBlock($_pGate['remaining']); ?>
+
+<?php
+// Calcul precoce des annees de carriere pour le watermark (background filigrane)
+$_wmYears = [];
+foreach (($data['records']??[]) as $_wr) { $_yy = (int)substr($_wr['date']??'', 0, 4); if ($_yy) $_wmYears[$_yy]=1; }
+foreach (($data['progressions']??[]) as $_wp) if (!empty($_wp['annee'])) $_wmYears[$_wp['annee']]=1;
+foreach (($data['resultats']??[]) as $_wr) if (!empty($_wr['annee'])) $_wmYears[$_wr['annee']]=1;
+$_wmFirst = !empty($_wmYears) ? min(array_keys($_wmYears)) : '';
+$_wmLast  = !empty($_wmYears) ? max(array_keys($_wmYears)) : '';
+?>
+<?php if ($_wmFirst && $_wmLast): ?>
+<style>
+/* Watermark : grosse ecriture annee verticale sur le cote gauche */
+.p2-year-watermark {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: clamp(32px, 5.5vw, 70px);
+    pointer-events: none;
+    user-select: none;
+    z-index: 0;
+    overflow: hidden;
+}
+.p2-year-watermark .wm-text {
+    font-family: 'Bodoni Moda','Didot',Georgia,serif;
+    font-weight: 900;
+    font-size: clamp(22px, 3.8vw, 56px);
+    line-height: 0.9;
+    letter-spacing: 0.04em;
+    /* Centrage absolu vertical + horizontal */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* Ecriture verticale : on tourne de 90deg horaire (haut -> bas) */
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: translate(-50%, -50%) rotate(180deg);
+    transform-origin: center center;
+    white-space: nowrap;
+    color: rgba(167,139,250,0.14);
+    /* Text-shadow multi-couches : crisp inner + glow violet + ombre portee profonde + bevel 3D */
+    text-shadow:
+        0 0 1px rgba(167,139,250,0.5),
+        0 0 4px rgba(167,139,250,0.35),
+        0 0 12px rgba(167,139,250,0.25),
+        0 0 28px rgba(108,92,231,0.22),
+        0 0 60px rgba(108,92,231,0.18),
+        2px 2px 0 rgba(255,255,255,0.06),
+        -1px -1px 0 rgba(0,0,0,0.35),
+        3px 6px 14px rgba(0,0,0,0.5),
+        5px 10px 24px rgba(108,92,231,0.15);
+    -webkit-text-stroke: 0.5px rgba(167,139,250,0.3);
+}
+.p2-year-watermark .wm-sep {
+    display: inline-block;
+    margin: 0.3em 0;
+    font-style: italic;
+    font-weight: 400;
+    color: rgba(167,139,250,0.18);
+}
+/* Le contenu doit etre au-dessus */
+.bk-detail-page, .p2-content, body > main, .p2-careers { position: relative; z-index: 1; }
+body.p2-light .p2-year-watermark .wm-text {
+    color: rgba(108,92,231,0.18);
+    -webkit-text-stroke: 0.5px rgba(108,92,231,0.35);
+    text-shadow:
+        0 0 1px rgba(108,92,231,0.45),
+        0 0 4px rgba(108,92,231,0.3),
+        0 0 12px rgba(108,92,231,0.22),
+        0 0 28px rgba(108,92,231,0.15),
+        2px 2px 0 rgba(255,255,255,0.5),
+        -1px -1px 0 rgba(0,0,0,0.1),
+        3px 6px 14px rgba(108,92,231,0.2);
+}
+body.p2-light .p2-year-watermark .wm-sep { color: rgba(108,92,231,0.2); }
+@media (max-width:600px) {
+    .p2-year-watermark { width: clamp(24px, 6vw, 40px); }
+    .p2-year-watermark .wm-text { font-size: clamp(18px, 5vw, 38px); }
+}
+</style>
+<div class="p2-year-watermark" aria-hidden="true">
+    <div class="wm-text"><?= $_wmFirst ?><span class="wm-sep">&nbsp;&mdash;&nbsp;</span><?= $_wmLast ?></div>
+</div>
+<?php endif; ?>
+
+<script>
+// Anti-flash : applique le theme (clair/sombre/auto) avant le rendu
+(function(){ try {
+    var mode = localStorage.getItem('bk_theme_mode');
+    if (mode === null) {
+        var legacy = localStorage.getItem('bk_p2_light');
+        // Defaut = auto (sombre 21h-6h). Si pref legacy existe, on la respecte.
+        mode = (legacy === null) ? 'auto' : (legacy === '1' ? 'light' : 'dark');
+    }
+    var isLight;
+    if (mode === 'auto') {
+        var h = new Date().getHours();
+        isLight = !(h >= 21 || h < 6);
+    } else {
+        isLight = (mode === 'light');
+    }
+    if (isLight) document.body.classList.add('p2-light');
+} catch(e){} })();
+</script>
+<?php
+        // === RESEAUX SOCIAUX — calcul precoce pour permettre l'affichage du bouton dans le hero ===
+        require_once __DIR__ . '/core/social_match.php';
+        $_socFile = __DIR__ . '/logs/.athlete_socials.php';
+        $_athSocials = [];
+        if (file_exists($_socFile)) {
+            $_socRaw = @file_get_contents($_socFile);
+            $_socPos = strpos($_socRaw, "\n");
+            if ($_socPos !== false) {
+                $_socAll = json_decode(substr($_socRaw, $_socPos + 1), true);
+                if (is_array($_socAll)) $_athSocials = $_socAll[(int)$id] ?? [];
+            }
+        }
+        $_canEditSoc = false;
+        $_socUserCtx = isset($navUser) ? $navUser : null;
+        if (!empty($_COOKIE['bk_sa_token']) || !empty($_navHasPanel)) {
+            $_canEditSoc = true;
+        } elseif ($_socUserCtx) {
+            $_socMatch = bk_athlete_owner_match(
+                $_socUserCtx['prenom'] ?? '', $_socUserCtx['nom'] ?? '',
+                $_socUserCtx['email'] ?? '', $i['nom_complet'] ?? ''
+            );
+            if ($_socMatch['match']) $_canEditSoc = true;
+        }
+        $_socPlatforms = [
+            'facebook'  => ['Facebook',  '#1877F2', 'f'],
+            'tiktok'    => ['TikTok',    '#FE2C55', 'TT'],
+            'instagram' => ['Instagram', '#E1306C', 'IG'],
+            'youtube'   => ['YouTube',   '#FF0000', '▶'],
+            'twitter'   => ['X',         '#000000', '𝕏'],
+        ];
+        $_hasSocials = !empty($_athSocials);
+        // Tout utilisateur connecte peut tenter d'editer ; l'API valide les droits
+        $_isLogged = !empty($_COOKIE['bk_token']) || !empty($_COOKIE['bk_sa_token']);
+
+        // === Calculs pour la grille editoriale ===
+        $_med = $data['medailles'] ?? [];
+        $_medOr = 0; $_medArg = 0; $_medBro = 0;
+        foreach ($_med as $_m) {
+            $_t = strtolower($_m['type'] ?? '');
+            if ($_t === 'or') $_medOr++;
+            elseif ($_t === 'argent') $_medArg++;
+            elseif ($_t === 'bronze') $_medBro++;
+        }
+        $_totMed = count($_med);
+
+        $_records = $data['records'] ?? [];
+        $_topRecords = array_slice($_records, 0, 5);
+
+        // Categorisation des epreuves pour les onglets de records
+        if (!function_exists('_p2_categEpreuve')) {
+            function _p2_categEpreuve($nom) {
+                $n = strtolower((string)$nom);
+                if (preg_match('/(poids|disque|javelot|marteau)/', $n))     return 'lancers';
+                if (preg_match('/(hauteur|perche|longueur|triple)/', $n))   return 'sauts';
+                if (preg_match('/haies/', $n))                              return 'haies';
+                if (preg_match('/steeple/', $n))                            return 'steeple';
+                if (preg_match('/(pentathlon|heptathlon|decathlon)/', $n))  return 'combines';
+                if (preg_match('/marathon|semi/', $n))                      return 'fond';
+                if (preg_match('/(\d+)\s*km/', $n))                         return 'fond';
+                // Capture distance avec espace en milliers : "1 000m", "5 000m", "10 000m"
+                if (preg_match('/^\s*(\d+(?:\s+\d+)*)\s*m\b/', $n, $m)) {
+                    $d = (int)str_replace(' ', '', $m[1]);
+                    if ($d <= 400)   return 'sprint';
+                    if ($d <= 3000)  return 'demi-fond';
+                    return 'fond';
+                }
+                return 'autre';
+            }
+        }
+        // Grouper tous les records par categorie + compter
+        $_recordsByCat = [];
+        foreach ($_records as $_rec) {
+            $_cat = _p2_categEpreuve($_rec['epreuve'] ?? '');
+            if (!isset($_recordsByCat[$_cat])) $_recordsByCat[$_cat] = [];
+            $_recordsByCat[$_cat][] = $_rec;
+        }
+        $_catLabels = [
+            'sprint'    => 'Sprint',
+            'demi-fond' => 'Demi-fond',
+            'fond'      => 'Fond',
+            'haies'     => 'Haies',
+            'steeple'   => 'Steeple',
+            'sauts'     => 'Sauts',
+            'lancers'   => 'Lancers',
+            'combines'  => 'Combines',
+            'autre'     => 'Autres',
+        ];
+        $_catOrder = ['sprint','haies','sauts','lancers','demi-fond','fond','steeple','combines','autre'];
+
+        // Helper niveau : ordre + couleur
+        if (!function_exists('_p2_nivOrder')) {
+            function _p2_nivOrder($code) {
+                // Hierarchie conforme bareme FFA : IA > IB > IE > N1..N4 > IR/IR1..IR6 > R1..R6 > D1..D8
+                $o = ['IA'=>1,'IB'=>2,'IE'=>3,'N1'=>4,'N2'=>5,'N3'=>6,'N4'=>7,'IR'=>8,'IR1'=>8,'IR2'=>9,'IR3'=>10,'IR4'=>11,'IR5'=>12,'IR6'=>13,'R1'=>14,'R2'=>15,'R3'=>16,'R4'=>17,'R5'=>18,'R6'=>19,'D1'=>20,'D2'=>21,'D3'=>22,'D4'=>23,'D5'=>24,'D6'=>25,'D7'=>26,'D8'=>27];
+                return $o[$code] ?? 99;
+            }
+            function _p2_nivColor($code) {
+                $c = (string)$code;
+                $f = $c[0] ?? '';
+                if ($f === 'I') return ['bg'=>'#c026d320','bd'=>'#c026d3','tx'=>'#e879f9'];
+                if ($f === 'N') return ['bg'=>'#e11d4820','bd'=>'#e11d48','tx'=>'#fb7185'];
+                if ($f === 'R') return ['bg'=>'#0891b220','bd'=>'#0891b2','tx'=>'#22d3ee'];
+                if ($f === 'D') return ['bg'=>'#f9731620','bd'=>'#f97316','tx'=>'#fb923c'];
+                return ['bg'=>'#30363d','bd'=>'#6e7681','tx'=>'#c9d1d9'];
+            }
+            function _p2_bestNiv($records) {
+                $best = null; $bestO = 99;
+                foreach ($records as $r) {
+                    foreach (($r['niveaux'] ?? []) as $code) {
+                        $o = _p2_nivOrder($code);
+                        if ($o < $bestO) { $bestO = $o; $best = $code; }
+                    }
+                }
+                return $best;
+            }
+            function _p2_recAnnee($r) {
+                if (!empty($r['date'])) return substr($r['date'], 0, 4);
+                if (!empty($r['annee'])) return (string)$r['annee'];
+                return '';
+            }
+            function _p2_recDateFull($r) {
+                $d = $r['date'] ?? '';
+                if (!$d || $d === '0000-00-00' || strpos($d, '0000') === 0) {
+                    return !empty($r['annee']) ? (string)$r['annee'] : '';
+                }
+                $ts = strtotime($d);
+                if (!$ts) return substr($d, 0, 4);
+                $moisFr = ['', 'janv.','fevr.','mars','avril','mai','juin','juil.','aout','sept.','oct.','nov.','dec.'];
+                return (int)date('j', $ts) . ' ' . $moisFr[(int)date('n', $ts)] . ' ' . date('Y', $ts);
+            }
+        }
+
+        // === Agreger TOUS les niveaux par categorie (records + progressions + niveaux FFA + resultats)
+        // pour ne pas rater le niveau le plus haut atteint par l'athlete (ex: N1 issu de athlete_niveaux)
+        $_nivByCat = ['all' => []];
+        foreach ($_catOrder as $_co) $_nivByCat[$_co] = [];
+        $_pushNiv = function($cat, $code) use (&$_nivByCat) {
+            if (!$code) return;
+            if (!isset($_nivByCat[$cat])) $_nivByCat[$cat] = [];
+            $_nivByCat[$cat][] = $code;
+            $_nivByCat['all'][] = $code;
+        };
+        // Records
+        foreach ($_records as $r) {
+            $_cc = _p2_categEpreuve($r['epreuve'] ?? '');
+            foreach (($r['niveaux'] ?? []) as $code) $_pushNiv($_cc, $code);
+        }
+        // Progressions
+        foreach (($data['progressions'] ?? []) as $p) {
+            $_cc = _p2_categEpreuve($p['epreuve'] ?? '');
+            foreach (($p['niveaux'] ?? []) as $code) $_pushNiv($_cc, $code);
+        }
+        // Niveaux FFA (table athlete_niveaux + perfs)
+        // On ajoute SEULEMENT les niveaux par epreuve (pas le code annuel global)
+        // → Sprint affiche le niveau atteint en sprint, Lancers le niveau atteint en lancers, etc.
+        foreach (($data['niveaux'] ?? []) as $niv) {
+            $globalCode = $niv['code_niveau'] ?? '';
+            foreach (($niv['performances'] ?? []) as $perf) {
+                $_cc = _p2_categEpreuve($perf['epreuve'] ?? '');
+                $code = $perf['code_niveau'] ?? $globalCode;
+                $_pushNiv($_cc, $code);
+            }
+            // Le code annuel va seulement dans "all" (classification globale de l'annee)
+            if (!empty($globalCode)) $_nivByCat['all'][] = $globalCode;
+        }
+        // Resultats (niveau de la competition)
+        foreach (($data['resultats'] ?? []) as $rs) {
+            $_cc = _p2_categEpreuve($rs['epreuve'] ?? '');
+            $code = $rs['niveau'] ?? ($rs['niveau_resultat'] ?? '');
+            $_pushNiv($_cc, $code);
+        }
+        $_p2_bestFromCodes = function($codes) {
+            $best = null; $bestO = 99;
+            foreach ($codes as $code) {
+                $o = _p2_nivOrder($code);
+                if ($o < $bestO) { $bestO = $o; $best = $code; }
+            }
+            return $best;
+        };
+
+        // Pre-calcul synthese par categorie : nb, niveau max, periode min/max
+        $_catSummary = [];
+        // Synthese globale (onglet "all")
+        $_catSummary['all'] = [
+            'nb'       => count($_records),
+            'best_niv' => $_p2_bestFromCodes($_nivByCat['all']),
+            'min_year' => null,
+            'max_year' => null,
+        ];
+        foreach ($_catOrder as $_c) {
+            $list = $_recordsByCat[$_c] ?? [];
+            if (empty($list)) continue;
+            $minY = null; $maxY = null;
+            foreach ($list as $r) {
+                $y = (int)_p2_recAnnee($r);
+                if ($y > 0) {
+                    if ($minY === null || $y < $minY) $minY = $y;
+                    if ($maxY === null || $y > $maxY) $maxY = $y;
+                }
+            }
+            $_catSummary[$_c] = [
+                'nb'       => count($list),
+                'best_niv' => $_p2_bestFromCodes($_nivByCat[$_c] ?? []),
+                'min_year' => $minY,
+                'max_year' => $maxY,
+            ];
+        }
+        // Synthese all : annees min/max globales
+        $minYall = null; $maxYall = null;
+        foreach ($_records as $r) {
+            $y = (int)_p2_recAnnee($r);
+            if ($y > 0) {
+                if ($minYall === null || $y < $minYall) $minYall = $y;
+                if ($maxYall === null || $y > $maxYall) $maxYall = $y;
+            }
+        }
+        $_catSummary['all']['min_year'] = $minYall;
+        $_catSummary['all']['max_year'] = $maxYall;
+
+        // === Charger les stats globales niveaux (sauvegardees par admin) ===
+        // pour calculer le % d'athletes appartenant au meme groupe que le meilleur niveau
+        $_globalNivStats = null;
+        $_globalNivStatsFile = __DIR__ . '/logs/.niveaux_stats.php';
+        if (file_exists($_globalNivStatsFile)) {
+            $_rawGS = @file_get_contents($_globalNivStatsFile);
+            $_pGS = $_rawGS ? strpos($_rawGS, "\n") : false;
+            if ($_pGS !== false) {
+                $_globalNivStats = json_decode(substr($_rawGS, $_pGS + 1), true);
+            }
+        }
+        // Helper : retourne ['group'=>'IA-IB','pct'=>0.05] pour un code niveau
+        if (!function_exists('_p2_nivGroupPct')) {
+            function _p2_nivGroupPct($code, $stats) {
+                if (!$code || !is_array($stats) || empty($stats['par_niveau'])) return null;
+                $byNiv = $stats['par_niveau'];
+                $total = (int)($stats['total_athletes'] ?? 0);
+                if ($total <= 0) return null;
+                // Memes groupes que sur la page Athletes
+                $groups = [
+                    'IA-IB' => ['IA','IB'],
+                    'N1-N4' => ['N1','N2','N3','N4'],
+                    'IE-R6' => ['IE','IR','IR1','IR2','IR3','IR4','R1','R2','R3','R4','R5','R6'],
+                    'D1-D8' => ['D1','D2','D3','D4','D5','D6','D7','D8'],
+                ];
+                foreach ($groups as $key => $codes) {
+                    if (in_array($code, $codes, true)) {
+                        $sum = 0;
+                        foreach ($codes as $c) $sum += (int)($byNiv[$c] ?? 0);
+                        return [
+                            'group' => $key,
+                            'count' => $sum,
+                            'pct'   => $sum / $total * 100,
+                            'total' => $total,
+                        ];
+                    }
+                }
+                return null;
+            }
+        }
+
+        $_clubs = $data['clubs'] ?? [];
+        $_clubActuel = null;
+        $_maxFin = 0;
+        foreach ($_clubs as $_c) {
+            $_fin = (int)($_c['annee_fin'] ?? 0);
+            $_deb = (int)($_c['annee_debut'] ?? 0);
+            $_score = $_fin > 0 ? $_fin : 9999;
+            if ($_score > $_maxFin) { $_maxFin = $_score; $_clubActuel = $_c; }
+        }
+
+        $_podiums = $data['podiums'] ?? [];
+        $_totPodiums = count($_podiums);
+
+        $_selections = $data['selections'] ?? [];
+        $_totSelections = count($_selections);
+
+        $_resultats = $data['resultats'] ?? [];
+        $_progressions = $data['progressions'] ?? [];
+
+        // Annees d'activite
+        $_annees = [];
+        foreach ($_resultats as $_r) if (!empty($_r['annee'])) $_annees[(int)$_r['annee']] = 1;
+        foreach ($_progressions as $_p) if (!empty($_p['annee'])) $_annees[(int)$_p['annee']] = 1;
+        $_anMin = $_annees ? min(array_keys($_annees)) : 0;
+        $_anMax = $_annees ? max(array_keys($_annees)) : 0;
+        $_anneesActives = count($_annees);
+
+        $_totCompetitions = count($_resultats);
+?>
+
+<script>
+(function(){
+    // Nettoyage des anciennes cles
+    try {
+        sessionStorage.removeItem('bk_profil_tuto_seen_session');
+        sessionStorage.removeItem('bk_profil_disc_seen');
+        sessionStorage.removeItem('bk_profil_tuto_v3');
+        sessionStorage.removeItem('bk_p2_tour_v2');
+        localStorage.removeItem('bk_profil_disclaimer_ok_v4');
+        localStorage.removeItem('bk_profil_tuto_ok_v1');
+    } catch(e){}
+})();
+</script>
+
+<?php if ($_isProfileHidden): ?>
+<div style="background:#ef444418;border:2px solid #ef4444;border-radius:12px;padding:16px 24px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
+    <span style="font-size:28px;">&#128683;</span>
+    <div>
+        <strong style="color:#ef4444;font-size:15px;">Profil masque — Inaccessible publiquement</strong>
+        <p style="color:#8b949e;font-size:12px;margin:4px 0 0;">Ce profil a ete signale et n'est plus visible par les visiteurs.<?php if ($_isAdmin): ?> <a href="<?= $_canonBase ?>/admin/panel.php#signalements" style="color:#a29bfe;">Gerer dans le panel</a><?php endif; ?></p>
+    </div>
+</div>
+<?php endif; ?>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+
+<style>
+.p2-cover {
+    padding: 40px 16px 28px;
+    margin: 16px 0 28px;
+    text-align: center;
+    position: relative;
+}
+.p2-toggles {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 5;
+}
+.p2-view-toggle {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    text-decoration: none;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border: 1px solid #30363d;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.25s;
+}
+.p2-view-toggle:hover {
+    color: #f0f6fc;
+    border-color: #c9d1d9;
+    letter-spacing: 0.24em;
+}
+.p2-view-toggle-arrow {
+    margin-right: 4px;
+    font-style: normal;
+    transition: transform 0.25s;
+    display: inline-block;
+}
+.p2-view-toggle:hover .p2-view-toggle-arrow { transform: translateX(-3px); }
+.p2-light-icon {
+    margin-right: 4px;
+    font-style: normal;
+    font-size: 12px;
+}
+.p2-light-toggle.is-on .p2-light-icon::before { content: '\263D'; } /* lune */
+.p2-light-toggle.is-on .p2-light-icon::after  { display: none; }
+.p2-light-toggle.is-on .p2-light-label::before { content: 'Sombre'; }
+.p2-light-toggle.is-on .p2-light-label { font-size: 0; }
+.p2-light-toggle.is-on .p2-light-label::before { font-size: 11px; }
+@media (max-width: 600px) {
+    .p2-toggles {
+        position: relative;
+        top: 0; right: 0;
+        margin-bottom: 18px;
+        justify-content: center;
+    }
+}
+
+/* === MODE LUMINEUX (papier magazine creme, fort contraste) === */
+body.p2-light { background: #f4ede0 !important; color: #1a1814; }
+body.p2-light .nav { background: #ebe2cf !important; border-color: #c9bfa6 !important; }
+body.p2-light .p2-cover { color: #1a1814; }
+body.p2-light .p2-tag { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-tag span { color: #a89c80 !important; }
+body.p2-light .p2-name {
+    background: none !important;
+    -webkit-text-fill-color: #0a0805 !important;
+    color: #0a0805 !important;
+    text-shadow: none !important;
+    font-weight: 900 !important;
+}
+body.p2-light .p2-name-plain { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-sub { color: #6b4f2c; font-weight: 400; }
+body.p2-light .p2-meta { color: #2a2418; border-top-color: #c9bfa6; }
+body.p2-light .p2-meta b { color: #0a0805; }
+body.p2-light .p2-meta a { color: #6b4f2c; }
+body.p2-light .p2-view-toggle { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.4); font-weight: 600; }
+body.p2-light .p2-view-toggle:hover { color: #0a0805; border-color: #1a1814; background: #1a1814; }
+body.p2-light .p2-view-toggle:hover, body.p2-light .p2-view-toggle:hover * { color: #f4ede0 !important; }
+body.p2-light .p2-actions button { color: #0a0805 !important; border-color: #1a1814 !important; background: transparent !important; font-weight: 600 !important; }
+body.p2-light .p2-actions button:hover { background: #0a0805 !important; color: #f4ede0 !important; border-color: #0a0805 !important; }
+body.p2-light .p2-actions .btn-report { background: #8b1a1a !important; color: #f4ede0 !important; border-color: #8b1a1a !important; box-shadow: none !important; }
+body.p2-light .p2-actions .btn-report:hover { background: #6b1414 !important; border-color: #6b1414 !important; }
+/* Bio */
+body.p2-light .p2-bio-rubrique { color: #5a5040; border-bottom-color: #c9bfa6; font-weight: 500; }
+body.p2-light .p2-bio-yr { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.3); font-weight: 500; }
+body.p2-light .p2-bio-yr:hover { color: #0a0805; border-color: #1a1814; }
+body.p2-light .p2-bio-yr.active { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+body.p2-light .p2-bio-text { color: #1a1814; font-weight: 400; }
+body.p2-light .p2-bio-text::first-letter { color: #0a0805; }
+body.p2-light .p2-bio-copy { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.3); font-weight: 600; }
+body.p2-light .p2-bio-copy:hover { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+/* Grille */
+body.p2-light .p2-rubrique { color: #5a5040; border-bottom-color: #c9bfa6; font-weight: 500; }
+body.p2-light .p2-rubrique span { color: #1a1814; }
+body.p2-light .p2-huge { color: #0a0805; }
+body.p2-light .p2-huge .unit { color: #5a5040; }
+body.p2-light .p2-medal-bd { color: #2a2418; font-weight: 400; }
+body.p2-light .p2-medal-or b { color: #b45309; }
+body.p2-light .p2-medal-arg b { color: #5a5040; }
+body.p2-light .p2-medal-bro b { color: #7c2d12; }
+body.p2-light .p2-niveau-desc { color: #5a5040; }
+body.p2-light .p2-niveau-carriere { color: #1a1814; }
+body.p2-light .p2-niveau-carriere strong { color: #0a0805; }
+body.p2-light .p2-niveau-carriere-period { color: #8a7d63; }
+body.p2-light .p2-niv-history-label { color: #8a7d63; }
+body.p2-light .p2-niv-history { border-top-color: #c9bfa6; }
+body.p2-light .p2-niv-target { background: rgba(107,79,44,0.1); border-left-color: #6b4f2c; color: #1a1814; }
+body.p2-light .p2-niv-target strong { color: #6b4f2c; }
+body.p2-light .p2-niv-target-arrow { color: #6b4f2c; }
+body.p2-light .p2-niv-target-ep { color: #5a5040; }
+body.p2-light .p2-stat .num { color: #0a0805; }
+body.p2-light .p2-stat .lbl { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-rec-list li { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-rec-list .ep { color: #0a0805; }
+body.p2-light .p2-rec-list .perf { color: #6b4f2c; }
+body.p2-light .p2-rec-list .yr { color: #8a7d63; }
+body.p2-light .p2-club-item { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-club-link { color: #2a2418; }
+body.p2-light .p2-club-link:hover { color: #0a0805; border-bottom-color: #a89c80; }
+body.p2-light .p2-club-item.is-current .p2-club-link { color: #0a0805; }
+body.p2-light .p2-club-period { color: #5a5040; }
+body.p2-light .p2-club-dur { color: #6b4f2c; }
+body.p2-light .p2-mini-list li { color: #1a1814; border-bottom-color: #d6cdb5; }
+body.p2-light .p2-mini-list .lbl { color: #8a7d63; }
+body.p2-light .p2-empty { color: #8a7d63; }
+/* Citation, pivot, arc */
+body.p2-light .p2-quote-mark { color: #c9bfa6; }
+body.p2-light .p2-quote-text { color: #0a0805; }
+body.p2-light .p2-pivot { border-top-color: #c9bfa6; }
+body.p2-light .p2-pivot-rubrique { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-pivot-year {
+    background: none !important;
+    -webkit-text-fill-color: #0a0805 !important;
+    color: #0a0805 !important;
+}
+body.p2-light .p2-pivot-stats { color: #6b4f2c; }
+body.p2-light .p2-arc { border-top-color: #c9bfa6; }
+body.p2-light .p2-arc-rubrique, body.p2-light .p2-arc-label { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-arc-date { color: #0a0805; }
+body.p2-light .p2-arc-meta { color: #2a2418; }
+body.p2-light .p2-arc-meta em { color: #1a1814; }
+body.p2-light .p2-arc-line::before { background: #f4ede0; color: #a89c80; }
+body.p2-light .p2-arc-line { background: linear-gradient(90deg, transparent, #a89c80, transparent); }
+/* Constellation */
+body.p2-light .p2-sim { border-top-color: #c9bfa6; }
+body.p2-light .p2-sim-rubrique { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-sim-card { border-top-color: #c9bfa6; }
+body.p2-light .p2-sim-card:hover { border-top-color: #6b4f2c; }
+body.p2-light .p2-sim-num { color: #8a7d63; }
+body.p2-light .p2-sim-name { color: #0a0805; }
+body.p2-light .p2-sim-card:hover .p2-sim-name { color: #6b4f2c; }
+body.p2-light .p2-sim-cat, body.p2-light .p2-sim-club { color: #5a5040; }
+body.p2-light .p2-sim-score { color: #6b4f2c; }
+/* Graphique */
+body.p2-light .p2-chart { border-top-color: #c9bfa6; }
+body.p2-light .p2-chart-rubrique { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-chart-rubrique span { color: #1a1814; border-left-color: #c9bfa6; }
+body.p2-light .p2-chart-ep { color: #5a5040; border-color: #a89c80; background: rgba(255,255,255,0.3); font-weight: 500; }
+body.p2-light .p2-chart-ep:hover { color: #0a0805; border-color: #1a1814; }
+body.p2-light .p2-chart-ep.active { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+body.p2-light .p2-chart-yr { color: #8a7d63; }
+body.p2-light .p2-chart-line { background: #c9bfa6; }
+body.p2-light .p2-chart-summary { color: #1a1814; }
+body.p2-light .p2-chart-summary strong { color: #0a0805; }
+body.p2-light .p2-chart-summary em { color: #6b4f2c; }
+/* Voir plus */
+body.p2-light .p2-more-btn { color: #0a0805; border-color: #1a1814; background: rgba(255,255,255,0.3); font-weight: 600; }
+body.p2-light .p2-more-btn:hover, body.p2-light .p2-more-btn.open { background: #0a0805; color: #f4ede0; }
+body.p2-light .p2-more-tabs { border-bottom-color: #c9bfa6; }
+body.p2-light .p2-more-tab { color: #8a7d63; }
+body.p2-light .p2-more-tab:hover { color: #2a2418; }
+body.p2-light .p2-more-tab.active { color: #0a0805; border-bottom-color: #0a0805; }
+body.p2-light .p2-more-list li { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-more-key { color: #0a0805; }
+body.p2-light .p2-more-val { color: #1a1814; font-weight: 400; }
+body.p2-light .p2-more-val .muted { color: #8a7d63; }
+body.p2-light .p2-more-extra { color: #5a5040; }
+/* Hall of fame */
+body.p2-light .p2-hof { border-top-color: #c9bfa6; }
+body.p2-light .p2-hof-rubrique { color: #5a5040; font-weight: 500; }
+body.p2-light .p2-hof-num { color: #8a7d63; }
+body.p2-light .p2-hof-item { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-hof-ep { color: #0a0805; }
+body.p2-light .p2-hof-line2 { color: #5a5040; }
+body.p2-light .p2-hof-line2 em { color: #1a1814; }
+/* Saviez-vous */
+body.p2-light .p2-fact { border-color: #c9bfa6; border-left-color: #6b4f2c; background: rgba(107,79,44,0.06); }
+body.p2-light .p2-fact-mark { color: #6b4f2c; }
+body.p2-light .p2-fact-text { color: #1a1814; }
+body.p2-light .p2-fact-text strong { color: #0a0805; }
+body.p2-light .p2-fact-prefix { color: #5a5040; font-weight: 500; }
+
+/* Disclaimer popup */
+body.p2-light #profilDisclaimer > div { background: #f4ede0 !important; color: #1a1814; }
+.p2-tag {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 13px;
+    color: #8b949e;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    margin: 0 0 18px;
+}
+.p2-tag::before, .p2-tag::after {
+    content: '\2014';
+    margin: 0 14px;
+    color: #4a5161;
+}
+.p2-name {
+    font-family: 'Bodoni Moda', 'Didot', 'Playfair Display', Georgia, serif;
+    font-weight: 800;
+    font-size: clamp(46px, 9vw, 110px);
+    line-height: 0.92;
+    letter-spacing: -0.015em;
+    color: #f0f6fc;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    background: linear-gradient(180deg, #ffffff 30%, #c9d1d9 70%, #6e7681 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 2px 30px rgba(108, 92, 231, 0.15);
+    display: block;
+    word-break: break-word;
+}
+.p2-name-plain {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    color: #8b949e;
+    margin: 0 0 18px;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.p2-sub {
+    font-family: 'Cormorant Garamond', 'Bodoni Moda', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(16px, 2.2vw, 22px);
+    color: #a29bfe;
+    letter-spacing: 0.05em;
+    margin: 0 0 26px;
+    opacity: 0.9;
+}
+.p2-lead {
+    font-family: 'Cormorant Garamond', 'Bodoni Moda', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(13px, 1.4vw, 16px);
+    color: #8b949e;
+    line-height: 1.65;
+    max-width: 640px;
+    margin: 0 auto 26px;
+    letter-spacing: 0.005em;
+}
+.p2-lead-link {
+    color: #c9d1d9;
+    text-decoration: none;
+    border-bottom: 1px dashed #4a5161;
+    padding-bottom: 1px;
+    transition: all 0.2s;
+    cursor: pointer;
+    font-style: italic;
+}
+.p2-lead-link:hover {
+    color: #a29bfe;
+    border-bottom-color: #a29bfe;
+    border-bottom-style: solid;
+}
+body.p2-light .p2-lead { color: #5a5040; }
+body.p2-light .p2-lead-link { color: #1a1814; border-bottom-color: #a89c80; }
+body.p2-light .p2-lead-link:hover { color: #6b4f2c; border-bottom-color: #6b4f2c; }
+.p2-actions {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 0 0 30px;
+}
+.p2-actions button,
+.p2-actions .btn-cmp-add,
+.p2-actions .btn-follow,
+.p2-actions .btn-pdf,
+.p2-actions .btn-report {
+    background: transparent !important;
+    border: 1px solid #c9d1d9 !important;
+    color: #f0f6fc !important;
+    padding: 9px 22px !important;
+    font-family: 'Bodoni Moda', 'Didot', Georgia, serif !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.25em !important;
+    text-transform: uppercase !important;
+    border-radius: 0 !important;
+    cursor: pointer !important;
+    transition: all 0.35s ease !important;
+    line-height: 1 !important;
+    min-width: auto !important;
+    box-shadow: none !important;
+    position: relative;
+    overflow: hidden;
+}
+.p2-actions button:hover,
+.p2-actions .btn-cmp-add:hover,
+.p2-actions .btn-follow:hover,
+.p2-actions .btn-pdf:hover,
+.p2-actions .btn-report:hover {
+    background: #f0f6fc !important;
+    color: #0d1117 !important;
+    border-color: #f0f6fc !important;
+    letter-spacing: 0.32em !important;
+}
+.p2-actions .btn-cmp-add {
+    width: 38px !important; height: 38px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    font-size: 16px !important;
+    letter-spacing: 0 !important;
+    font-family: Georgia, serif !important;
+}
+.p2-actions .btn-cmp-add:hover { letter-spacing: 0 !important; }
+.p2-actions .btn-soc-add {
+    background: linear-gradient(135deg, #6c5ce7 0%, #5541d0 100%) !important;
+    border-color: #6c5ce7 !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(108, 92, 231, 0.3) !important;
+}
+.p2-actions .btn-soc-add:hover {
+    background: linear-gradient(135deg, #7e6ff0 0%, #6c5ce7 100%) !important;
+    box-shadow: 0 4px 14px rgba(108, 92, 231, 0.45) !important;
+    letter-spacing: 0.32em !important;
+}
+body.p2-light .p2-actions .btn-soc-add {
+    background: #6b4f2c !important;
+    color: #f4ede0 !important;
+    border-color: #6b4f2c !important;
+    box-shadow: 0 2px 8px rgba(107, 79, 44, 0.25) !important;
+}
+body.p2-light .p2-actions .btn-soc-add:hover { background: #5a4222 !important; }
+.p2-actions .btn-report {
+    background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
+    border-color: #b91c1c !important;
+    color: #fff5f5 !important;
+    box-shadow: 0 2px 8px rgba(185, 28, 28, 0.25) !important;
+}
+.p2-actions .btn-report:hover {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+    color: #fff !important;
+    border-color: #dc2626 !important;
+    letter-spacing: 0.32em !important;
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4) !important;
+}
+.p2-meta {
+    color: #c9d1d9;
+    font-size: 14px;
+    line-height: 1.9;
+    border-top: 1px solid #30363d;
+    padding-top: 22px;
+    max-width: 720px;
+    margin: 0 auto;
+}
+.p2-meta b { color: #f0f6fc; font-weight: 600; letter-spacing: 0.02em; }
+.p2-badges {
+    display: flex; justify-content: center; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+@media (max-width: 600px) {
+    .p2-cover { padding: 28px 8px 20px; }
+    .p2-tag { letter-spacing: 0.3em; font-size: 11px; }
+    .p2-tag::before, .p2-tag::after { margin: 0 8px; }
+    .p2-meta { font-size: 13px; }
+}
+
+/* === PORTRAIT (biographie auto-generee) === */
+.p2-bio {
+    max-width: 820px;
+    margin: 0 auto 60px;
+    padding: 0 24px;
+    text-align: left;
+    position: relative;
+}
+.p2-bio-rubrique {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 12px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    margin: 0 0 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #30363d;
+    text-align: center;
+}
+.p2-bio-years {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin: 0 0 22px;
+    align-items: center;
+}
+.p2-bio-yr {
+    background: transparent;
+    border: 1px solid #30363d;
+    color: #8b949e;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 0;
+}
+.p2-bio-yr:hover { color: #c9d1d9; border-color: #484f58; }
+.p2-bio-yr.active {
+    background: #f0f6fc;
+    color: #0d1117;
+    border-color: #f0f6fc;
+    font-weight: 600;
+}
+.p2-bio-yr-count {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 12px;
+    color: #6e7681;
+    margin-left: 6px;
+}
+.p2-bio-text {
+    font-family: 'Cormorant Garamond', 'Bodoni Moda', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(16px, 1.7vw, 19px);
+    line-height: 1.85;
+    color: #c9d1d9;
+    margin: 0 0 22px;
+    text-align: justify;
+    text-align-last: center;
+    hyphens: auto;
+}
+.p2-bio-text::first-letter {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-weight: 800;
+    font-style: normal;
+    font-size: 3.6em;
+    line-height: 0.9;
+    float: left;
+    padding: 6px 12px 0 0;
+    color: #f0f6fc;
+}
+.p2-bio-copy {
+    background: transparent;
+    border: 1px solid #30363d;
+    color: #8b949e;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: all 0.25s;
+    display: block;
+    margin: 0 auto;
+}
+.p2-bio-copy:hover {
+    background: #f0f6fc;
+    color: #0d1117;
+    border-color: #f0f6fc;
+    letter-spacing: 0.32em;
+}
+
+/* === GRILLE EDITORIALE ASYMETRIQUE === */
+.p2-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 36px 32px;
+    max-width: 1100px;
+    margin: 32px auto 60px;
+    padding: 0 16px;
+}
+.p2-block { padding: 12px 0; }
+.p2-w12 { grid-column: span 12; }
+.p2-w8 { grid-column: span 8; }
+.p2-w7 { grid-column: span 7; }
+.p2-w5 { grid-column: span 5; }
+.p2-w4 { grid-column: span 4; }
+.p2-rubrique {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 12px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    margin: 0 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #30363d;
+}
+.p2-rubrique span {
+    color: #c9d1d9;
+    font-style: normal;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    margin-left: 8px;
+}
+.p2-huge {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-weight: 800;
+    font-size: clamp(56px, 7vw, 96px);
+    line-height: 0.9;
+    color: #f0f6fc;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+.p2-huge .unit {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 0.32em;
+    color: #8b949e;
+    margin-left: 12px;
+    letter-spacing: 0.05em;
+}
+.p2-medal-bd {
+    margin-top: 18px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 17px;
+    color: #c9d1d9;
+}
+.p2-medal-bd b {
+    font-family: 'Bodoni Moda', serif;
+    font-style: normal;
+    font-weight: 700;
+    font-size: 22px;
+    margin-right: 6px;
+}
+.p2-medal-or b { color: #fbbf24; }
+.p2-medal-arg b { color: #d1d5db; }
+.p2-medal-bro b { color: #d97706; }
+.p2-niveau-code {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 800;
+    font-size: clamp(70px, 9vw, 130px);
+    line-height: 0.9;
+    margin: 0;
+    letter-spacing: -0.02em;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.6), 0 0 20px rgba(0,0,0,0.3);
+}
+body.p2-light .p2-niveau-code {
+    text-shadow: 0 3px 8px rgba(58,42,12,0.18), 0 1px 3px rgba(58,42,12,0.25);
+}
+.p2-niveau-desc {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 17px;
+    color: #8b949e;
+    margin-top: 10px;
+    line-height: 1.5;
+}
+.p2-niveau-carriere {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 15px;
+    color: #c9d1d9;
+    margin-top: 12px;
+    line-height: 1.4;
+}
+.p2-niveau-carriere strong {
+    font-family: 'Bodoni Moda', serif;
+    font-style: normal;
+    font-weight: 700;
+    font-size: 22px;
+    color: #f0f6fc;
+    margin-right: 4px;
+    letter-spacing: -0.01em;
+}
+.p2-niveau-carriere-period {
+    display: block;
+    font-size: 12px;
+    color: #6e7681;
+    margin-top: 2px;
+    letter-spacing: 0.05em;
+}
+.p2-niv-history {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #21262d;
+}
+.p2-niv-history-label {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 10px;
+    color: #6e7681;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.p2-niv-history-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: baseline;
+}
+.p2-niv-chip {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.02em;
+    opacity: 0.45;
+    transition: opacity 0.2s;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 0 6px rgba(0,0,0,0.3);
+}
+.p2-niv-chip:hover { opacity: 0.85; }
+body.p2-light .p2-niv-chip {
+    text-shadow: 0 1px 2px rgba(58,42,12,0.2);
+}
+
+/* Text-shadow global pour les badges/boutons niveau (page Villes, Clubs, etc.) */
+.niv-filter-btn,
+.badge-niv,
+[data-niv] {
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7), 0 0 4px rgba(0,0,0,0.4);
+}
+body.p2-light .niv-filter-btn,
+body.p2-light .badge-niv,
+body.p2-light [data-niv] {
+    text-shadow: 0 1px 2px rgba(58,42,12,0.2);
+}
+.p2-stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 28px;
+}
+.p2-stat .num {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: clamp(36px, 4.5vw, 56px);
+    line-height: 1;
+    color: #f0f6fc;
+    letter-spacing: -0.01em;
+    display: block;
+}
+.p2-stat .lbl {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 12px;
+    color: #8b949e;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-top: 6px;
+    display: block;
+}
+/* Onglets categories de records — style elegant Vogue */
+.p2-rec-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(162,155,254,0.12);
+}
+.p2-rec-tab {
+    background: transparent;
+    border: 1px solid rgba(162,155,254,0.15);
+    color: #8b949e;
+    font-family: 'Cormorant Garamond', 'Bodoni Moda', Georgia, serif;
+    font-style: italic;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    padding: 7px 16px;
+    border-radius: 100px;
+    cursor: pointer;
+    transition: all .25s cubic-bezier(.2,.8,.2,1);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.p2-rec-tab:hover {
+    border-color: rgba(162,155,254,0.4);
+    color: #c9d1d9;
+}
+.p2-rec-tab.is-active {
+    background: linear-gradient(135deg, rgba(162,155,254,0.15), rgba(108,92,231,0.08));
+    border-color: rgba(162,155,254,0.55);
+    color: #f0f6fc;
+    font-style: normal;
+    font-weight: 600;
+}
+.p2-rec-tab-cnt {
+    display: inline-block;
+    background: rgba(162,155,254,0.12);
+    color: #a29bfe;
+    font-family: 'Bodoni Moda', serif;
+    font-style: normal;
+    font-weight: 700;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 100px;
+    min-width: 22px;
+    text-align: center;
+}
+.p2-rec-tab.is-active .p2-rec-tab-cnt {
+    background: rgba(162,155,254,0.25);
+    color: #ffffff;
+}
+body.p2-light .p2-rec-tabs { border-bottom-color: rgba(107,79,44,0.2); }
+body.p2-light .p2-rec-tab {
+    border-color: rgba(107,79,44,0.25);
+    color: #5a5040;
+}
+body.p2-light .p2-rec-tab:hover {
+    border-color: rgba(107,79,44,0.5);
+    color: #1a1814;
+}
+body.p2-light .p2-rec-tab.is-active {
+    background: linear-gradient(135deg, rgba(107,79,44,0.18), rgba(107,79,44,0.06));
+    border-color: rgba(107,79,44,0.6);
+    color: #0a0805;
+}
+body.p2-light .p2-rec-tab-cnt {
+    background: rgba(107,79,44,0.12);
+    color: #6b4f2c;
+}
+body.p2-light .p2-rec-tab.is-active .p2-rec-tab-cnt {
+    background: rgba(107,79,44,0.3);
+    color: #0a0805;
+}
+
+/* Synthese par categorie (encadre au-dessus de la liste) */
+.p2-rec-summary {
+    background: linear-gradient(135deg, rgba(162,155,254,0.06), rgba(108,92,231,0.02));
+    border: 1px solid rgba(162,155,254,0.18);
+    border-left: 3px solid #a29bfe;
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+}
+.p2-rec-sum-cat {
+    font-family: 'Cormorant Garamond', 'Bodoni Moda', Georgia, serif;
+    font-style: italic;
+    font-size: 13px;
+    color: #a29bfe;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+.p2-rec-sum-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 16px;
+}
+.p2-rec-sum-cell {
+    text-align: left;
+}
+.p2-rec-sum-num {
+    font-family: 'Bodoni Moda', 'Didot', Georgia, serif;
+    font-weight: 700;
+    font-size: 26px;
+    color: #f0f6fc;
+    line-height: 1;
+    letter-spacing: -0.5px;
+}
+.p2-rec-sum-period {
+    font-size: 18px;
+    font-weight: 600;
+    color: #c9d1d9;
+}
+.p2-rec-sum-lbl {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 11px;
+    font-style: italic;
+    color: #6e7681;
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+.p2-rec-sum-pct {
+    margin-top: 6px;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 12px;
+    color: #a29bfe;
+    font-style: italic;
+    line-height: 1.3;
+}
+.p2-rec-sum-pct strong {
+    font-style: normal;
+    font-family: 'Bodoni Moda', serif;
+    color: #f0f6fc;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+.p2-rec-sum-grp {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 10px;
+    color: #6e7681;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-style: normal;
+}
+body.p2-light .p2-rec-sum-pct { color: #6b4f2c; }
+body.p2-light .p2-rec-sum-pct strong { color: #0a0805; }
+body.p2-light .p2-rec-sum-grp { color: #8a7d63; }
+body.p2-light .p2-rec-summary {
+    background: linear-gradient(135deg, rgba(107,79,44,0.08), rgba(107,79,44,0.02));
+    border-color: rgba(107,79,44,0.25);
+    border-left-color: #6b4f2c;
+}
+body.p2-light .p2-rec-sum-cat { color: #6b4f2c; }
+body.p2-light .p2-rec-sum-num { color: #0a0805; }
+body.p2-light .p2-rec-sum-period { color: #2a2418; }
+body.p2-light .p2-rec-sum-lbl { color: #8a7d63; }
+
+/* Badge niveau — version plus visible (border 2px, font 15px, glow leger) */
+.p2-niv-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.6px;
+    border: 2px solid;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    box-shadow: 0 0 12px currentColor, inset 0 1px 0 rgba(255,255,255,0.12);
+    filter: brightness(1.05);
+}
+.p2-niv-badge-sm {
+    padding: 3px 9px;
+    font-size: 12px;
+    border-width: 1.5px;
+    box-shadow: 0 0 6px currentColor, inset 0 1px 0 rgba(255,255,255,0.1);
+}
+/* Le glow currentColor donne un halo dans la couleur du texte; on attenue */
+.p2-niv-badge { --halo: 0; }
+
+/* Nouvelle structure record (rich) : 2 lignes */
+.p2-rec-list-rich li {
+    display: block !important;
+    grid-template-columns: none !important;
+    gap: 0 !important;
+    padding: 14px 0 !important;
+    border-bottom: 1px solid #21262d;
+}
+/* Class pour cacher (override le !important au-dessus) */
+.p2-rec-list-rich li.bk-hide,
+.p2-hof-list li.bk-hide {
+    display: none !important;
+}
+.p2-rec-list-rich .p2-rec-row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+.p2-rec-list-rich .p2-rec-row2 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    font-size: 12px;
+}
+.p2-rec-meta-it {
+    color: #8b949e;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+}
+.p2-rec-meta-link {
+    text-decoration: none;
+    transition: color .2s;
+}
+.p2-rec-meta-link:hover { color: #a29bfe; }
+.p2-rec-meta-faint {
+    font-size: 11px;
+    color: #6e7681;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-style: normal;
+    font-family: inherit;
+}
+body.p2-light .p2-rec-list-rich li { border-bottom-color: #d6cdb5; }
+body.p2-light .p2-rec-meta-it { color: #5a5040; }
+body.p2-light .p2-rec-meta-link:hover { color: #6b4f2c; }
+body.p2-light .p2-rec-meta-faint { color: #8a7d63; }
+
+.p2-rec-list { list-style: none; padding: 0; margin: 0; }
+.p2-rec-list li {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 16px;
+    align-items: baseline;
+    padding: 14px 0;
+    border-bottom: 1px solid #21262d;
+}
+.p2-rec-list li:last-child { border-bottom: none; }
+.p2-rec-list .ep {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 18px;
+    color: #f0f6fc;
+}
+.p2-rec-list .perf {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: 22px;
+    color: #a29bfe;
+    letter-spacing: -0.01em;
+}
+.p2-rec-list .yr {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: #6e7681;
+}
+.p2-club-list {
+    list-style: none; padding: 0; margin: 0;
+}
+.p2-club-item {
+    padding: 12px 0;
+    border-bottom: 1px solid #21262d;
+}
+.p2-club-item:last-child { border-bottom: none; }
+.p2-club-link {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 600;
+    font-size: 17px;
+    line-height: 1.25;
+    color: #c9d1d9;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s;
+    display: inline-block;
+}
+.p2-club-link:hover {
+    color: #f0f6fc;
+    border-bottom-color: #30363d;
+}
+.p2-club-item.is-current .p2-club-link {
+    font-weight: 700;
+    font-size: clamp(20px, 2.4vw, 26px);
+    color: #f0f6fc;
+}
+.p2-club-period {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 15px;
+    color: #8b949e;
+    margin-top: 3px;
+}
+.p2-club-dur {
+    font-family: 'Bodoni Moda', serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 12px;
+    color: #a29bfe;
+    letter-spacing: 0.05em;
+    margin-left: 4px;
+}
+.p2-empty {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: #6e7681;
+    padding: 14px 0;
+}
+.p2-mini-list { list-style: none; padding: 0; margin: 0; }
+.p2-mini-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid #21262d;
+    font-size: 14px;
+    color: #c9d1d9;
+}
+.p2-mini-list li:last-child { border-bottom: none; }
+.p2-mini-list .lbl {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    color: #8b949e;
+    margin-right: 8px;
+}
+@media (max-width: 800px) {
+    .p2-grid { grid-template-columns: repeat(6, 1fr); gap: 28px 20px; }
+    .p2-w8, .p2-w7 { grid-column: span 6; }
+    .p2-w5, .p2-w4 { grid-column: span 6; }
+}
+
+/* === RESPONSIVE GLOBAL === */
+@media (max-width: 900px) {
+    .p2-cover { padding: 30px 14px 22px; }
+    .p2-name { font-size: clamp(38px, 11vw, 72px) !important; line-height: 0.95; }
+    .p2-name-plain { font-size: 13px; }
+    .p2-sub { font-size: clamp(14px, 2.4vw, 18px); }
+    .p2-lead { font-size: 13px; padding: 0 8px; }
+    .p2-bio { padding: 0 16px; max-width: 100%; }
+    .p2-bio-text { font-size: 15px; line-height: 1.7; text-align: left; text-align-last: left; }
+    .p2-bio-text::first-letter { font-size: 3em; padding: 4px 10px 0 0; }
+    .p2-hof, .p2-fact, .p2-arc, .p2-pivot, .p2-quote, .p2-sim, .p2-chart, .p2-more {
+        padding-left: 14px; padding-right: 14px;
+    }
+    .p2-stats-row { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 18px; }
+    .p2-stat .num { font-size: clamp(28px, 6vw, 44px); }
+    .p2-actions { gap: 8px; }
+    .p2-actions button { padding: 8px 14px !important; font-size: 10px !important; letter-spacing: 0.18em !important; }
+    .p2-actions .btn-cmp-add { width: 32px !important; height: 32px !important; font-size: 14px !important; }
+}
+@media (max-width: 600px) {
+    .p2-grid { grid-template-columns: 1fr; gap: 26px; padding: 0 14px; }
+    .p2-w12, .p2-w8, .p2-w7, .p2-w5, .p2-w4 { grid-column: span 1; }
+    .p2-name { font-size: clamp(34px, 13vw, 56px) !important; }
+    .p2-tag { font-size: 10px; letter-spacing: 0.3em; }
+    .p2-tag::before, .p2-tag::after { margin: 0 6px; }
+    .p2-toggles { flex-wrap: wrap; justify-content: center; }
+    .p2-view-toggle { font-size: 10px; padding: 5px 10px; letter-spacing: 0.15em; }
+    .p2-rubrique { font-size: 11px; letter-spacing: 0.35em; }
+    .p2-huge { font-size: clamp(40px, 11vw, 60px) !important; }
+    .p2-niveau-code { font-size: clamp(56px, 16vw, 90px) !important; }
+    .p2-bio-rubrique, .p2-hof-rubrique, .p2-arc-rubrique, .p2-pivot-rubrique, .p2-sim-rubrique, .p2-chart-rubrique {
+        font-size: 10px; letter-spacing: 0.35em;
+    }
+    .p2-rec-list li { grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px 0; }
+    .p2-rec-list .yr { grid-column: 1; font-size: 12px; opacity: 0.7; }
+    .p2-rec-list .ep { font-size: 16px; }
+    .p2-rec-list .perf { font-size: 19px; }
+    .p2-club-link { font-size: 15px; }
+    .p2-club-item.is-current .p2-club-link { font-size: clamp(18px, 5vw, 22px); }
+    .p2-club-period { font-size: 13px; }
+    .p2-quote-text { font-size: clamp(20px, 5vw, 28px) !important; padding: 0 8px; }
+    .p2-quote-mark { font-size: clamp(40px, 9vw, 56px) !important; }
+    .p2-pivot-year { font-size: clamp(40px, 11vw, 60px) !important; }
+    .p2-pivot-stats { font-size: 14px; }
+    .p2-fact { padding: 18px 16px; gap: 12px; }
+    .p2-fact-mark { font-size: 32px; }
+    .p2-fact-text { font-size: 14px; }
+    .p2-fact-prefix { font-size: 10px; letter-spacing: 0.2em; }
+    .p2-chart-canvas-wrap { height: 170px; }
+    .p2-chart-summary { font-size: 14px; padding: 0 4px; }
+    .p2-more-list li { grid-template-columns: 70px 1fr 50px; gap: 10px; font-size: 12px; padding: 12px 0; }
+    .p2-more-list li:first-child { padding-top: 18px; }
+    .p2-more-key { font-size: 14px; }
+    .p2-more-val { font-size: 13px; }
+    .p2-more-niv { font-size: 12px; }
+    .p2-more-tabs { gap: 0; }
+    .p2-more-tab { padding: 10px 12px; font-size: 10px; letter-spacing: 0.15em; }
+    .p2-more-btn { padding: 10px 22px; font-size: 11px; letter-spacing: 0.22em; }
+    .p2-niv-target { font-size: 13px; padding: 8px 10px; }
+    .p2-niv-target-ep { font-size: 11px; }
+    .p2-hof-line1 { gap: 8px; }
+    .p2-tour-card { width: calc(100% - 24px) !important; left: 12px !important; right: 12px; max-width: none !important; padding: 18px 18px; }
+    .p2-tour-title { font-size: 17px; }
+    .p2-tour-text { font-size: 14px; line-height: 1.5; margin-bottom: 16px; }
+    .p2-tour-btn { padding: 6px 12px; font-size: 10px; letter-spacing: 0.12em; }
+    .p2-bio-yr { font-size: 11px; padding: 4px 10px; }
+    .p2-chart-eps { gap: 5px; padding-bottom: 4px; }
+    .p2-chart-ep { font-size: 11px; padding: 4px 10px; }
+}
+@media (max-width: 400px) {
+    .p2-cover { padding: 22px 8px 18px; }
+    .p2-name { font-size: clamp(28px, 14vw, 44px) !important; }
+    .p2-name-plain { font-size: 12px; }
+    .p2-sub { font-size: 13px; margin-bottom: 18px; }
+    .p2-lead { font-size: 12px; }
+    .p2-actions { gap: 6px; }
+    .p2-actions button { padding: 7px 10px !important; font-size: 9px !important; letter-spacing: 0.12em !important; }
+    .p2-bio-text::first-letter { font-size: 2.6em; }
+    .p2-stats-row { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .p2-arc-line { display: none; }
+    .p2-rec-list .ep { font-size: 14px; }
+    .p2-rec-list .perf { font-size: 17px; }
+    .p2-quote-mark { display: block; }
+    .p2-quote-text { display: block; }
+    .p2-tour-title { font-size: 15px; }
+    .p2-tour-text { font-size: 13px; }
+}
+
+/* === CITATION EDITO === */
+.p2-quote {
+    max-width: 900px;
+    margin: 40px auto 50px;
+    padding: 0 24px;
+    text-align: center;
+    position: relative;
+}
+.p2-quote-mark {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-size: clamp(50px, 6vw, 80px);
+    font-weight: 800;
+    color: #30363d;
+    line-height: 1;
+    display: inline-block;
+    vertical-align: top;
+}
+.p2-quote-close { vertical-align: bottom; }
+.p2-quote-text {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(24px, 3.5vw, 42px);
+    line-height: 1.25;
+    color: #f0f6fc;
+    margin: 0;
+    display: inline-block;
+    max-width: 720px;
+    padding: 0 16px;
+    letter-spacing: -0.01em;
+}
+
+/* === ANNEE CHARNIERE === */
+.p2-pivot {
+    max-width: 900px;
+    margin: 0 auto 60px;
+    padding: 32px 24px 0;
+    border-top: 1px solid #30363d;
+    text-align: center;
+}
+.p2-pivot-rubrique {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+}
+.p2-pivot-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 28px;
+    flex-wrap: wrap;
+}
+.p2-pivot-year {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-weight: 800;
+    font-size: clamp(48px, 6vw, 84px);
+    line-height: 1;
+    color: #f0f6fc;
+    letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #ffffff 30%, #c9d1d9 70%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.p2-pivot-stats {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: clamp(15px, 1.6vw, 18px);
+    color: #a29bfe;
+    letter-spacing: 0.02em;
+}
+
+/* === HALL OF FAME === */
+.p2-hof {
+    max-width: 900px;
+    margin: 0 auto 70px;
+    padding: 32px 24px 0;
+    border-top: 1px solid #30363d;
+}
+.p2-hof-rubrique {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 28px;
+}
+.p2-hof-list { list-style: none; padding: 0; margin: 0; }
+.p2-hof-item {
+    display: flex;
+    align-items: baseline;
+    gap: 22px;
+    padding: 16px 0;
+    border-bottom: 1px solid #21262d;
+}
+.p2-hof-item:last-child { border-bottom: none; }
+.p2-hof-num {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: #6e7681;
+    letter-spacing: 0.15em;
+    flex: 0 0 32px;
+}
+.p2-hof-body { flex: 1; min-width: 0; }
+.p2-hof-line1 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+.p2-hof-label {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.p2-hof-ep {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: #f0f6fc;
+}
+.p2-hof-line2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 14px;
+    color: #8b949e;
+    line-height: 1.4;
+}
+.p2-hof-line2 em { color: #c9d1d9; font-style: italic; }
+@media (max-width: 600px) {
+    .p2-hof-item { gap: 14px; }
+    .p2-hof-num { flex: 0 0 24px; font-size: 12px; }
+    .p2-hof-label { font-size: 14px; }
+    .p2-hof-ep { font-size: 14px; }
+    .p2-hof-line2 { font-size: 13px; }
+}
+
+/* === LE SAVIEZ-VOUS === */
+.p2-fact {
+    max-width: 720px;
+    margin: 0 auto 60px;
+    padding: 24px 32px;
+    text-align: center;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    border: 1px solid #30363d;
+    border-left: 3px solid #a29bfe;
+    background: rgba(162,155,254,0.04);
+}
+.p2-fact-mark {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-style: italic;
+    font-weight: 800;
+    font-size: 50px;
+    color: #a29bfe;
+    line-height: 0.9;
+    flex: 0 0 auto;
+    opacity: 0.6;
+}
+.p2-fact-text {
+    font-family: 'Cormorant Garamond', 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: clamp(15px, 1.7vw, 18px);
+    line-height: 1.55;
+    color: #c9d1d9;
+    margin: 0;
+    text-align: left;
+    flex: 1;
+}
+.p2-fact-text strong {
+    font-family: 'Bodoni Moda', serif;
+    font-style: normal;
+    font-weight: 700;
+    color: #f0f6fc;
+    letter-spacing: 0.01em;
+}
+.p2-fact-prefix {
+    display: block;
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    font-weight: 400;
+}
+@media (max-width: 600px) {
+    .p2-fact { gap: 14px; padding: 20px 18px; }
+    .p2-fact-mark { font-size: 38px; }
+}
+
+/* === ARC D'UNE CARRIERE (Premier / Dernier) === */
+.p2-arc {
+    max-width: 900px;
+    margin: 0 auto 70px;
+    padding: 32px 24px 0;
+    border-top: 1px solid #30363d;
+}
+.p2-arc-rubrique {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 28px;
+}
+.p2-arc-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.p2-arc-col {
+    flex: 1;
+    text-align: center;
+}
+.p2-arc-col:first-child { text-align: right; }
+.p2-arc-col:last-child  { text-align: left; }
+.p2-arc-label {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.p2-arc-date {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-weight: 700;
+    font-size: clamp(22px, 2.6vw, 30px);
+    color: #f0f6fc;
+    line-height: 1.1;
+    letter-spacing: -0.005em;
+}
+.p2-arc-meta {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: #8b949e;
+    margin-top: 6px;
+}
+.p2-arc-meta em { color: #c9d1d9; }
+.p2-arc-line {
+    flex: 0 0 80px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #30363d, transparent);
+    position: relative;
+}
+.p2-arc-line::before {
+    content: '\2014';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #4a5161;
+    background: #0d1117;
+    padding: 0 6px;
+    font-size: 14px;
+}
+@media (max-width: 600px) {
+    .p2-arc-row { flex-direction: column; gap: 22px; }
+    .p2-arc-col, .p2-arc-col:first-child, .p2-arc-col:last-child { text-align: center; }
+    .p2-arc-line { flex: 0 0 1px; width: 80px; height: 1px; }
+}
+
+/* === A X CENTIEMES DU NIVEAU SUPERIEUR === */
+.p2-niv-target {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: rgba(162, 155, 254, 0.06);
+    border-left: 2px solid #a29bfe;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #c9d1d9;
+    letter-spacing: 0.005em;
+}
+.p2-niv-target strong {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-style: normal;
+    color: #a29bfe;
+    letter-spacing: 0.03em;
+}
+.p2-niv-target-arrow {
+    color: #a29bfe;
+    margin-right: 4px;
+    font-style: normal;
+}
+.p2-niv-target-ep {
+    display: block;
+    font-size: 12px;
+    color: #6e7681;
+    margin-top: 2px;
+    font-style: italic;
+}
+
+/* === RESEAUX SOCIAUX DANS LE HERO (en haut du profil) === */
+.p2-hero-socials {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 0 0 22px;
+}
+.p2-hero-soc-icon {
+    --soc-col: #6e7681;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--soc-col);
+    color: #fff;
+    text-decoration: none;
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: 15px;
+    transition: all 0.25s;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--soc-col) 30%, transparent);
+}
+.p2-hero-soc-icon:hover {
+    transform: translateY(-3px) scale(1.08);
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--soc-col) 50%, transparent);
+}
+.p2-hero-soc-add {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1.5px dashed #6e7681;
+    background: transparent;
+    color: #c9d1d9;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 600;
+    transition: all 0.25s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.p2-hero-soc-add:hover {
+    border-color: #6c5ce7;
+    color: #a29bfe;
+    background: rgba(108, 92, 231, 0.08);
+    transform: scale(1.08);
+}
+body.p2-light .p2-hero-soc-add { border-color: #a89c80; color: #5a5040; }
+body.p2-light .p2-hero-soc-add:hover { border-color: #6b4f2c; color: #6b4f2c; background: rgba(107, 79, 44, 0.08); }
+@media (max-width: 600px) {
+    .p2-hero-soc-icon, .p2-hero-soc-add { width: 36px; height: 36px; font-size: 13px; }
+}
+
+/* === BOUTON FLOTTANT AJOUTER RESEAU === */
+.p2-soc-fab {
+    position: fixed;
+    bottom: 80px;
+    right: 22px;
+    z-index: 9989;
+    background: linear-gradient(135deg, #6c5ce7 0%, #5541d0 100%);
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 8px 22px rgba(108, 92, 231, 0.45);
+    transition: all 0.3s;
+}
+.p2-soc-fab:hover {
+    transform: translateY(-3px) scale(1.04);
+    box-shadow: 0 12px 30px rgba(108, 92, 231, 0.6);
+    letter-spacing: 0.24em;
+}
+.p2-soc-fab-icon { font-size: 18px; line-height: 1; }
+body.p2-light .p2-soc-fab {
+    background: linear-gradient(135deg, #6b4f2c 0%, #5a4222 100%);
+    box-shadow: 0 8px 22px rgba(107, 79, 44, 0.4);
+}
+body.p2-light .p2-soc-fab:hover { box-shadow: 0 12px 30px rgba(107, 79, 44, 0.55); }
+@media (max-width: 600px) {
+    .p2-soc-fab {
+        bottom: 78px;
+        right: 14px;
+        padding: 10px 16px;
+        font-size: 11px;
+    }
+    .p2-soc-fab-icon { font-size: 16px; }
+}
+
+/* === RESEAUX SOCIAUX === */
+.p2-soc {
+    max-width: 900px;
+    margin: 0 auto 70px;
+    padding: 32px 24px 0;
+    border-top: 1px solid #30363d;
+}
+.p2-soc-rubrique {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 24px;
+}
+.p2-soc-list {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.p2-soc-link {
+    --soc-col: #6e7681;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    text-decoration: none;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    transition: all 0.25s;
+}
+.p2-soc-link:hover {
+    border-color: var(--soc-col);
+    color: var(--soc-col);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--soc-col) 25%, transparent);
+}
+.p2-soc-icon {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--soc-col);
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 13px;
+    font-family: 'Bodoni Moda', serif;
+    transition: transform 0.25s;
+}
+.p2-soc-link:hover .p2-soc-icon { transform: scale(1.08); }
+.p2-soc-edit {
+    background: transparent;
+    border: 1px dashed #6e7681;
+    color: #8b949e;
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    padding: 10px 18px;
+    cursor: pointer;
+    transition: all 0.25s;
+}
+.p2-soc-edit:hover { border-color: #c9d1d9; color: #f0f6fc; border-style: solid; }
+body.p2-light .p2-soc { border-top-color: #c9bfa6; }
+body.p2-light .p2-soc-rubrique { color: #5a5040; }
+body.p2-light .p2-soc-link { background: rgba(255,255,255,0.4); border-color: #c9bfa6; color: #1a1814; }
+body.p2-light .p2-soc-edit { color: #5a5040; border-color: #a89c80; }
+body.p2-light .p2-soc-edit:hover { color: #0a0805; border-color: #1a1814; }
+
+/* Modale d'edition socials */
+.p2-soc-modal {
+    position: fixed; inset: 0;
+    background: rgba(10,8,5,0.85); backdrop-filter: blur(4px);
+    z-index: 9999;
+    align-items: center; justify-content: center;
+    padding: 20px;
+}
+.p2-soc-modal-box {
+    background: #161b22;
+    border: 1px solid #30363d;
+    padding: 32px 36px;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+body.p2-light .p2-soc-modal-box { background: #faf6ec; border-color: #1a1814; }
+.p2-soc-modal-tag {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 12px;
+}
+body.p2-light .p2-soc-modal-tag { color: #5a5040; }
+.p2-soc-modal-title {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-weight: 800;
+    font-size: 24px;
+    color: #f0f6fc;
+    text-align: center;
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+}
+body.p2-light .p2-soc-modal-title { color: #0a0805; }
+.p2-soc-modal-intro {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: #8b949e;
+    text-align: center;
+    margin: 0 0 22px;
+}
+body.p2-light .p2-soc-modal-intro { color: #5a5040; }
+.p2-soc-field { margin-bottom: 14px; }
+.p2-soc-field label {
+    display: block;
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #8b949e;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+body.p2-light .p2-soc-field label { color: #5a5040; }
+.p2-soc-field input {
+    width: 100%;
+    padding: 9px 12px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 13px;
+    transition: border-color 0.2s;
+}
+.p2-soc-field input:focus { outline: none; border-color: #a29bfe; }
+body.p2-light .p2-soc-field input { background: #fff; border-color: #c9bfa6; color: #0a0805; }
+body.p2-light .p2-soc-field input:focus { border-color: #6b4f2c; }
+.p2-soc-modal-nav {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 22px;
+}
+.p2-soc-btn {
+    padding: 9px 20px;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s;
+}
+.p2-soc-cancel { background: transparent; border: 1px solid #30363d; color: #8b949e; }
+.p2-soc-cancel:hover { color: #f0f6fc; border-color: #c9d1d9; }
+.p2-soc-save { background: #f0f6fc; color: #0d1117; border: 1px solid #f0f6fc; }
+.p2-soc-save:hover { letter-spacing: 0.28em; }
+body.p2-light .p2-soc-cancel { color: #5a5040; border-color: #a89c80; }
+body.p2-light .p2-soc-cancel:hover { color: #0a0805; border-color: #1a1814; }
+body.p2-light .p2-soc-save { background: #0a0805; color: #f4ede0; border-color: #0a0805; }
+.p2-soc-msg {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: #8b949e;
+    text-align: center;
+    margin: 14px 0 0;
+    min-height: 18px;
+}
+.p2-soc-msg-ok  { color: #34d399 !important; }
+.p2-soc-msg-err { color: #f85149 !important; }
+
+/* === ATHLETES SIMILAIRES (constellation) === */
+.p2-sim {
+    max-width: 1100px;
+    margin: 0 auto 70px;
+    padding: 32px 24px 0;
+    border-top: 1px solid #30363d;
+}
+.p2-sim-rubrique {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 28px;
+}
+.p2-sim-section {
+    margin-bottom: 36px;
+    padding: 22px 24px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    transition: border-color 0.3s;
+}
+.p2-sim-section:last-child {
+    margin-bottom: 0;
+}
+/* Variant : meme niveau (violet/neutre) */
+.p2-sim-section--same {
+    background: linear-gradient(135deg, rgba(162,155,254,0.06), rgba(108,92,231,0.02));
+    border-color: rgba(162,155,254,0.18);
+}
+/* Variant : niveau superieur (vert/dore — vise plus haut) */
+.p2-sim-section--sup {
+    background: linear-gradient(135deg, rgba(251,191,36,0.08), rgba(245,158,11,0.03));
+    border-color: rgba(251,191,36,0.25);
+}
+.p2-sim-section--sup .p2-sim-section-title { color: #fbbf24; }
+.p2-sim-section--sup .p2-sim-section-head { border-bottom-color: rgba(251,191,36,0.18); }
+.p2-sim-section--sup .p2-sim-section-title::before {
+    content: '↑';
+    margin-right: 6px;
+    font-weight: 700;
+}
+/* Variant : niveau inferieur (cyan — vise plus bas) */
+.p2-sim-section--inf {
+    background: linear-gradient(135deg, rgba(34,211,238,0.06), rgba(8,145,178,0.02));
+    border-color: rgba(34,211,238,0.18);
+}
+.p2-sim-section--inf .p2-sim-section-title { color: #22d3ee; }
+.p2-sim-section--inf .p2-sim-section-head { border-bottom-color: rgba(34,211,238,0.18); }
+.p2-sim-section--inf .p2-sim-section-title::before {
+    content: '↓';
+    margin-right: 6px;
+    font-weight: 700;
+}
+/* Mode clair */
+body.p2-light .p2-sim-section--same {
+    background: linear-gradient(135deg, rgba(107,79,44,0.07), rgba(107,79,44,0.02));
+    border-color: rgba(107,79,44,0.2);
+}
+body.p2-light .p2-sim-section--sup {
+    background: linear-gradient(135deg, rgba(180,83,9,0.08), rgba(180,83,9,0.02));
+    border-color: rgba(180,83,9,0.25);
+}
+body.p2-light .p2-sim-section--sup .p2-sim-section-title { color: #b45309; }
+body.p2-light .p2-sim-section--inf {
+    background: linear-gradient(135deg, rgba(14,116,144,0.08), rgba(14,116,144,0.02));
+    border-color: rgba(14,116,144,0.25);
+}
+body.p2-light .p2-sim-section--inf .p2-sim-section-title { color: #155e75; }
+
+.p2-sim-section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(162,155,254,0.15);
+}
+.p2-sim-section-title {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #f0f6fc;
+    letter-spacing: -0.01em;
+}
+.p2-sim-section-sub {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: #8b949e;
+    letter-spacing: 0.3px;
+}
+body.p2-light .p2-sim-section-head {
+    border-bottom-color: rgba(107,79,44,0.2);
+}
+body.p2-light .p2-sim-section-title { color: #0a0805; }
+body.p2-light .p2-sim-section-sub { color: #5a5040; }
+
+.p2-sim-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+}
+.p2-sim-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    padding: 16px 0;
+    border-top: 1px solid #21262d;
+    transition: border-color 0.25s, transform 0.25s;
+    position: relative;
+}
+.p2-sim-card:hover {
+    border-top-color: #a29bfe;
+    transform: translateY(-2px);
+}
+.p2-sim-num {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+}
+.p2-sim-name {
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #f0f6fc;
+    line-height: 1.2;
+    margin-bottom: 8px;
+    letter-spacing: -0.005em;
+}
+.p2-sim-card:hover .p2-sim-name { color: #ffffff; }
+.p2-sim-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+.p2-sim-niv {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+}
+.p2-sim-cat {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: #8b949e;
+}
+.p2-sim-ep {
+    font-family: 'Bodoni Moda', serif;
+    font-size: 13px;
+    color: #c9d1d9;
+    line-height: 1.4;
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+}
+.p2-sim-ep em {
+    font-style: italic;
+    color: #6e7681;
+    font-weight: 300;
+    margin-right: 4px;
+    letter-spacing: 0.05em;
+}
+.p2-sim-club {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: #6e7681;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.p2-sim-score {
+    position: absolute;
+    top: 18px;
+    right: 0;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 11px;
+    color: #a29bfe;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+}
+@media (max-width: 800px) {
+    .p2-sim-row { grid-template-columns: repeat(2, 1fr); gap: 18px; }
+}
+@media (max-width: 480px) {
+    .p2-sim-row { grid-template-columns: 1fr; }
+}
+
+/* === GRAPHIQUE PROGRESSION (minimaliste) === */
+.p2-chart {
+    max-width: 900px;
+    margin: 0 auto 70px;
+    padding: 32px 24px 0;
+    border-top: 1px solid #30363d;
+}
+.p2-chart-rubrique {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: #6e7681;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 24px;
+}
+.p2-chart-rubrique span {
+    color: #c9d1d9;
+    font-style: normal;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    margin-left: 10px;
+    padding-left: 12px;
+    border-left: 1px solid #30363d;
+}
+.p2-chart-eps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin: 0 0 22px;
+    padding-bottom: 2px;
+}
+.p2-chart-ep {
+    background: transparent;
+    border: 1px solid #30363d;
+    color: #8b949e;
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    padding: 5px 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 0;
+    white-space: nowrap;
+}
+.p2-chart-ep:hover { color: #c9d1d9; border-color: #484f58; }
+.p2-chart-ep.active {
+    background: #f0f6fc;
+    color: #0d1117;
+    border-color: #f0f6fc;
+    font-style: normal;
+    font-weight: 600;
+}
+.p2-chart-canvas-wrap {
+    position: relative;
+    height: 200px;
+    width: 100%;
+}
+.p2-chart-foot {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 14px;
+    padding: 0 8px;
+}
+.p2-chart-yr {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 12px;
+    color: #6e7681;
+    letter-spacing: 0.05em;
+}
+.p2-chart-line {
+    flex: 1;
+    height: 1px;
+    background: #21262d;
+}
+.p2-chart-summary {
+    font-family: 'Cormorant Garamond', 'Bodoni Moda', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(15px, 1.6vw, 18px);
+    line-height: 1.7;
+    color: #c9d1d9;
+    text-align: center;
+    margin: 22px auto 0;
+    max-width: 720px;
+    letter-spacing: 0.005em;
+}
+.p2-chart-summary strong {
+    font-family: 'Bodoni Moda', serif;
+    font-style: normal;
+    font-weight: 700;
+    color: #f0f6fc;
+    letter-spacing: 0.02em;
+}
+.p2-chart-summary em {
+    color: #a29bfe;
+    font-style: italic;
+}
+
+/* === VOIR PLUS === */
+.p2-more {
+    max-width: 1100px;
+    margin: 0 auto 80px;
+    padding: 0 16px;
+    text-align: center;
+}
+.p2-more-btn {
+    background: transparent;
+    border: 1px solid #c9d1d9;
+    color: #f0f6fc;
+    padding: 12px 32px;
+    font-family: 'Bodoni Moda', 'Didot', serif;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.35s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+.p2-more-btn:hover {
+    background: #f0f6fc;
+    color: #0d1117;
+    letter-spacing: 0.38em;
+}
+.p2-more-btn.open {
+    background: #f0f6fc;
+    color: #0d1117;
+}
+.p2-more-arrow {
+    font-size: 14px;
+    transition: transform 0.3s;
+}
+.p2-more-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s ease, opacity 0.4s ease, margin 0.4s ease;
+    opacity: 0;
+    margin-top: 0;
+    text-align: left;
+}
+.p2-more-panel.open {
+    max-height: 6000px;
+    opacity: 1;
+    margin-top: 36px;
+}
+.p2-more-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    border-bottom: 1px solid #30363d;
+    margin-bottom: 28px;
+}
+.p2-more-tab {
+    background: transparent;
+    border: none;
+    color: #6e7681;
+    padding: 14px 24px;
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 13px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.25s;
+}
+.p2-more-tab:hover { color: #c9d1d9; }
+.p2-more-tab.active {
+    color: #f0f6fc;
+    border-bottom-color: #f0f6fc;
+    font-style: normal;
+}
+.p2-more-view { display: none; }
+.p2-more-view.active { display: block; }
+.p2-more-list { list-style: none; padding: 0; margin: 0; }
+.p2-more-list li {
+    display: grid;
+    grid-template-columns: 100px 1fr 80px 1fr;
+    gap: 24px;
+    align-items: baseline;
+    padding: 14px 0;
+    border-bottom: 1px solid #21262d;
+    font-size: 14px;
+}
+.p2-more-list li:first-child { padding-top: 22px; }
+.p2-more-list li:last-child { border-bottom: none; }
+.p2-more-key {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #f0f6fc;
+}
+.p2-more-val {
+    font-family: 'Bodoni Moda', serif;
+    font-size: 16px;
+    color: #c9d1d9;
+}
+.p2-more-val .muted {
+    font-style: italic;
+    font-size: 13px;
+    color: #8b949e;
+    font-weight: 400;
+    margin-left: 4px;
+}
+.p2-more-niv {
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+    text-align: center;
+}
+.p2-more-extra {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: #8b949e;
+}
+@media (max-width: 700px) {
+    .p2-more-list li { grid-template-columns: 80px 1fr 60px; gap: 12px; font-size: 13px; }
+    .p2-more-extra { display: none; }
+    .p2-more-tab { padding: 12px 14px; font-size: 11px; letter-spacing: 0.18em; }
+}
+</style>
+
+<div class="p2-cover">
+    <div class="p2-toggles">
+        <button type="button" class="p2-view-toggle p2-light-toggle" onclick="p2ToggleLight(this)" title="Basculer mode lumineux">
+            <span class="p2-light-icon">&#9728;</span> <span class="p2-light-label">Lumineux</span>
+        </button>
+    </div>
+    <script>
+    (function(){
+        try {
+            var mode = localStorage.getItem('bk_theme_mode');
+            if (mode === null) {
+                var legacy = localStorage.getItem('bk_p2_light');
+                mode = (legacy === null) ? 'auto' : (legacy === '1' ? 'light' : 'dark');
+            }
+            var isLight;
+            if (mode === 'auto') {
+                var h = new Date().getHours();
+                isLight = !(h >= 21 || h < 6);
+            } else {
+                isLight = (mode === 'light');
+            }
+            if (isLight) {
+                document.body.classList.add('p2-light');
+                document.querySelectorAll('.p2-light-toggle').forEach(function(b) { b.classList.add('is-on'); });
+            }
+        } catch(e){}
+    })();
+    function p2ToggleLight(btn) {
+        var on = document.body.classList.toggle('p2-light');
+        btn.classList.toggle('is-on', on);
+        try {
+            localStorage.setItem('bk_p2_light', on ? '1' : '0');
+            // Le clic explicite sort du mode auto
+            localStorage.setItem('bk_theme_mode', on ? 'light' : 'dark');
+        } catch(e){}
+    }
+    // Scroll fluide depuis les liens du chapeau
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.p2-lead-link').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                var sel = this.dataset.target;
+                var target = sel ? document.querySelector(sel) : null;
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    target.classList.add('p2-flash');
+                    setTimeout(function() { target.classList.remove('p2-flash'); }, 1400);
+                }
+            });
+        });
+    });
+    </script>
+    <style>
+    .p2-flash { animation: p2FlashAnim 1.2s ease-out; }
+    @keyframes p2FlashAnim {
+        0% { box-shadow: 0 0 0 0 rgba(162,155,254,0); }
+        20% { box-shadow: inset 0 0 0 1px rgba(162,155,254,0.45), 0 0 50px rgba(162,155,254,0.18); }
+        100% { box-shadow: 0 0 0 0 rgba(162,155,254,0); }
+    }
+    body.p2-light .p2-flash { animation-name: p2FlashAnimLight; }
+    @keyframes p2FlashAnimLight {
+        0% { box-shadow: 0 0 0 0 rgba(107,79,44,0); }
+        20% { box-shadow: inset 0 0 0 1px rgba(107,79,44,0.4), 0 0 50px rgba(107,79,44,0.15); }
+        100% { box-shadow: 0 0 0 0 rgba(107,79,44,0); }
+    }
+    </style>
+
+    <div class="p2-tag">Bokonzi <span style="color:#4a5161;">&middot;</span> Athletisme</div>
+    <h1 class="p2-name"><?= htmlspecialchars($i['nom_complet']) ?></h1>
+    <div class="p2-name-plain"><?= htmlspecialchars($i['nom_complet']) ?></div>
+    <?php
+        // Mapping nationalite -> nom + drapeau (sans toucher la BDD)
+        $_natMap = include __DIR__ . '/core/nationalites_map.php';
+        $_natCode = $i['nationalite'] ?? '';
+        $_natInfo = $_natMap[$_natCode] ?? null;
+        $_natNom  = $_natInfo['nom']  ?? $_natCode;
+        $_natFlagBig   = $_natInfo ? bk_flag_html($_natInfo['iso2'], 24) : '';
+        $_natFlagSmall = $_natInfo ? bk_flag_html($_natInfo['iso2'], 16) : '';
+    ?>
+    <div class="p2-sub">
+        <?php
+            $_subParts = [];
+            if (!empty($i['categorie'])) $_subParts[] = htmlspecialchars($i['categorie']);
+            if (!empty($_natCode)) $_subParts[] = $_natFlagBig . htmlspecialchars($_natNom);
+            if (!empty($i['meilleur_niveau'])) $_subParts[] = htmlspecialchars($i['meilleur_niveau']);
+            echo $_subParts ? implode(' &nbsp;&middot;&nbsp; ', $_subParts) : '';
+        ?>
+    </div>
+
+    <p class="p2-lead">
+        L'integralite d'une carriere, lue en magazine.
+        <a class="p2-lead-link" data-target=".p2-bio" href="#bio">Biographie</a>,
+        <a class="p2-lead-link" data-target=".p2-grid" href="#palmares">palmares</a>,
+        <a class="p2-lead-link" data-target=".p2-chart" href="#progressions">progressions</a>,
+        <a class="p2-lead-link" data-target=".p2-more" href="#statistiques">statistiques</a>.
+    </p>
+
+    <div class="p2-badges">
+        <a href="?page=recherche&sexe=<?= urlencode($i['sexe']) ?>" style="text-decoration:none;"><span class="badge badge-<?= strtolower($i['sexe']) ?>"><?= $i['sexe'] === 'M' ? 'Homme' : 'Femme' ?></span></a>
+        <a href="?page=recherche&categorie=<?= urlencode($i['categorie']) ?>" style="text-decoration:none;"><span class="badge badge-cat"><?= htmlspecialchars($i['categorie']) ?></span></a>
+        <?php if (!empty($_natCode)): ?>
+            <a href="?page=recherche&nationalite=<?= urlencode($_natCode) ?>" style="text-decoration:none;" title="<?= htmlspecialchars($_natNom) ?>">
+                <span class="badge" style="background:#30363d;"><?= $_natFlagSmall ?><?= htmlspecialchars($_natCode) ?></span>
+            </a>
+        <?php endif; ?>
+        <?php if (!empty($i['meilleur_niveau'])):
+            $__mn = $i['meilleur_niveau'];
+            $__nc = $__mn[0] ?? '';
+            if ($__nc === 'N') { $__bg='#e11d4820'; $__bc='#e11d48'; $__tc='#fb7185'; }
+            elseif ($__nc === 'I') { $__bg='#c026d320'; $__bc='#c026d3'; $__tc='#e879f9'; }
+            elseif ($__nc === 'R') { $__bg='#0891b220'; $__bc='#0891b2'; $__tc='#22d3ee'; }
+            else { $__bg='#f9731620'; $__bc='#f97316'; $__tc='#fb923c'; }
+            echo '<span style="display:inline-block;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;background:'.$__bg.';border:1px solid '.$__bc.'40;color:'.$__tc.';">'.htmlspecialchars($__mn).'</span>';
+        endif; ?>
+    </div>
+
+    <div class="p2-actions">
+        <button class="btn-cmp-add" data-cmp-ath="<?= $id ?>" data-name="<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)">+</button>
+        <button class="btn-follow" id="btnFollow" onclick="toggleFollow(<?= $id ?>)">&#9825; Suivre</button>
+        <button class="btn-pdf" id="btnPdf" onclick="downloadPdf(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')">&#128196; PDF</button>
+        <button class="btn-detail-full" id="btnDetailFull" onclick="openDetailFullModal()" title="Voir toutes les performances en detail">&#128202; Tout en detail</button>
+        <button class="btn-detail-raw" id="btnDetailRaw" onclick="openBrutModal()" title="Vue brute : toutes les donnees, tous les champs">&#128221; Vue brute</button>
+        <button class="btn-report" id="btnReport" onclick="openReportModal(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" title="Signaler ce profil">&#9888; Signaler</button>
+    </div>
+
+    <?php if ($_hasSocials || $_isLogged): ?>
+    <!-- Reseaux sociaux dans le hero (icones en haut du profil) -->
+    <div class="p2-hero-socials">
+        <?php foreach ($_socPlatforms as $_k => $_p): if (!empty($_athSocials[$_k])): ?>
+            <a class="p2-hero-soc-icon" href="<?= htmlspecialchars($_athSocials[$_k]) ?>" target="_blank" rel="noopener noreferrer" title="<?= htmlspecialchars($_p[0]) ?>" style="--soc-col: <?= $_p[1] ?>;">
+                <?= $_p[2] ?>
+            </a>
+        <?php endif; endforeach; ?>
+        <?php if ($_isLogged): ?>
+            <button type="button" class="p2-hero-soc-add" onclick="p2SocOpen()" title="<?= $_hasSocials ? 'Modifier les reseaux sociaux' : 'Ajouter un reseau social' ?>">
+                <?= $_hasSocials ? '&#9998;' : '+' ?>
+            </button>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($_isLogged): ?>
+    <!-- Bouton flottant (toujours visible meme au scroll) -->
+    <button class="p2-soc-fab" type="button" onclick="p2SocOpen()" title="<?= $_hasSocials ? 'Modifier les reseaux sociaux' : 'Ajouter un reseau social' ?>">
+        <span class="p2-soc-fab-icon">&#128279;</span>
+        <span class="p2-soc-fab-label"><?= $_hasSocials ? 'Reseaux' : '+ Reseau' ?></span>
+    </button>
+    <?php endif; ?>
+
+    <div class="p2-meta">
+        <?php if ($i['lieu_naissance']): ?>
+            <b>Lieu de naissance :</b> <a href="?page=villes&open=<?= urlencode($i['lieu_naissance']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($i['lieu_naissance']) ?></a>
+        <?php endif; ?>
+        <?php if (!empty($i['annee_naissance'])): ?>
+            <?= $i['lieu_naissance'] ? ' &nbsp;|&nbsp; ' : '' ?><b>Naissance :</b> <?= (int)$i['annee_naissance'] ?><?php if (!empty($i['age'])): ?> (<?= (int)$i['age'] ?> ans)<?php endif; ?>
+        <?php endif; ?>
+        <?php if ($i['taille_cm']): ?><?= ($i['lieu_naissance'] || !empty($i['annee_naissance'])) ? ' &nbsp;|&nbsp; ' : '' ?><b>Taille :</b> <?= $i['taille_cm'] ?> cm<?php endif; ?>
+        <?php if ($i['poids_kg']): ?> &nbsp;|&nbsp; <b>Poids :</b> <?= $i['poids_kg'] ?> kg<?php endif; ?>
+        <br>
+        <a href="pages/profil.php?id=<?= $i['id_athlete'] ?>" target="_blank" style="color:#a29bfe;text-decoration:none;font-size:13px;display:inline-block;margin-top:8px;">&#127760; Profil public</a>
+    </div>
+</div>
+
+<!-- === CHAPEAU — biographie auto-generee complete (avec selecteur d'annees) === -->
+<div class="p2-bio">
+    <div class="p2-bio-rubrique">Portrait</div>
+    <div id="bioYearSelector" class="p2-bio-years"></div>
+    <p id="bioText" class="p2-bio-text">Chargement...</p>
+    <button type="button" class="p2-bio-copy" onclick="navigator.clipboard.writeText(document.getElementById('bioText').textContent).then(function(){this.textContent='Copie';}.bind(this))">Copier le texte</button>
+</div>
+
+<script>
+var ATHLETE_DATA = <?= json_encode($data, JSON_UNESCAPED_UNICODE) ?>;
+var _bioSelectedYears = [];
+var _bioAvailableYears = [];
+
+function _bioCollectYears(d) {
+    var ys = {};
+    (d.resultats||[]).forEach(function(r){if(r.annee)ys[r.annee]=1;});
+    (d.progressions||[]).forEach(function(p){if(p.annee)ys[p.annee]=1;});
+    (d.podiums||[]).forEach(function(p){if(p.annee)ys[p.annee]=1;});
+    (d.medailles||[]).forEach(function(m){if(m.annee)ys[m.annee]=1;});
+    (d.niveaux||[]).forEach(function(n){if(n.annee)ys[n.annee]=1;});
+    (d.selections||[]).forEach(function(s){if(s.date){var y=parseInt(s.date.substring(0,4));if(y>0)ys[y]=1;}});
+    (d.records||[]).forEach(function(r){if(r.date){var y=parseInt(r.date.substring(0,4));if(y>0)ys[y]=1;}});
+    return Object.keys(ys).map(Number).sort(function(a,b){return a-b;});
+}
+
+function _bioRenderYearSelector() {
+    var c = document.getElementById('bioYearSelector'); if(!c) return;
+    var isTotal = _bioSelectedYears.length === 0;
+    var h = '<button type="button" class="p2-bio-yr' + (isTotal ? ' active' : '') + '" onclick="_bioSelectTotal()">Total</button>';
+    _bioAvailableYears.forEach(function(y){
+        var sel = _bioSelectedYears.indexOf(y)!==-1;
+        h += '<button type="button" class="p2-bio-yr' + (sel ? ' active' : '') + '" onclick="_bioToggleYear('+y+')">'+y+'</button>';
+    });
+    if(_bioSelectedYears.length>0) h += '<span class="p2-bio-yr-count">'+_bioSelectedYears.length+'/6</span>';
+    c.innerHTML = h;
+}
+
+function _bioSelectTotal(){_bioSelectedYears=[];_bioRenderYearSelector();_bioRebuild();}
+function _bioToggleYear(y){
+    var idx=_bioSelectedYears.indexOf(y);
+    if(idx!==-1){_bioSelectedYears.splice(idx,1);}
+    else{if(_bioSelectedYears.length>=6){alert('Maximum 6 annees');return;}_bioSelectedYears.push(y);_bioSelectedYears.sort(function(a,b){return a-b;});}
+    _bioRenderYearSelector();_bioRebuild();
+}
+function _bioRebuild(){var el=document.getElementById('bioText');if(el)el.textContent=buildAthleteBio(ATHLETE_DATA,_bioSelectedYears);}
+
+function buildAthleteBio(data, selectedYears) {
+    var filterByYear = selectedYears.length > 0;
+    var yearSet = {}; selectedYears.forEach(function(y){yearSet[y]=true;});
+    function inYears(a){if(!filterByYear)return true;return yearSet[a]===true;}
+    function dateInYears(d){if(!filterByYear)return true;if(!d)return false;var y=parseInt(d.substring(0,4));return yearSet[y]===true;}
+
+    var i = data.identite;
+    var eF = i.sexe==='F'?'e':'';
+    var ilElle = i.sexe==='M'?'Il':'Elle';
+    var ilElleMin = i.sexe==='M'?'il':'elle';
+    var sonSa = i.sexe==='M'?'son':'sa';
+    var bio = [];
+
+    var natMap = {'FRA':'français'+eF,'MAR':'marocain'+eF,'SEN':'sénégalais'+eF,'CMR':'camerounais'+eF,'ALG':'algérien'+(i.sexe==='F'?'ne':''),'TUN':'tunisien'+(i.sexe==='F'?'ne':''),'BEL':'belge','SUI':'suisse','CIV':'ivoirien'+(i.sexe==='F'?'ne':''),'GBR':'britannique','USA':'américain'+eF,'ESP':'espagnol'+eF,'ITA':'italien'+(i.sexe==='F'?'ne':''),'POR':'portugais'+eF,'GER':'allemand'+eF,'BRA':'brésilien'+(i.sexe==='F'?'ne':''),'JAM':'jamaïcain'+eF,'HAI':'haïtien'+(i.sexe==='F'?'ne':''),'COD':'congolais'+eF,'COG':'congolais'+eF,'MLI':'malien'+(i.sexe==='F'?'ne':''),'GIN':'guinéen'+(i.sexe==='F'?'ne':''),'GAB':'gabonais'+eF,'BUR':'burkinabè','NIG':'nigérien'+(i.sexe==='F'?'ne':''),'BEN':'béninois'+eF,'TOG':'togolais'+eF,'RWA':'rwandais'+eF,'MAD':'malgache','LUX':'luxembourgeois'+eF,'NED':'néerlandais'+eF,'ROU':'roumain'+eF,'POL':'polonais'+eF,'GRE':'grec'+(i.sexe==='F'?'que':''),'TUR':'turc'+(i.sexe==='F'?'que':''),'KEN':'kényan'+eF,'ETH':'éthiopien'+(i.sexe==='F'?'ne':''),'RSA':'sud-africain'+eF,'JPN':'japonais'+eF,'CHN':'chinois'+eF,'AUS':'australien'+(i.sexe==='F'?'ne':''),'CAN':'canadien'+(i.sexe==='F'?'ne':''),'MEX':'mexicain'+eF,'COL':'colombien'+(i.sexe==='F'?'ne':''),'ARG':'argentin'+eF,'CHI':'chilien'+(i.sexe==='F'?'ne':''),'CUB':'cubain'+eF,'DOM':'dominicain'+eF,'TRI':'trinidadien'+(i.sexe==='F'?'ne':''),'BAH':'bahaméen'+(i.sexe==='F'?'ne':'')};
+    var catMap = {'SE':'Senior','ES':'Espoir','JU':'Junior','CA':'Cadet'+(i.sexe==='F'?'te':''),'MI':'Minime','BE':'Benjamin'+eF,'PO':'Poussin'+eF,'EA':'Éveil athlétique','MA':'Master','V1':'Vétéran','V2':'Vétéran','V3':'Vétéran','V4':'Vétéran','V5':'Vétéran'};
+    var nivMap = {'IA':'International A (Elite mondiale)','IB':'International B','N1':'Niveau National 1 (Élite)','N2':'Niveau National 2','N3':'Niveau National 3','N4':'Niveau National 4','R1':'Niveau Régional 1','R2':'Niveau Régional 2','R3':'Niveau Régional 3','R4':'Niveau Régional 4','R5':'Niveau Régional 5','R6':'Niveau Régional 6','D1':'Niveau Départemental 1','D2':'Niveau Départemental 2','D3':'Niveau Départemental 3','D4':'Niveau Départemental 4','D5':'Niveau Départemental 5','D6':'Niveau Départemental 6','D7':'Niveau Départemental 7','IR':'Interrégional','IE':'International Élite','IR1':'Interrégional 1','IR2':'Interrégional 2','IR3':'Interrégional 3','IR4':'Interrégional 4'};
+
+    var fResultats = (data.resultats||[]).filter(function(r){return inYears(r.annee);});
+    var fProgressions = (data.progressions||[]).filter(function(p){return inYears(p.annee);});
+    var fPodiums = (data.podiums||[]).filter(function(p){return inYears(p.annee);});
+    var fMedailles = (data.medailles||[]).filter(function(m){return inYears(m.annee);});
+    var fNiveaux = (data.niveaux||[]).filter(function(n){return inYears(n.annee);});
+    var fSelections = (data.selections||[]).filter(function(s){return dateInYears(s.date);});
+    var fRecords = (data.records||[]).filter(function(r){return dateInYears(r.date);});
+    var fClubs = (data.clubs||[]).filter(function(c){
+        if(!filterByYear)return true;
+        for(var yy in yearSet){var y=parseInt(yy);var d=c.annee_debut||0;var f=c.annee_fin||9999;if(y>=d&&y<=f)return true;}
+        return false;
+    });
+
+    var derniereAnnee=0, premiereAnnee=9999;
+    fResultats.forEach(function(r){if(r.annee>derniereAnnee)derniereAnnee=r.annee;if(r.annee>0&&r.annee<premiereAnnee)premiereAnnee=r.annee;});
+    fProgressions.forEach(function(p){if(p.annee>derniereAnnee)derniereAnnee=p.annee;if(p.annee>0&&p.annee<premiereAnnee)premiereAnnee=p.annee;});
+    fPodiums.forEach(function(p){if(p.annee>derniereAnnee)derniereAnnee=p.annee;if(p.annee>0&&p.annee<premiereAnnee)premiereAnnee=p.annee;});
+    fMedailles.forEach(function(m){if(m.annee>derniereAnnee)derniereAnnee=m.annee;if(m.annee>0&&m.annee<premiereAnnee)premiereAnnee=m.annee;});
+    fClubs.forEach(function(c){if(c.annee_debut&&c.annee_debut<premiereAnnee)premiereAnnee=c.annee_debut;});
+    if(premiereAnnee===9999)premiereAnnee=0;
+    var currentYear=new Date().getFullYear();
+    var carriereTerminee=(derniereAnnee>0&&(currentYear-derniereAnnee)>2);
+
+    var intro = i.nom_complet;
+    if(carriereTerminee){intro+=' est un'+eF+' ancien'+(i.sexe==='F'?'ne':'')+' athlète';}
+    else{intro+=' est un'+eF+' athlète';}
+    if(i.nationalite&&natMap[i.nationalite]){intro+=' '+natMap[i.nationalite];}
+    else if(i.nationalite){intro+=' de nationalité '+i.nationalite;}
+    if(i.categorie&&catMap[i.categorie]){intro+=' évoluant en catégorie '+catMap[i.categorie];}
+    if(i.lieu_naissance){intro+=', originaire de '+i.lieu_naissance;}
+    if(i.taille_cm&&i.poids_kg){intro+=', mesurant '+(i.taille_cm/100).toFixed(2).replace('.',',')+' m pour '+i.poids_kg+' kg';}
+    else if(i.taille_cm){intro+=', mesurant '+(i.taille_cm/100).toFixed(2).replace('.',',')+' m';}
+    intro+='.';
+    bio.push(intro);
+
+    if(filterByYear){
+        if(selectedYears.length===1)bio.push('Ce résumé couvre la saison '+selectedYears[0]+'.');
+        else bio.push('Ce résumé couvre les saisons '+selectedYears.join(', ')+'.');
+    }
+
+    if(fClubs.length>0){
+        var nbClubs=fClubs.length, clubRecent=fClubs[0], clubAncien=fClubs[nbClubs-1];
+        var dureeCarriere=(premiereAnnee&&derniereAnnee)?(derniereAnnee-premiereAnnee):0;
+        if(filterByYear){
+            if(nbClubs===1)bio.push(ilElle+' évoluait au sein du club '+clubRecent.nom_club+'.');
+            else{var cn=fClubs.map(function(c){return c.nom_club;});bio.push(ilElle+' évoluait au sein de '+nbClubs+' clubs : '+(cn.length<=3?cn.join(', '):cn.slice(0,3).join(', ')+' et '+(nbClubs-3)+' autre'+(nbClubs-3>1?'s':''))+'.');}
+        }else{
+            var uneSeuleAnnee=(dureeCarriere===0&&premiereAnnee>0);
+            if(uneSeuleAnnee){
+                var pc=ilElle+' n\'a effectué qu\'une seule saison en '+premiereAnnee;
+                if(nbClubs===1)pc+=' au sein du club '+clubRecent.nom_club;
+                pc+='.'; bio.push(pc);
+            }else if(carriereTerminee){
+                var pc=ilElle+' a mené '+sonSa+' carrière';
+                if(premiereAnnee)pc+=' de '+premiereAnnee+' à '+derniereAnnee;
+                if(dureeCarriere>0)pc+=' ('+dureeCarriere+' ans d\'activité)';
+                if(nbClubs===1)pc+=' au sein du club '+clubRecent.nom_club;
+                else pc+=', passant par '+nbClubs+' clubs';
+                pc+='. '+ilElle+' a mis fin à '+sonSa+' carrière sportive en '+derniereAnnee+'.';
+                bio.push(pc);
+            }else{
+                var pc;
+                if(nbClubs===1){pc=ilElle+' évolue au '+clubRecent.nom_club;if(clubRecent.annee_debut)pc+=' depuis '+clubRecent.annee_debut;pc+='.';}
+                else{
+                    pc='Formé'+eF+' au '+clubAncien.nom_club;
+                    if(clubAncien.annee_debut)pc+=' dès '+clubAncien.annee_debut;
+                    pc+=', '+ilElleMin+' évolue désormais au '+clubRecent.nom_club;
+                    if(clubRecent.annee_debut)pc+=' depuis '+clubRecent.annee_debut;
+                    if(nbClubs>2)pc+=' après être passé'+eF+' par '+(nbClubs-2)+' autre'+(nbClubs-2>1?'s':'')+' club'+(nbClubs-2>1?'s':'');
+                    pc+='.';
+                }
+                if(premiereAnnee){var dur=currentYear-premiereAnnee;if(dur>1)pc+=' Sa carrière s\'étend sur '+dur+' saisons.';else if(dur<=1)pc+=' '+ilElle+' en est à '+sonSa+' première saison.';}
+                bio.push(pc);
+            }
+        }
+    }
+
+    var recordsToUse = filterByYear ? fRecords : (data.records||[]);
+    if(recordsToUse.length>0){
+        var recsByEp={};
+        recordsToUse.forEach(function(r){if(r.epreuve&&r.performance_brut)recsByEp[r.epreuve]=r;});
+        var epNames=Object.keys(recsByEp), nbEp=epNames.length;
+        if(nbEp>0){
+            var pr;
+            if(nbEp===1){
+                var rec=recsByEp[epNames[0]];
+                pr=ilElle+' est spécialisé'+eF+' sur le '+epNames[0]+' où '+ilElleMin+' détient un record personnel de '+rec.performance_brut;
+                if(rec.lieu)pr+=' réalisé à '+rec.lieu;
+                pr+='.';
+            }else if(nbEp<=3){
+                var rd=[];for(var ep in recsByEp){rd.push(recsByEp[ep].performance_brut+' au '+ep+(recsByEp[ep].lieu?' (à '+recsByEp[ep].lieu+')':''));}
+                pr=ilElle+' est spécialisé'+eF+' en '+epNames.join(' et ')+', avec des records personnels de '+rd.join(', ')+'.';
+            }else{
+                var top=epNames.slice(0,4);var rd=top.map(function(ep){return recsByEp[ep].performance_brut+' au '+ep;});
+                pr='Polyvalent'+eF+' avec '+nbEp+' disciplines à '+sonSa+' actif, '+ilElleMin+' affiche notamment '+rd.join(', ')+'.';
+            }
+            bio.push(pr);
+        }
+    }
+
+    if(fMedailles.length>0){
+        var medOr=0,medArgent=0,medBronze=0,competitions={},epreuvesMed={};
+        fMedailles.forEach(function(m){
+            if(m.type==='or')medOr++;else if(m.type==='argent')medArgent++;else if(m.type==='bronze')medBronze++;
+            if(m.competition)competitions[m.competition]=1;if(m.epreuve)epreuvesMed[m.epreuve]=1;
+        });
+        var totalMed=medOr+medArgent+medBronze;
+        if(totalMed>0){
+            var pMed=filterByYear?'Sur cette période, '+ilElleMin+' a remporté '+totalMed+' médaille'+(totalMed>1?'s':''):'Son palmarès compte '+totalMed+' médaille'+(totalMed>1?'s':'');
+            var detMed=[];if(medOr>0)detMed.push(medOr+' en or');if(medArgent>0)detMed.push(medArgent+' en argent');if(medBronze>0)detMed.push(medBronze+' en bronze');
+            if(detMed.length>1){var last=detMed.pop();pMed+=', dont '+detMed.join(', ')+' et '+last;}
+            else if(detMed.length===1)pMed+=', dont '+detMed[0];
+            var compNames=Object.keys(competitions);
+            if(compNames.length===1)pMed+=', obtenue'+(totalMed>1?'s':'')+' lors des '+compNames[0];
+            else if(compNames.length<=3&&compNames.length>1){var lc=compNames.pop();pMed+=', remportée'+(totalMed>1?'s':'')+' aux '+compNames.join(', ')+' et '+lc;}
+            else if(compNames.length>3)pMed+=', décernée'+(totalMed>1?'s':'')+' lors de '+compNames.length+' compétitions';
+            var epMedNames=Object.keys(epreuvesMed);
+            if(epMedNames.length>0&&epMedNames.length<=3)pMed+=' en '+epMedNames.join(', ');
+            pMed+='.'; bio.push(pMed);
+        }
+    }
+
+    if(fPodiums.length>0){
+        var nbPod=fPodiums.length,p1=0,p2=0,p3=0,podEp={},podNiv={};
+        fPodiums.forEach(function(pod){var rg=pod.rang||0;if(rg===1)p1++;else if(rg===2)p2++;else if(rg===3)p3++;if(pod.epreuve)podEp[pod.epreuve]=1;if(pod.niveau_competition)podNiv[pod.niveau_competition]=1;});
+        var pPod=filterByYear?ilElle+' est monté'+eF+' sur '+nbPod+' podium'+(nbPod>1?'s':'')+' durant cette période':ilElle+' est monté'+eF+' sur '+nbPod+' podium'+(nbPod>1?'s':'');
+        var detPod=[];if(p1>0)detPod.push(p1+' première'+(p1>1?'s':'')+' place'+(p1>1?'s':''));if(p2>0)detPod.push(p2+' deuxième'+(p2>1?'s':'')+' place'+(p2>1?'s':''));if(p3>0)detPod.push(p3+' troisième'+(p3>1?'s':'')+' place'+(p3>1?'s':''));
+        if(detPod.length>0){var ldp=detPod.pop();pPod+=' avec '+(detPod.length>0?detPod.join(', ')+' et '+ldp:ldp);}
+        var podEpList=Object.keys(podEp);
+        if(podEpList.length>0&&podEpList.length<=4)pPod+=', en '+podEpList.join(', ');
+        else if(podEpList.length>4)pPod+=', répartis sur '+podEpList.length+' épreuves';
+        pPod+='.'; bio.push(pPod);
+    }
+
+    if(fSelections.length>0){
+        var nbSel=fSelections.length,selComp={},selEp={};
+        fSelections.forEach(function(s){if(s.competition)selComp[s.competition]=1;if(s.epreuve)selEp[s.epreuve]=1;});
+        var pSel=ilElle+' a été sélectionné'+eF+' '+nbSel+' fois en équipe nationale';
+        var scl=Object.keys(selComp);if(scl.length>0&&scl.length<=3)pSel+=' pour '+scl.join(', ');else if(scl.length>3)pSel+=' pour '+scl.length+' compétitions';
+        var sel=Object.keys(selEp);if(sel.length>0&&sel.length<=3)pSel+=' en '+sel.join(', ');
+        pSel+='.'; bio.push(pSel);
+    }
+
+    if(fResultats.length>0){
+        var nbRes=fResultats.length,anneesRes={},villesRes={},epreuvesRes={},bestPlace=999;
+        fResultats.forEach(function(r){if(r.annee)anneesRes[r.annee]=1;if(r.lieu)villesRes[r.lieu]=1;if(r.epreuve)epreuvesRes[r.epreuve]=(epreuvesRes[r.epreuve]||0)+1;if(r.place&&r.place>0&&r.place<bestPlace)bestPlace=r.place;});
+        var nbVilles=Object.keys(villesRes).length, nbEpRes=Object.keys(epreuvesRes).length;
+        var annees=Object.keys(anneesRes).sort();
+        var pRes=filterByYear?'Sur cette période, '+nbRes+' participation'+(nbRes>1?'s':'')+' en compétition '+(nbRes>1?'sont':'est')+' recensée'+(nbRes>1?'s':''):'Au total, '+nbRes+' participation'+(nbRes>1?'s':'')+' en compétition '+(nbRes>1?'sont':'est')+' recensée'+(nbRes>1?'s':'');
+        if(!filterByYear){if(annees.length>=2)pRes+=' sur la période '+annees[0]+'-'+annees[annees.length-1];else if(annees.length===1)pRes+=' en '+annees[0];}
+        if(nbEpRes>1)pRes+=', couvrant '+nbEpRes+' épreuves différentes';
+        if(nbVilles>1){pRes+=', à travers '+nbVilles+' villes';var vl=Object.keys(villesRes);if(vl.length<=5)pRes+=' ('+vl.join(', ')+')';}
+        else if(nbVilles===1)pRes+=' à '+Object.keys(villesRes)[0];
+        pRes+='.'; bio.push(pRes);
+        if(bestPlace<999&&bestPlace<=10)bio.push('Sa meilleure place obtenue est la '+bestPlace+(bestPlace===1?'ère':'ème')+' position.');
+    }
+
+    if(fProgressions.length>0){
+        var progByEp={};
+        fProgressions.forEach(function(p){if(p.epreuve&&p.performance_brut){if(!progByEp[p.epreuve])progByEp[p.epreuve]=[];progByEp[p.epreuve].push(p);}});
+        var progEpNames=Object.keys(progByEp);
+        if(progEpNames.length>0){
+            var bestPerfs=[];
+            progEpNames.forEach(function(ep){var perfs=progByEp[ep];var best=perfs[0];perfs.forEach(function(p){if(p.performance&&p.performance<best.performance)best=p;});bestPerfs.push({epreuve:ep,perf:best.performance_brut,lieu:best.lieu});});
+            if(bestPerfs.length<=4){var pp=bestPerfs.map(function(bp){return bp.perf+' au '+bp.epreuve+(bp.lieu?' à '+bp.lieu:'');});bio.push('Ses meilleures performances incluent '+pp.join(', ')+'.');}
+            else{var pp=bestPerfs.slice(0,4).map(function(bp){return bp.perf+' au '+bp.epreuve;});bio.push('Parmi ses meilleures performances, on note '+pp.join(', ')+', sur un total de '+progEpNames.length+' épreuves.');}
+        }
+    }
+
+    if(fNiveaux.length>0){
+        var meilleurNiv=null,meilleurPts=0;
+        fNiveaux.forEach(function(niv){if((niv.points_niveau||0)>meilleurPts){meilleurPts=niv.points_niveau;meilleurNiv=niv;}});
+        if(!meilleurNiv)meilleurNiv=fNiveaux[0];
+        var nivNom=nivMap[meilleurNiv.code_niveau]||meilleurNiv.code_niveau;
+        var pNiv='En termes de classement, '+ilElleMin+' a atteint le '+nivNom;
+        if(meilleurNiv.annee)pNiv+=' en '+meilleurNiv.annee;
+        if(meilleurPts>0)pNiv+=' avec '+meilleurPts+' points';
+        if(meilleurNiv.club)pNiv+=' sous les couleurs du '+meilleurNiv.club;
+        pNiv+='.';
+        if(fNiveaux.length>1){var allNiv=fNiveaux.map(function(n){return(nivMap[n.code_niveau]||n.code_niveau)+' ('+n.annee+')';});pNiv+=' Les différents niveaux atteints sont : '+allNiv.join(', ')+'.';}
+        if(meilleurNiv.performances&&meilleurNiv.performances.length>0){var np=meilleurNiv.performances.slice(0,3).map(function(p){return(p.performance_brut||p.performance)+' en '+p.epreuve;});pNiv+=' Les performances correspondantes incluent '+np.join(', ')+'.';}
+        bio.push(pNiv);
+    }
+
+    if(!filterByYear&&bio.length>2&&carriereTerminee){
+        bio.push(i.nom_complet+' laisse derrière '+(i.sexe==='M'?'lui':'elle')+' un parcours riche dans l\'athlétisme.');
+    }
+
+    return bio.join(' ');
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+    _bioAvailableYears = _bioCollectYears(ATHLETE_DATA);
+    _bioRenderYearSelector();
+    _bioRebuild();
+});
+</script>
+
+<!-- === GRILLE EDITORIALE ASYMETRIQUE === -->
+<div class="p2-grid">
+
+    <!-- BLOC 1 — PALMARES (7 cols) -->
+    <div class="p2-block p2-w7">
+        <div class="p2-rubrique">Palmares <span>I</span></div>
+        <?php
+        // Decompte des titres par niveau de competition depuis les podiums
+        // rang 1 = champion, rang 2 = vice-champion, rang 3 = 3e
+        $_titres = [];  // niveau => [or, argent, bronze]
+        $_levelOrder = ['Olympique','Mondial','Européen','Européen Juniors','National','Interrégional','Régional','Départemental'];
+        $_levelLabel = [
+            'Olympique'       => 'Jeux Olympiques',
+            'Mondial'         => 'Champion du Monde',
+            'Européen'        => "Champion d'Europe",
+            'Européen Juniors'=> "Champion d'Europe Juniors",
+            'National'        => 'Champion de France',
+            'Interrégional'   => 'Champion Interrégional',
+            'Régional'        => 'Champion Régional',
+            'Départemental'   => 'Champion Départemental',
+        ];
+        foreach ($_podiums as $_p) {
+            $_niv = trim($_p['niveau_competition'] ?? '');
+            $_rang = (int)($_p['rang'] ?? 0);
+            if ($_niv === '' || $_rang < 1 || $_rang > 3) continue;
+            if (!isset($_titres[$_niv])) $_titres[$_niv] = [0,0,0];
+            $_titres[$_niv][$_rang - 1]++;
+        }
+        // Total champion (rang 1) tous niveaux
+        $_totChamp = 0;
+        foreach ($_titres as $_t) $_totChamp += $_t[0];
+        ?>
+        <?php if ($_totMed > 0 || $_totChamp > 0): ?>
+            <?php if ($_totChamp > 0): ?>
+            <div class="p2-huge"><?= $_totChamp ?><span class="unit"><?= $_totChamp > 1 ? 'titres' : 'titre' ?></span></div>
+            <?php elseif ($_totMed > 0): ?>
+            <div class="p2-huge"><?= $_totMed ?><span class="unit"><?= $_totMed > 1 ? 'medailles' : 'medaille' ?></span></div>
+            <?php endif; ?>
+
+            <?php if (!empty($_titres)): ?>
+            <div class="p2-titres" style="display:flex;flex-direction:column;gap:6px;margin-top:14px;">
+                <?php
+                // Trie les niveaux selon l'ordre defini, en gardant ceux qui ont au moins 1 podium
+                $_titresSorted = [];
+                foreach ($_levelOrder as $_lvlKey) {
+                    if (isset($_titres[$_lvlKey])) $_titresSorted[$_lvlKey] = $_titres[$_lvlKey];
+                }
+                foreach ($_titres as $_k => $_v) if (!isset($_titresSorted[$_k])) $_titresSorted[$_k] = $_v;
+                foreach ($_titresSorted as $_niv => $_counts):
+                    [$_nbOr, $_nbArg, $_nbBro] = $_counts;
+                    if ($_nbOr + $_nbArg + $_nbBro === 0) continue;
+                    $_lbl = $_levelLabel[$_niv] ?? $_niv;
+                ?>
+                <div class="p2-titre-row" style="display:flex;align-items:baseline;gap:10px;font-family:'Bodoni Moda',serif;">
+                    <span style="font-size:13px;color:#9ba0ad;letter-spacing:0.05em;font-style:italic;min-width:170px;"><?= htmlspecialchars($_lbl) ?></span>
+                    <?php if ($_nbOr > 0): ?><span style="color:#fbbf24;font-weight:700;font-size:16px;"><?= $_nbOr ?>&times;</span><span style="color:#7a7a7a;font-size:11px;">champion</span><?php endif; ?>
+                    <?php if ($_nbArg > 0): ?><span style="color:#cbd5e1;font-weight:700;font-size:14px;margin-left:6px;"><?= $_nbArg ?>&times;</span><span style="color:#7a7a7a;font-size:11px;">2e</span><?php endif; ?>
+                    <?php if ($_nbBro > 0): ?><span style="color:#d6815a;font-weight:700;font-size:14px;margin-left:6px;"><?= $_nbBro ?>&times;</span><span style="color:#7a7a7a;font-size:11px;">3e</span><?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($_totMed > 0): ?>
+            <div class="p2-medal-bd" style="margin-top:14px;border-top:1px solid #1f2940;padding-top:12px;">
+                <span style="color:#6e7681;font-size:11px;font-style:italic;font-family:'Bodoni Moda',serif;letter-spacing:0.2em;text-transform:uppercase;margin-right:10px;">Medailles internationales</span>
+                <?php if ($_medOr > 0): ?><span class="p2-medal-or"><b><?= $_medOr ?></b>or</span><?php endif; ?>
+                <?php if ($_medArg > 0): ?><span class="p2-medal-arg"><b><?= $_medArg ?></b>argent</span><?php endif; ?>
+                <?php if ($_medBro > 0): ?><span class="p2-medal-bro"><b><?= $_medBro ?></b>bronze</span><?php endif; ?>
+                <?php
+                $_autres = $_totMed - $_medOr - $_medArg - $_medBro;
+                if ($_autres > 0): ?><span><b><?= $_autres ?></b>autre</span><?php endif; ?>
+            </div>
+            <?php endif; ?>
+        <?php else: ?>
+            <div class="p2-empty">Aucun titre enregistre</div>
+        <?php endif; ?>
+    </div>
+
+    <!-- BLOC 2 — NIVEAU (5 cols) -->
+    <div class="p2-block p2-w5">
+        <div class="p2-rubrique">Niveau <span>II</span></div>
+        <?php if (!empty($i['meilleur_niveau'])):
+            $__mn = $i['meilleur_niveau'];
+            // Couleur par famille
+            if (in_array($__mn, ['IA','IB','IE'], true)) $__col = '#e879f9'; // International elite — fuchsia
+            elseif (preg_match('/^IR/', $__mn)) $__col = '#c084fc';            // Interregional — violet doux
+            elseif ($__mn[0] === 'N') $__col = '#fb7185';                       // National — rose
+            elseif ($__mn[0] === 'R') $__col = '#22d3ee';                       // Regional — cyan
+            else $__col = '#fb923c';                                             // Departemental — orange
+            // Labels FFA
+            $__nivLabels = [
+                'IA' => 'International A &mdash; Elite mondial',
+                'IB' => 'International B &mdash; Elite',
+                'IE' => 'International Elite',
+                'IR1' => 'Interregional 1',
+                'IR2' => 'Interregional 2',
+                'IR3' => 'Interregional 3',
+                'IR4' => 'Interregional 4',
+                'IR'  => 'Interregional',
+                'N1' => 'National 1 &mdash; Elite',
+                'N2' => 'National 2',
+                'N3' => 'National 3',
+                'N4' => 'National 4',
+                'R1' => 'Regional 1', 'R2' => 'Regional 2', 'R3' => 'Regional 3',
+                'R4' => 'Regional 4', 'R5' => 'Regional 5', 'R6' => 'Regional 6',
+                'D1' => 'Departemental 1', 'D2' => 'Departemental 2', 'D3' => 'Departemental 3',
+                'D4' => 'Departemental 4', 'D5' => 'Departemental 5', 'D6' => 'Departemental 6', 'D7' => 'Departemental 7',
+            ];
+            $__nivDesc = $__nivLabels[$__mn] ?? '';
+            // Famille (rang dans la hierarchie)
+            if (in_array($__mn, ['IA','IB','IE'], true)) $__fam = 'International';
+            elseif (preg_match('/^IR/', $__mn)) $__fam = 'Interregional';
+            elseif ($__mn[0] === 'N') $__fam = 'National';
+            elseif ($__mn[0] === 'R') $__fam = 'Regional';
+            else $__fam = 'Departemental';
+        ?>
+            <div class="p2-niveau-code" style="color: <?= $__col ?>;"><?= htmlspecialchars($__mn) ?></div>
+            <?php if ($__nivDesc): ?>
+                <div class="p2-niveau-desc"><?= $__nivDesc ?></div>
+            <?php endif; ?>
+            <?php
+            // Annees de carriere (span entre premiere et derniere annee d'activite)
+            if ($_anMin > 0 && $_anMax > 0) {
+                $_dureeCarriere = $_anMax - $_anMin + 1;
+            ?>
+                <div class="p2-niveau-carriere">
+                    <strong><?= $_dureeCarriere ?></strong> annee<?= $_dureeCarriere > 1 ? 's' : '' ?> de carriere
+                    <span class="p2-niveau-carriere-period"><?= $_anMin ?>&ndash;<?= $_anMax ?></span>
+                </div>
+            <?php } ?>
+            <div style="font-family:'Bodoni Moda',serif;font-style:italic;font-size:11px;color:#6e7681;letter-spacing:0.25em;text-transform:uppercase;margin-top:8px;">Famille <?= htmlspecialchars($__fam) ?></div>
+
+            <?php
+            // === A X centiemes/cm du niveau superieur ===
+            // Pour chaque record, trouve le prochain palier dans le bareme et garde le plus proche
+            static $_baremeCache = null;
+            if ($_baremeCache === null) {
+                $_bf = __DIR__ . '/config/bareme_hommes.php';
+                $_baremeCache = file_exists($_bf) ? @include($_bf) : false;
+            }
+            $_nivPtsMap = ['IA'=>40,'IB'=>35,'N1'=>30,'N2'=>28,'N3'=>26,'N4'=>24,'IR1'=>21,'IR2'=>20,'IR3'=>19,'IR4'=>18,'R1'=>15,'R2'=>14,'R3'=>13,'R4'=>12,'R5'=>11,'R6'=>10,'D1'=>8,'D2'=>7,'D3'=>6,'D4'=>5,'D5'=>4,'D6'=>3,'D7'=>2];
+            $_ptsToCode = array_flip($_nivPtsMap);
+            $_closest = null; // ['ep','currentCode','nextCode','deltaInt','isDist']
+            if (is_array($_baremeCache) && !empty($_baremeCache['breakpoints'])) {
+                $_aliases = $_baremeCache['aliases'] ?? [];
+                foreach ($_records as $_rec) {
+                    $_epRec = $_rec['epreuve'] ?? '';
+                    $_perfInt = (int)($_rec['performance'] ?? 0);
+                    if ($_epRec === '' || $_perfInt <= 0) continue;
+                    $_epKey = isset($_baremeCache['breakpoints'][$_epRec]) ? $_epRec : ($_aliases[$_epRec] ?? null);
+                    if (!$_epKey || !isset($_baremeCache['breakpoints'][$_epKey])) continue;
+                    $_bps = $_baremeCache['breakpoints'][$_epKey]; // [[pts, perfInt], ...]
+                    $_isDistRec = (bool)preg_match('/Longueur|Triple|Hauteur|Perche|Poids|Disque|Marteau|Javelot/i', $_epRec);
+                    // Pour temps : prochain palier = perf_int < perfActuel mais le PLUS GRAND <
+                    // Pour distance : prochain palier = perf_int > perfActuel mais le PLUS PETIT >
+                    $_nextPts = 0; $_nextPerf = 0; $_currentPts = 0;
+                    foreach ($_bps as $_bp) {
+                        $_p = (int)$_bp[0]; $_v = (int)$_bp[1];
+                        if (!$_isDistRec) {
+                            // temps : athlete a atteint si perfActuel <= seuil
+                            if ($_perfInt <= $_v && $_p > $_currentPts) $_currentPts = $_p;
+                            // prochain : seuil < perfActuel et le plus haut points sup au courant
+                            if ($_v < $_perfInt && $_p > $_nextPts) { $_nextPts = $_p; $_nextPerf = $_v; }
+                        } else {
+                            if ($_perfInt >= $_v && $_p > $_currentPts) $_currentPts = $_p;
+                            if ($_v > $_perfInt && (!$_nextPts || $_v < $_nextPerf)) { $_nextPts = $_p; $_nextPerf = $_v; }
+                        }
+                    }
+                    if ($_nextPts > 0 && $_nextPerf > 0) {
+                        $_delta = abs($_perfInt - $_nextPerf);
+                        if (!$_closest || $_delta < $_closest['deltaInt']) {
+                            $_closest = [
+                                'ep'          => $_epRec,
+                                'currentCode' => $_ptsToCode[$_currentPts] ?? '',
+                                'nextCode'    => $_ptsToCode[$_nextPts] ?? '',
+                                'deltaInt'    => $_delta,
+                                'isDist'      => $_isDistRec,
+                                'perfBrut'    => $_rec['performance_brut'] ?? '',
+                            ];
+                        }
+                    }
+                }
+            }
+            if ($_closest):
+                if ($_closest['isDist']) {
+                    $_deltaTxt = ($_closest['deltaInt'] >= 100)
+                        ? number_format($_closest['deltaInt'] / 100, 2, ',', '') . ' m'
+                        : $_closest['deltaInt'] . ' cm';
+                } else {
+                    $_deltaTxt = ($_closest['deltaInt'] >= 100)
+                        ? round($_closest['deltaInt'] / 100, 2) . ' s'
+                        : $_closest['deltaInt'] . ' centiemes';
+                }
+            ?>
+                <div class="p2-niv-target">
+                    <span class="p2-niv-target-arrow">&rarr;</span>
+                    Encore <strong><?= htmlspecialchars($_deltaTxt) ?></strong> pour passer <strong><?= htmlspecialchars($_closest['nextCode']) ?></strong>
+                    <span class="p2-niv-target-ep">sur <?= htmlspecialchars($_closest['ep']) ?></span>
+                </div>
+            <?php endif; ?>
+
+            <?php
+            // Historique des niveaux (codes uniques, hierarchie decroissante, sans le niveau actuel)
+            $_nivHierarchy = ['IA','IB','IE','N1','N2','N3','N4','IR1','IR2','IR3','IR4','IR','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7'];
+            $_nivOrderMap = array_flip($_nivHierarchy);
+            $_nivCodes = [];
+            foreach (($data['niveaux'] ?? []) as $_n) {
+                $_c = $_n['code_niveau'] ?? '';
+                if ($_c !== '' && $_c !== $__mn) $_nivCodes[$_c] = true;
+            }
+            $_nivCodesUniques = array_keys($_nivCodes);
+            usort($_nivCodesUniques, function($a, $b) use ($_nivOrderMap) {
+                return ($_nivOrderMap[$a] ?? 99) - ($_nivOrderMap[$b] ?? 99);
+            });
+            if (!empty($_nivCodesUniques)):
+            ?>
+                <div class="p2-niv-history">
+                    <div class="p2-niv-history-label">Anciens niveaux</div>
+                    <div class="p2-niv-history-list">
+                    <?php foreach ($_nivCodesUniques as $_nc):
+                        if (in_array($_nc, ['IA','IB','IE'], true)) $_ncCol = '#e879f9';
+                        elseif (preg_match('/^IR/', $_nc)) $_ncCol = '#c084fc';
+                        elseif ($_nc[0] === 'N') $_ncCol = '#fb7185';
+                        elseif ($_nc[0] === 'R') $_ncCol = '#22d3ee';
+                        else $_ncCol = '#fb923c';
+                    ?>
+                        <span class="p2-niv-chip" style="color: <?= $_ncCol ?>;"><?= htmlspecialchars($_nc) ?></span>
+                    <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+        <?php else: ?>
+            <div class="p2-empty">Niveau non determine</div>
+        <?php endif; ?>
+    </div>
+
+    <!-- BLOC 3 — EN CHIFFRES (12 cols) -->
+    <div class="p2-block p2-w12">
+        <div class="p2-rubrique">En chiffres <span>III</span></div>
+        <div class="p2-stats-row">
+            <div class="p2-stat">
+                <span class="num"><?= $_anneesActives ?></span>
+                <span class="lbl"><?= $_anneesActives > 1 ? 'Annees actives' : 'Annee active' ?></span>
+            </div>
+            <div class="p2-stat">
+                <span class="num"><?= $_totCompetitions ?></span>
+                <span class="lbl">Competitions</span>
+            </div>
+            <div class="p2-stat">
+                <span class="num"><?= $_totPodiums ?></span>
+                <span class="lbl"><?= $_totPodiums > 1 ? 'Podiums' : 'Podium' ?></span>
+            </div>
+            <div class="p2-stat">
+                <span class="num"><?= $_totSelections ?></span>
+                <span class="lbl"><?= $_totSelections > 1 ? 'Selections' : 'Selection' ?></span>
+            </div>
+            <?php if ($_anMin > 0 && $_anMax > 0): ?>
+            <div class="p2-stat">
+                <span class="num" style="font-size: clamp(28px, 3vw, 38px);"><?= $_anMin ?>&ndash;<?= $_anMax ?></span>
+                <span class="lbl">Periode</span>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- BLOC 4 — RECORDS PERSONNELS (12 cols, pleine largeur) avec onglets par categorie -->
+    <div class="p2-block p2-w12">
+        <div class="p2-rubrique">Records personnels <span>IV</span></div>
+        <?php if (!empty($_records)): ?>
+            <!-- Onglets de categorie -->
+            <div class="p2-rec-tabs">
+                <?php
+                $_p2TabBadge = function($code) {
+                    if (!$code) return '';
+                    $col = _p2_nivColor($code);
+                    return ' <span class="p2-rec-tab-niv" style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:'.$col['bg'].';border:1px solid '.$col['bd'].'40;color:'.$col['tx'].';">'.htmlspecialchars($code).'</span>';
+                };
+                $_allBest = $_catSummary['all']['best_niv'] ?? null;
+                ?>
+                <button type="button" class="p2-rec-tab is-active" data-cat="all" onclick="_p2RecFilter('all', this)">
+                    Tous <span class="p2-rec-tab-cnt"><?= count($_records) ?></span><?= $_p2TabBadge($_allBest) ?>
+                </button>
+                <?php foreach ($_catOrder as $_cat):
+                    if (empty($_recordsByCat[$_cat])) continue;
+                    $_cnt = count($_recordsByCat[$_cat]);
+                    $_catBest = $_catSummary[$_cat]['best_niv'] ?? null;
+                ?>
+                <button type="button" class="p2-rec-tab" data-cat="<?= $_cat ?>" onclick="_p2RecFilter('<?= $_cat ?>', this)">
+                    <?= $_catLabels[$_cat] ?> <span class="p2-rec-tab-cnt"><?= $_cnt ?></span><?= $_p2TabBadge($_catBest) ?>
+                </button>
+                <?php endforeach; ?>
+            </div>
+
+            <!-- Synthese par categorie (1 par cat, on affiche celle correspondant a l'onglet actif) -->
+            <?php foreach ($_catSummary as $_sk => $_su):
+                $_lbl = $_sk === 'all' ? 'Tous niveaux confondus' : ($_catLabels[$_sk] ?? $_sk);
+                $_bn = $_su['best_niv'];
+                $_bc = $_bn ? _p2_nivColor($_bn) : null;
+                $_periode = '';
+                if ($_su['min_year'] && $_su['max_year']) {
+                    $_periode = ($_su['min_year'] === $_su['max_year']) ? (string)$_su['min_year'] : ($_su['min_year'].' &mdash; '.$_su['max_year']);
+                }
+            ?>
+            <div class="p2-rec-summary" data-cat="<?= $_sk ?>" style="<?= $_sk === 'all' ? '' : 'display:none;' ?>">
+                <div class="p2-rec-sum-cat"><?= htmlspecialchars($_lbl) ?></div>
+                <div class="p2-rec-sum-grid">
+                    <div class="p2-rec-sum-cell">
+                        <div class="p2-rec-sum-num"><?= (int)$_su['nb'] ?></div>
+                        <div class="p2-rec-sum-lbl">Records</div>
+                    </div>
+                    <?php if ($_bn):
+                        $_gpInfo = _p2_nivGroupPct($_bn, $_globalNivStats);
+                    ?>
+                    <div class="p2-rec-sum-cell">
+                        <div class="p2-rec-sum-num">
+                            <span class="p2-niv-badge" style="background:<?= $_bc['bg'] ?>;border-color:<?= $_bc['bd'] ?>40;color:<?= $_bc['tx'] ?>;"><?= htmlspecialchars($_bn) ?></span>
+                        </div>
+                        <div class="p2-rec-sum-lbl">Niveau max</div>
+                        <?php if ($_gpInfo): ?>
+                        <div class="p2-rec-sum-pct" title="Sur <?= number_format($_gpInfo['total'], 0, ',', ' ') ?> athletes recenses (<?= number_format($_gpInfo['pct'], 2, ',', ' ') ?>%)">
+                            <strong><?= number_format($_gpInfo['count'], 0, ',', ' ') ?></strong> athletes
+                            <span class="p2-rec-sum-grp">au niveau <?= htmlspecialchars($_gpInfo['group']) ?></span>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($_periode): ?>
+                    <div class="p2-rec-sum-cell">
+                        <div class="p2-rec-sum-num p2-rec-sum-period"><?= $_periode ?></div>
+                        <div class="p2-rec-sum-lbl">Periode</div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+
+            <!-- Liste de TOUS les records avec data-cat pour filtrage JS -->
+            <ul class="p2-rec-list p2-rec-list-rich is-compact" id="p2RecList">
+            <?php foreach ($_records as $_r):
+                $_rcat = _p2_categEpreuve($_r['epreuve'] ?? '');
+                // Niveau de ce record (le meilleur dans 'niveaux')
+                $_recBestNiv = null; $_recBestO = 99;
+                foreach (($_r['niveaux'] ?? []) as $_nc) {
+                    $_o = _p2_nivOrder($_nc);
+                    if ($_o < $_recBestO) { $_recBestO = $_o; $_recBestNiv = $_nc; }
+                }
+                $_recCol = $_recBestNiv ? _p2_nivColor($_recBestNiv) : null;
+                $_an = _p2_recDateFull($_r);
+                $_lieu = trim($_r['lieu'] ?? '');
+                $_ligDept = trim($_r['ligue_dept'] ?? '');
+                $_clubR = trim(rtrim($_r['club'] ?? '', '* '));
+            ?>
+                <?php
+                    $_rEp = $_r['epreuve'] ?? '';
+                    $_rPB = $_r['performance_brut'] ?? '';
+                    $_rPI = (int)($_r['performance'] ?? 0);
+                    $_kmh = bkPerfSpeedKmh($_rEp, $_rPI);
+                ?>
+                <li data-cat="<?= $_rcat ?>">
+                    <div class="p2-rec-row1">
+                        <span class="ep"><?= htmlspecialchars($_rEp ?: '—') ?></span>
+                        <span class="perf">
+                            <?= htmlspecialchars($_rPB !== '' ? $_rPB : ($_rPI ?: '—')) ?>
+                            <?php if ($_kmh !== null): ?>
+                            <span class="p2-perf-kmh" style="display:inline-block;margin-left:6px;padding:1px 6px;background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.35);border-radius:6px;color:#a78bfa;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;letter-spacing:0;"><?= number_format($_kmh, 1, '.', '') ?> km/h</span>
+                            <?php endif; ?>
+                        </span>
+                    </div>
+                    <div class="p2-rec-row2">
+                        <?php if ($_recBestNiv): ?>
+                        <span class="p2-niv-badge p2-niv-badge-sm" style="background:<?= $_recCol['bg'] ?>;border-color:<?= $_recCol['bd'] ?>40;color:<?= $_recCol['tx'] ?>;"><?= htmlspecialchars($_recBestNiv) ?></span>
+                        <?php endif; ?>
+                        <?php if ($_an): ?><span class="p2-rec-meta-it">📅 <?= htmlspecialchars($_an) ?></span><?php endif; ?>
+                        <?php if ($_lieu): ?><a class="p2-rec-meta-it p2-rec-meta-link" href="?page=villes&open=<?= urlencode($_lieu) ?>">📍 <?= htmlspecialchars($_lieu) ?></a><?php endif; ?>
+                        <?php if ($_clubR): ?><a class="p2-rec-meta-it p2-rec-meta-link" href="?page=recherche&club=<?= urlencode($_clubR) ?>">🏟 <?= htmlspecialchars($_clubR) ?></a><?php endif; ?>
+                        <?php if ($_ligDept): ?><span class="p2-rec-meta-it p2-rec-meta-faint"><?= htmlspecialchars($_ligDept) ?></span><?php endif; ?>
+                    </div>
+                </li>
+            <?php endforeach; ?>
+            </ul>
+            <?php if (count($_records) > 4): ?>
+            <div class="p2-rec-more-wrap" style="text-align:center;margin-top:18px;">
+                <button type="button" id="p2RecMore" class="p2-rec-more-btn" onclick="_p2RecToggleShowAll()">
+                    <span id="p2RecMoreLabel">Voir plus </span><span id="p2RecMoreCount">(+<?= min(5, count($_records) - 4) ?>)</span>
+                </button>
+            </div>
+            <style>
+            .p2-rec-list.is-compact li.p2-rec-over-limit { display: none !important; }
+            /* Bouton "Voir plus" : violet glow */
+            .p2-rec-more-btn {
+                background: linear-gradient(135deg, rgba(167,139,250,0.15), rgba(108,92,231,0.08));
+                border: 1px solid rgba(167,139,250,0.4);
+                color: #c4b5fd;
+                font-family: 'Bodoni Moda', serif;
+                font-style: italic;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 9px 22px;
+                border-radius: 100px;
+                cursor: pointer;
+                letter-spacing: 0.08em;
+                transition: all .25s;
+                box-shadow: 0 2px 12px rgba(108,92,231,0.15), inset 0 1px 0 rgba(255,255,255,0.06);
+            }
+            .p2-rec-more-btn:hover {
+                background: linear-gradient(135deg, rgba(167,139,250,0.25), rgba(108,92,231,0.12));
+                transform: translateY(-1px);
+                box-shadow: 0 4px 16px rgba(108,92,231,0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+            }
+            .p2-rec-more-btn #p2RecMoreCount {
+                opacity: 0.7;
+                margin-left: 4px;
+                font-style: normal;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+            }
+            /* Variante "Voir moins" : ambre/orange (couleur differente) */
+            .p2-rec-more-btn.is-less {
+                background: linear-gradient(135deg, rgba(251,191,36,0.15), rgba(245,158,11,0.08));
+                border-color: rgba(251,191,36,0.45);
+                color: #fde68a;
+                box-shadow: 0 2px 12px rgba(245,158,11,0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+            }
+            .p2-rec-more-btn.is-less:hover {
+                background: linear-gradient(135deg, rgba(251,191,36,0.25), rgba(245,158,11,0.15));
+                box-shadow: 0 4px 16px rgba(245,158,11,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+            }
+            body.p2-light .p2-rec-more-btn {
+                color: #5a3a8a;
+                background: linear-gradient(135deg, rgba(108,92,231,0.1), rgba(108,92,231,0.04));
+                border-color: rgba(108,92,231,0.35);
+            }
+            body.p2-light .p2-rec-more-btn.is-less {
+                color: #92400e;
+                background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04));
+                border-color: rgba(245,158,11,0.4);
+            }
+            </style>
+            <?php endif; ?>
+        <?php else: ?>
+            <div class="p2-empty">Aucun record enregistre</div>
+        <?php endif; ?>
+    </div>
+
+    <script>
+    // Nombre de records visibles (progressif : 4 -> 9 -> 14 -> ...)
+    window._p2RecShown = 4;
+    var _P2_REC_STEP = 5;
+
+    // Applique la limite N (parmi les non-caches par filtre cat) + maj du bouton
+    function _p2RecApplyLimit() {
+        var list = document.getElementById('p2RecList');
+        if (!list) return;
+        var visible = 0, totalVisible = 0;
+        list.querySelectorAll('li').forEach(function(li){
+            if (li.classList.contains('bk-hide')) { li.classList.remove('p2-rec-over-limit'); return; }
+            totalVisible++;
+            visible++;
+            li.classList.toggle('p2-rec-over-limit', visible > window._p2RecShown);
+        });
+        // Maj du bouton :
+        //   - Mode "Voir plus" tant qu'il reste des items a derouler
+        //   - Mode "Voir moins" (autre couleur) quand tout est deroule
+        var wrap  = document.querySelector('.p2-rec-more-wrap');
+        var btn   = document.getElementById('p2RecMore');
+        var label = document.getElementById('p2RecMoreLabel');
+        var cnt   = document.getElementById('p2RecMoreCount');
+        if (!wrap || !btn) return;
+        if (totalVisible <= 4) {
+            // Pas assez d'items pour avoir besoin du bouton
+            wrap.style.display = 'none';
+            return;
+        }
+        wrap.style.display = '';
+        if (window._p2RecShown >= totalVisible) {
+            // Tout est deroule : passer en mode "Voir moins"
+            btn.classList.add('is-less');
+            if (label) label.textContent = 'Voir moins ';
+            if (cnt) cnt.style.display = 'none';
+        } else {
+            // Encore des items a deviler : "Voir plus"
+            btn.classList.remove('is-less');
+            if (label) label.textContent = 'Voir plus ';
+            if (cnt) {
+                cnt.style.display = '';
+                var rest = totalVisible - window._p2RecShown;
+                cnt.textContent = '(+' + Math.min(rest, _P2_REC_STEP) + ')';
+            }
+        }
+    }
+    // Clic sur le bouton : +5 ou retour a 4 selon le mode
+    function _p2RecToggleShowAll() {
+        var btn = document.getElementById('p2RecMore');
+        if (btn && btn.classList.contains('is-less')) {
+            window._p2RecShown = 4;
+        } else {
+            window._p2RecShown += _P2_REC_STEP;
+        }
+        _p2RecApplyLimit();
+    }
+    // Init : applique la limite des le chargement
+    document.addEventListener('DOMContentLoaded', _p2RecApplyLimit);
+
+    function _p2RecFilter(cat, btn) {
+        var tabs = document.querySelectorAll('.p2-rec-tab');
+        tabs.forEach(function(t){ t.classList.remove('is-active'); });
+        btn.classList.add('is-active');
+        // 1. Records list — utilise classList (override le !important du CSS)
+        var items = document.querySelectorAll('#p2RecList li');
+        items.forEach(function(li){
+            var show = (cat === 'all' || li.dataset.cat === cat);
+            li.classList.toggle('bk-hide', !show);
+        });
+        // Reset a 4 lors du changement de categorie
+        window._p2RecShown = 4;
+        _p2RecApplyLimit();
+        // 2. Synthese (encadre niveau max)
+        document.querySelectorAll('.p2-rec-summary').forEach(function(s){
+            s.style.display = (s.dataset.cat === cat) ? '' : 'none';
+        });
+        // 3. Hall of fame
+        var hofList = document.getElementById('p2HofList');
+        if (hofList) {
+            var hofItems = hofList.querySelectorAll('li');
+            var visibleHof = 0;
+            hofItems.forEach(function(li){
+                var show = (cat === 'all' || li.dataset.cat === cat);
+                li.classList.toggle('bk-hide', !show);
+                if (show) visibleHof++;
+            });
+            // Cache la section entiere si plus aucun item visible
+            var hofSection = hofList.closest('.p2-hof');
+            if (hofSection) hofSection.style.display = (visibleHof === 0) ? 'none' : '';
+        }
+    }
+    </script>
+
+    <!-- BLOC 5 — CLUBS (12 cols, pleine largeur) -->
+    <div class="p2-block p2-w12">
+        <div class="p2-rubrique">Clubs <span>V</span></div>
+        <?php if (!empty($_clubs)):
+            // Trier par annee_debut descendante (le plus recent en premier)
+            $_clubsSorted = $_clubs;
+            usort($_clubsSorted, function($a, $b) {
+                $aF = (int)($a['annee_fin'] ?? 0); $aF = $aF > 0 ? $aF : 9999;
+                $bF = (int)($b['annee_fin'] ?? 0); $bF = $bF > 0 ? $bF : 9999;
+                if ($aF !== $bF) return $bF - $aF;
+                return (int)($b['annee_debut'] ?? 0) - (int)($a['annee_debut'] ?? 0);
+            });
+        ?>
+            <ul class="p2-club-list">
+            <?php foreach ($_clubsSorted as $_idx => $_c):
+                $_nom = rtrim($_c['nom_club'] ?? '', '* ');
+                $_d = (int)($_c['annee_debut'] ?? 0);
+                $_f = (int)($_c['annee_fin'] ?? 0);
+                $_isCurrent = ($_idx === 0);
+            ?>
+                <li class="p2-club-item<?= $_isCurrent ? ' is-current' : '' ?>">
+                    <a class="p2-club-link" href="?page=recherche&club=<?= urlencode($_nom) ?>"><?= htmlspecialchars($_nom) ?></a>
+                    <div class="p2-club-period">
+                        <?php
+                        if ($_d > 0 && $_f > 0) {
+                            $_dur = $_f - $_d + 1;
+                            echo $_d . ' &mdash; ' . $_f . ' <span class="p2-club-dur">&middot; ' . $_dur . ' an' . ($_dur > 1 ? 's' : '') . '</span>';
+                        } elseif ($_d > 0) {
+                            $_dur = (int)date('Y') - $_d + 1;
+                            echo 'Depuis ' . $_d . ' <span class="p2-club-dur">&middot; ' . $_dur . ' an' . ($_dur > 1 ? 's' : '') . '</span>';
+                        } elseif ($_f > 0) {
+                            echo 'Jusqu\'en ' . $_f;
+                        }
+                        ?>
+                    </div>
+                </li>
+            <?php endforeach; ?>
+            </ul>
+        <?php else: ?>
+            <div class="p2-empty">Aucun club enregistre</div>
+        <?php endif; ?>
+    </div>
+
+    <!-- BLOC 6 — PODIUMS (5 cols) -->
+    <div class="p2-block p2-w5">
+        <div class="p2-rubrique">Podiums <span>VI</span></div>
+        <?php if ($_totPodiums > 0): ?>
+            <div class="p2-huge" style="font-size: clamp(48px, 6vw, 76px);"><?= $_totPodiums ?><span class="unit"><?= $_totPodiums > 1 ? 'top 3' : 'top 3' ?></span></div>
+            <?php
+            $_pRangs = ['1' => 0, '2' => 0, '3' => 0];
+            foreach ($_podiums as $_pd) {
+                $_rg = (string)($_pd['rang_podium'] ?? $_pd['rang'] ?? '');
+                if (isset($_pRangs[$_rg])) $_pRangs[$_rg]++;
+            }
+            ?>
+            <div class="p2-medal-bd" style="margin-top:14px;">
+                <?php if ($_pRangs['1'] > 0): ?><span class="p2-medal-or"><b><?= $_pRangs['1'] ?></b>1<sup>er</sup></span><?php endif; ?>
+                <?php if ($_pRangs['2'] > 0): ?><span class="p2-medal-arg"><b><?= $_pRangs['2'] ?></b>2<sup>e</sup></span><?php endif; ?>
+                <?php if ($_pRangs['3'] > 0): ?><span class="p2-medal-bro"><b><?= $_pRangs['3'] ?></b>3<sup>e</sup></span><?php endif; ?>
+            </div>
+        <?php else: ?>
+            <div class="p2-empty">Aucun podium enregistre</div>
+        <?php endif; ?>
+    </div>
+
+    <!-- BLOC 7 — SELECTIONS (7 cols) -->
+    <div class="p2-block p2-w7">
+        <div class="p2-rubrique">Selections <span>VII</span></div>
+        <?php if ($_totSelections > 0):
+            $_topSel = array_slice($_selections, 0, 4);
+        ?>
+            <div class="p2-huge" style="font-size: clamp(48px, 6vw, 76px); margin-bottom: 14px;"><?= $_totSelections ?><span class="unit"><?= $_totSelections > 1 ? 'selections' : 'selection' ?></span></div>
+            <ul class="p2-mini-list">
+            <?php foreach ($_topSel as $_s):
+                $_yr = !empty($_s['date']) ? substr($_s['date'], 0, 4) : '';
+                $_comp = $_s['competition'] ?? '';
+            ?>
+                <li><span class="lbl"><?= htmlspecialchars($_yr) ?></span> <?= htmlspecialchars($_comp) ?></li>
+            <?php endforeach; ?>
+            </ul>
+        <?php else: ?>
+            <div class="p2-empty">Aucune selection enregistree</div>
+        <?php endif; ?>
+    </div>
+
+</div>
+
+<?php
+// === CITATION EDITO + ANNEE CHARNIERE ===
+
+// Choisir la citation la plus marquante (priorite : selections > medailles > top record > duree carriere)
+$_quote = '';
+if ($_totSelections > 0) {
+    $_quote = $_totSelections . ' selection' . ($_totSelections > 1 ? 's' : '') . ' en equipe de France';
+} elseif ($_totMed > 0) {
+    $_quote = $_totMed . ' medaille' . ($_totMed > 1 ? 's' : '') . ' au palmares';
+} elseif (!empty($_topRecords)) {
+    $_topRec = $_topRecords[0];
+    $_perfBrut = $_topRec['performance_brut'] ?? '';
+    $_epRec   = $_topRec['epreuve'] ?? '';
+    $_yrRec   = !empty($_topRec['date']) ? substr($_topRec['date'], 0, 4) : '';
+    if ($_perfBrut && $_epRec) {
+        $_quote = $_perfBrut . ' sur ' . $_epRec;
+        if ($_yrRec) $_quote .= ' &mdash; ' . $_yrRec;
+    }
+} elseif ($_anneesActives > 1) {
+    $_quote = $_anneesActives . ' annees de competition';
+}
+
+// Annee charniere : score par annee = medailles*5 + podiums*3 + selections*4 + meilleur_niveau_pts
+$_yearScore = [];
+foreach ($_med as $_m) { $_yr = (int)($_m['annee'] ?? 0); if ($_yr > 0) { $_yearScore[$_yr]['med'] = ($_yearScore[$_yr]['med'] ?? 0) + 1; } }
+foreach ($_podiums as $_pd) { $_yr = (int)($_pd['annee'] ?? 0); if ($_yr > 0) { $_yearScore[$_yr]['pod'] = ($_yearScore[$_yr]['pod'] ?? 0) + 1; } }
+foreach ($_selections as $_s) { $_yr = !empty($_s['date']) ? (int)substr($_s['date'], 0, 4) : 0; if ($_yr > 0) { $_yearScore[$_yr]['sel'] = ($_yearScore[$_yr]['sel'] ?? 0) + 1; } }
+foreach (($data['niveaux'] ?? []) as $_n) {
+    $_yr = (int)($_n['annee'] ?? 0);
+    $_pts = (int)($_n['points_niveau'] ?? 0);
+    if ($_yr > 0 && $_pts > ($_yearScore[$_yr]['nivpts'] ?? 0)) {
+        $_yearScore[$_yr]['nivpts'] = $_pts;
+        $_yearScore[$_yr]['nivcode'] = $_n['code_niveau'] ?? '';
+    }
+}
+$_bestYear = null; $_bestScore = 0; $_bestStats = null;
+foreach ($_yearScore as $_yr => $_s) {
+    $_score = ($_s['med'] ?? 0) * 5 + ($_s['pod'] ?? 0) * 3 + ($_s['sel'] ?? 0) * 4 + ($_s['nivpts'] ?? 0);
+    if ($_score > $_bestScore) {
+        $_bestScore = $_score;
+        $_bestYear = $_yr;
+        $_bestStats = $_s;
+    }
+}
+?>
+
+<?php if ($_quote): ?>
+<div class="p2-quote">
+    <span class="p2-quote-mark">&ldquo;</span>
+    <p class="p2-quote-text"><?= $_quote ?></p>
+    <span class="p2-quote-mark p2-quote-close">&rdquo;</span>
+</div>
+<?php endif; ?>
+
+<?php if ($_bestYear && $_bestScore > 0): ?>
+<div class="p2-pivot">
+    <div class="p2-pivot-rubrique">L'annee charniere</div>
+    <div class="p2-pivot-row">
+        <div class="p2-pivot-year"><?= $_bestYear ?></div>
+        <div class="p2-pivot-stats">
+            <?php
+            $_pivParts = [];
+            if (!empty($_bestStats['med']))    $_pivParts[] = $_bestStats['med'] . ' medaille' . ($_bestStats['med'] > 1 ? 's' : '');
+            if (!empty($_bestStats['pod']))    $_pivParts[] = $_bestStats['pod'] . ' podium' . ($_bestStats['pod'] > 1 ? 's' : '');
+            if (!empty($_bestStats['sel']))    $_pivParts[] = $_bestStats['sel'] . ' selection' . ($_bestStats['sel'] > 1 ? 's' : '');
+            if (!empty($_bestStats['nivcode'])) $_pivParts[] = 'niveau ' . $_bestStats['nivcode'];
+            echo implode(' &nbsp;&middot;&nbsp; ', array_slice($_pivParts, 0, 3));
+            ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php
+// === HALL OF FAME — top 5 plus belles competitions ===
+$_hof = [];
+foreach ($_med as $_m) {
+    $_t = strtolower($_m['type'] ?? '');
+    $_score = ($_t === 'or') ? 12 : (($_t === 'argent') ? 10 : (($_t === 'bronze') ? 8 : 5));
+    $_hof[] = [
+        'score'       => $_score,
+        'kind'        => $_t === 'or' ? 'or' : ($_t === 'argent' ? 'argent' : ($_t === 'bronze' ? 'bronze' : 'autre')),
+        'label'       => 'Medaille ' . ($_t ?: 'autre'),
+        'competition' => $_m['competition'] ?? '',
+        'epreuve'     => $_m['epreuve'] ?? '',
+        'lieu'        => $_m['lieu'] ?? '',
+        'annee'       => $_m['annee'] ?? '',
+    ];
+}
+foreach ($_podiums as $_pd) {
+    $_rg = (int)($_pd['rang_podium'] ?? $_pd['rang'] ?? 0);
+    if ($_rg < 1 || $_rg > 3) continue;
+    $_hof[] = [
+        'score'       => $_rg === 1 ? 11 : ($_rg === 2 ? 9 : 7),
+        'kind'        => 'podium' . $_rg,
+        'label'       => $_rg . 'e' . ($_rg === 1 ? 'r' : '') . ' place',
+        'competition' => $_pd['competition'] ?? '',
+        'epreuve'     => $_pd['epreuve'] ?? '',
+        'lieu'        => $_pd['lieu'] ?? '',
+        'annee'       => $_pd['annee'] ?? '',
+    ];
+}
+foreach ($_selections as $_se) {
+    $_hof[] = [
+        'score'       => 9,
+        'kind'        => 'selection',
+        'label'       => 'Selection nationale',
+        'competition' => $_se['competition'] ?? '',
+        'epreuve'     => $_se['epreuve'] ?? '',
+        'lieu'        => $_se['lieu'] ?? '',
+        'annee'       => !empty($_se['date']) ? substr($_se['date'], 0, 4) : '',
+    ];
+}
+usort($_hof, function($a, $b) { return $b['score'] - $a['score']; });
+// Dedup par (competition + epreuve + annee)
+$_seen = []; $_hofUniq = [];
+foreach ($_hof as $_h) {
+    $_k = $_h['competition'] . '|' . $_h['epreuve'] . '|' . $_h['annee'];
+    if (isset($_seen[$_k])) continue;
+    $_seen[$_k] = 1;
+    $_hofUniq[] = $_h;
+    if (count($_hofUniq) >= 5) break;
+}
+
+// === LE SAVIEZ-VOUS ? — un seul fait curieux marquant ===
+$_funFact = '';
+$_nbEpDiff = 0; $_epSet = [];
+foreach ($_records as $_r) { if (!empty($_r['epreuve'])) $_epSet[$_r['epreuve']] = 1; }
+$_nbEpDiff = count($_epSet);
+
+$_compSet = [];
+foreach ($_resultats as $_r) { if (!empty($_r['competition'])) $_compSet[$_r['competition']] = 1; }
+$_nbCompDiff = count($_compSet);
+
+$_firstMedYear = 0;
+foreach ($_med as $_m) {
+    $_y = (int)($_m['annee'] ?? 0);
+    if ($_y > 0 && ($_firstMedYear === 0 || $_y < $_firstMedYear)) $_firstMedYear = $_y;
+}
+
+// Choisir le fait le plus marquant
+if ($_nbEpDiff >= 8) {
+    $_funFact = '<strong>' . $_nbEpDiff . ' epreuves differentes</strong> a son palmares';
+    if ($_anneesActives > 0) $_funFact .= ', sur <strong>' . $_anneesActives . ' annees</strong> d\'activite';
+    $_funFact .= '.';
+} elseif ($_totSelections > 0 && $_firstMedYear > 0 && $_anMin > 0) {
+    $_diff = $_firstMedYear - $_anMin;
+    if ($_diff > 0) {
+        $_funFact = 'Sa premiere medaille remonte a <strong>' . $_firstMedYear . '</strong>, soit <strong>' . $_diff . ' an' . ($_diff > 1 ? 's' : '') . '</strong> apres ses debuts en competition.';
+    } else {
+        $_funFact = 'Premiere medaille des sa <strong>premiere saison</strong> en <strong>' . $_firstMedYear . '</strong>.';
+    }
+} elseif ($_totMed >= 5 && $_nbCompDiff >= 3) {
+    $_funFact = '<strong>' . $_totMed . ' medailles</strong> obtenues sur <strong>' . $_nbCompDiff . ' competitions</strong> differentes.';
+} elseif ($_totPodiums > 0 && count($_resultats) > 0) {
+    $_pct = round(($_totPodiums / count($_resultats)) * 100, 1);
+    if ($_pct >= 5) {
+        $_funFact = '<strong>' . $_pct . '%</strong> de ses competitions se concluent sur un podium (<strong>' . $_totPodiums . '</strong> sur <strong>' . count($_resultats) . '</strong>).';
+    }
+} elseif ($_anMax > 0 && $_anMin > 0 && ($_anMax - $_anMin) >= 10) {
+    $_funFact = '<strong>' . ($_anMax - $_anMin + 1) . ' annees</strong> de competition au plus haut niveau, de <strong>' . $_anMin . '</strong> a <strong>' . $_anMax . '</strong>.';
+}
+?>
+
+<?php if (!empty($_hofUniq)): ?>
+<div class="p2-hof">
+    <div class="p2-hof-rubrique">Hall of fame</div>
+    <ol class="p2-hof-list" id="p2HofList">
+    <?php foreach ($_hofUniq as $_idx => $_h):
+        $_hofCat = _p2_categEpreuve($_h['epreuve'] ?? '');
+        if ($_h['kind'] === 'or') { $_kCol = '#fbbf24'; $_kIcon = '★'; }
+        elseif ($_h['kind'] === 'argent') { $_kCol = '#d1d5db'; $_kIcon = '★'; }
+        elseif ($_h['kind'] === 'bronze') { $_kCol = '#d97706'; $_kIcon = '★'; }
+        elseif ($_h['kind'] === 'selection') { $_kCol = '#a29bfe'; $_kIcon = '⚑'; }
+        else { $_kCol = '#22d3ee'; $_kIcon = '◆'; }
+    ?>
+        <li class="p2-hof-item" data-cat="<?= $_hofCat ?>">
+            <span class="p2-hof-num"><?= str_pad($_idx + 1, 2, '0', STR_PAD_LEFT) ?></span>
+            <div class="p2-hof-body">
+                <div class="p2-hof-line1">
+                    <span class="p2-hof-label" style="color: <?= $_kCol ?>;"><?= htmlspecialchars($_h['label']) ?></span>
+                    <?php if (!empty($_h['epreuve'])): ?>
+                        <span class="p2-hof-ep"><?= htmlspecialchars($_h['epreuve']) ?></span>
+                    <?php endif; ?>
+                </div>
+                <div class="p2-hof-line2">
+                    <?php if (!empty($_h['competition'])): ?><em><?= htmlspecialchars($_h['competition']) ?></em><?php endif; ?>
+                    <?php if (!empty($_h['lieu'])): ?> &middot; <?= htmlspecialchars($_h['lieu']) ?><?php endif; ?>
+                    <?php if (!empty($_h['annee'])): ?> &middot; <?= htmlspecialchars($_h['annee']) ?><?php endif; ?>
+                </div>
+            </div>
+        </li>
+    <?php endforeach; ?>
+    </ol>
+</div>
+<?php endif; ?>
+
+<?php if ($_funFact): ?>
+<div class="p2-fact">
+    <span class="p2-fact-mark">?</span>
+    <p class="p2-fact-text"><span class="p2-fact-prefix">Le saviez-vous</span> <?= $_funFact ?></p>
+</div>
+<?php endif; ?>
+
+<?php
+// === LES PREMIERS / LES DERNIERS — narratif d'arc temporel ===
+$_premier = null; $_dernier = null;
+foreach ($_resultats as $_r) {
+    $_dt = $_r['date'] ?? '';
+    if (!$_dt || $_dt === '0000-00-00') continue;
+    if (!$_premier || $_dt < $_premier['date']) $_premier = ['date' => $_dt, 'lieu' => $_r['lieu'] ?? '', 'epreuve' => $_r['epreuve'] ?? ''];
+    if (!$_dernier || $_dt > $_dernier['date']) $_dernier = ['date' => $_dt, 'lieu' => $_r['lieu'] ?? '', 'epreuve' => $_r['epreuve'] ?? ''];
+}
+function _p2FmtDate($d) {
+    if (!$d || $d === '0000-00-00') return '';
+    $ts = strtotime($d);
+    if (!$ts) return substr($d, 0, 4);
+    $mois = ['', 'janv.', 'fevr.', 'mars', 'avril', 'mai', 'juin', 'juil.', 'aout', 'sept.', 'oct.', 'nov.', 'dec.'];
+    return (int)date('j', $ts) . ' ' . $mois[(int)date('n', $ts)] . ' ' . date('Y', $ts);
+}
+$_hasArc = $_premier && $_dernier && $_premier['date'] !== $_dernier['date'];
+?>
+
+<?php if ($_hasArc): ?>
+<div class="p2-arc">
+    <div class="p2-arc-rubrique">L'arc d'une carriere</div>
+    <div class="p2-arc-row">
+        <div class="p2-arc-col">
+            <div class="p2-arc-label">Premier depart</div>
+            <div class="p2-arc-date"><?= htmlspecialchars(_p2FmtDate($_premier['date'])) ?></div>
+            <?php if (!empty($_premier['lieu'])): ?>
+                <div class="p2-arc-meta"><?= htmlspecialchars($_premier['lieu']) ?><?= !empty($_premier['epreuve']) ? ' &middot; <em>' . htmlspecialchars($_premier['epreuve']) . '</em>' : '' ?></div>
+            <?php endif; ?>
+        </div>
+        <div class="p2-arc-line"></div>
+        <div class="p2-arc-col">
+            <div class="p2-arc-label">Derniere course</div>
+            <div class="p2-arc-date"><?= htmlspecialchars(_p2FmtDate($_dernier['date'])) ?></div>
+            <?php if (!empty($_dernier['lieu'])): ?>
+                <div class="p2-arc-meta"><?= htmlspecialchars($_dernier['lieu']) ?><?= !empty($_dernier['epreuve']) ? ' &middot; <em>' . htmlspecialchars($_dernier['epreuve']) . '</em>' : '' ?></div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php
+// === GRAPHIQUE PROGRESSION — toutes epreuves disponibles, selecteur ===
+// Construire une map {epreuve => [{annee, perf, brut}], isDistance}
+$_chartMap = [];
+foreach ($_progressions as $p) {
+    $_ep   = $p['epreuve'] ?? '';
+    $_yr   = (int)($p['annee'] ?? 0);
+    $_perf = (int)($p['performance'] ?? 0);
+    $_brut = $p['performance_brut'] ?? '';
+    if ($_ep === '' || $_yr <= 0 || $_perf <= 0) continue;
+    $_isDist = (bool)preg_match('/Longueur|Triple|Hauteur|Perche|Poids|Disque|Marteau|Javelot/i', $_ep);
+    if (!isset($_chartMap[$_ep])) $_chartMap[$_ep] = ['isDist' => $_isDist, 'years' => []];
+    $_yrs =& $_chartMap[$_ep]['years'];
+    if (!isset($_yrs[$_yr])) {
+        $_yrs[$_yr] = ['perf' => $_perf, 'brut' => $_brut];
+    } else {
+        // temps : meilleure = plus petite ; distance : meilleure = plus grande
+        if (($_isDist && $_perf > $_yrs[$_yr]['perf']) || (!$_isDist && $_perf < $_yrs[$_yr]['perf'])) {
+            $_yrs[$_yr] = ['perf' => $_perf, 'brut' => $_brut];
+        }
+    }
+    unset($_yrs);
+}
+// Garder seulement les epreuves avec >= 2 annees (sinon pas une progression)
+$_chartMap = array_filter($_chartMap, function($v) { return count($v['years']) >= 2; });
+// Trier par nombre d'annees decroissant + tri des annees dans chaque
+uasort($_chartMap, function($a, $b) { return count($b['years']) - count($a['years']); });
+foreach ($_chartMap as &$_e) { ksort($_e['years']); }
+unset($_e);
+// Format pour le JS : labels + data + bruts par epreuve
+// ATTENTION : on utilise $_dataPts (pas $data) pour ne pas ECRASER la reponse API globale !
+$_chartJS = [];
+foreach ($_chartMap as $_ep => $_e) {
+    $labels = []; $_dataPts = []; $bruts = [];
+    foreach ($_e['years'] as $y => $d) { $labels[] = (string)$y; $_dataPts[] = $d['perf']; $bruts[] = $d['brut']; }
+    $_chartJS[$_ep] = ['labels' => $labels, 'data' => $_dataPts, 'bruts' => $bruts, 'isDist' => $_e['isDist']];
+}
+$_chartEpDefault = $_chartJS ? array_key_first($_chartJS) : '';
+?>
+
+<?php if ($_hasSocials || $_isLogged): ?>
+<div class="p2-soc">
+    <div class="p2-soc-rubrique">Reseaux sociaux</div>
+    <div class="p2-soc-list">
+    <?php foreach ($_socPlatforms as $_k => $_p): if (!empty($_athSocials[$_k])): ?>
+        <a class="p2-soc-link" href="<?= htmlspecialchars($_athSocials[$_k]) ?>" target="_blank" rel="noopener noreferrer" title="<?= htmlspecialchars($_p[0]) ?>" style="--soc-col: <?= $_p[1] ?>;">
+            <span class="p2-soc-icon"><?= $_p[2] ?></span>
+            <span class="p2-soc-name"><?= htmlspecialchars($_p[0]) ?></span>
+        </a>
+    <?php endif; endforeach; ?>
+    <?php if ($_isLogged): ?>
+        <button type="button" class="p2-soc-edit" onclick="p2SocOpen()">
+            <?= $_hasSocials ? '&#9998; Gerer' : '+ Ajouter mes reseaux' ?>
+        </button>
+    <?php endif; ?>
+    </div>
+    <?php
+    // Preview embed (iframe) si une URL de contenu social a ete fournie
+    $_socEmbed = !empty($_athSocials['_embed']) ? bkSocialEmbed($_athSocials['_embed']) : null;
+    if ($_socEmbed):
+        $_platBadge = [
+            'youtube'   => ['YouTube',   '#FF0000'],
+            'tiktok'    => ['TikTok',    '#FE2C55'],
+            'instagram' => ['Instagram', '#E1306C'],
+            'twitter'   => ['X',         '#000000'],
+            'facebook'  => ['Facebook',  '#1877F2'],
+        ][$_socEmbed['platform']] ?? ['Aperçu', '#a78bfa'];
+        $_embFixedH = (int)$_socEmbed['height'] > 0;  // YouTube/Facebook = hauteur fixe, autres = auto
+    ?>
+    <div class="p2-soc-embed" style="margin-top:18px;border:1px solid rgba(167,139,250,0.25);border-radius:14px;overflow:hidden;background:#0a0e16;box-shadow:0 8px 30px rgba(0,0,0,0.4);">
+        <div class="p2-soc-embed-head" style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:linear-gradient(90deg,rgba(167,139,250,0.08),transparent);border-bottom:1px solid rgba(167,139,250,0.15);">
+            <span style="display:inline-flex;align-items:center;gap:8px;font-family:'Bodoni Moda',serif;font-style:italic;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#c4b5fd;">
+                <span style="width:6px;height:6px;border-radius:50%;background:<?= $_platBadge[1] ?>;box-shadow:0 0 6px <?= $_platBadge[1] ?>;"></span>
+                Apercu <?= htmlspecialchars($_platBadge[0]) ?>
+            </span>
+            <a href="<?= htmlspecialchars($_athSocials['_embed']) ?>" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:#7e8493;text-decoration:none;font-style:italic;">Ouvrir &rarr;</a>
+        </div>
+        <?php if ($_embFixedH): ?>
+        <div style="position:relative;width:100%;height:<?= (int)$_socEmbed['height'] ?>px;background:#000;">
+            <?= $_socEmbed['html'] ?>
+        </div>
+        <?php else: ?>
+        <div style="padding:14px;display:flex;justify-content:center;background:#0a0e16;">
+            <?= $_socEmbed['html'] ?>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php if (!empty($_socEmbed['script'])): ?>
+    <script async src="<?= htmlspecialchars($_socEmbed['script']) ?>" charset="utf-8"></script>
+    <?php endif; ?>
+    <?php elseif (!empty($_athSocials['_embed'])): ?>
+    <div style="margin-top:12px;padding:10px 14px;border:1px dashed rgba(251,191,36,0.4);border-radius:10px;background:rgba(251,191,36,0.06);color:#fde68a;font-size:12px;font-style:italic;">
+        <strong>URL non embedable :</strong> <a href="<?= htmlspecialchars($_athSocials['_embed']) ?>" target="_blank" rel="noopener noreferrer" style="color:#fbbf24;">ouvrir le lien</a>. Formats supportes : YouTube (watch/shorts), TikTok (/video/), Instagram (/p/, /reel/), X (/status/), Facebook (videos/posts).
+    </div>
+    <?php endif; ?>
+</div>
+
+<?php if ($_isLogged): ?>
+<!-- Modale d'edition reseaux sociaux -->
+<div id="p2SocModal" class="p2-soc-modal" style="display:none;">
+    <div class="p2-soc-modal-box">
+        <div class="p2-soc-modal-tag">&mdash; Reseaux sociaux &mdash;</div>
+        <h3 class="p2-soc-modal-title"><?= htmlspecialchars($i['nom_complet']) ?></h3>
+        <p class="p2-soc-modal-intro">Ajoutez les liens vers les profils sociaux. Laissez vide pour supprimer.</p>
+        <form id="p2SocForm" onsubmit="return p2SocSave(event)">
+            <input type="hidden" name="id" value="<?= (int)$id ?>">
+            <?php foreach ($_socPlatforms as $_k => $_p): ?>
+            <div class="p2-soc-field">
+                <label><?= htmlspecialchars($_p[0]) ?></label>
+                <input type="url" name="<?= $_k ?>" value="<?= htmlspecialchars($_athSocials[$_k] ?? '') ?>" placeholder="https://<?= strtolower($_p[0] === 'X' ? 'x.com' : $_p[0] . '.com') ?>/...">
+            </div>
+            <?php endforeach; ?>
+            <div class="p2-soc-field" style="margin-top:14px;padding-top:14px;border-top:1px dashed rgba(167,139,250,0.3);">
+                <label style="color:#a78bfa;">Preview embed (URL post/video)</label>
+                <input type="url" name="_embed" value="<?= htmlspecialchars($_athSocials['_embed'] ?? '') ?>" placeholder="https://youtube.com/watch?v=... ou tiktok.com/video/... ou instagram.com/p/...">
+                <p style="margin:6px 0 0;font-size:11px;color:#7e8493;font-style:italic;">Colle l'URL d'une video YouTube, d'un TikTok, d'un post Instagram, X ou Facebook : un apercu integre s'affichera sur le profil.</p>
+            </div>
+            <div class="p2-soc-modal-nav">
+                <button type="button" class="p2-soc-btn p2-soc-cancel" onclick="p2SocClose()">Annuler</button>
+                <button type="submit" class="p2-soc-btn p2-soc-save">Enregistrer</button>
+            </div>
+            <p class="p2-soc-msg" id="p2SocMsg"></p>
+        </form>
+    </div>
+</div>
+<script>
+function p2SocOpen()  { document.getElementById('p2SocModal').style.display = 'flex'; }
+function p2SocClose() { document.getElementById('p2SocModal').style.display = 'none'; document.getElementById('p2SocMsg').textContent = ''; }
+function p2SocSave(e) {
+    e.preventDefault();
+    var form = document.getElementById('p2SocForm');
+    var fd = new FormData(form);
+    var payload = {};
+    fd.forEach(function(v, k) { payload[k] = v; });
+    var msg = document.getElementById('p2SocMsg');
+    msg.textContent = 'Enregistrement...';
+    msg.className = 'p2-soc-msg';
+    fetch('<?= $_canonBase ?>/api/athlete_socials.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) {
+            msg.textContent = 'Enregistre. Rechargement...';
+            msg.className = 'p2-soc-msg p2-soc-msg-ok';
+            setTimeout(function() { location.reload(); }, 700);
+        } else {
+            msg.textContent = d.error || 'Erreur';
+            msg.className = 'p2-soc-msg p2-soc-msg-err';
+        }
+    })
+    .catch(function() {
+        msg.textContent = 'Erreur reseau';
+        msg.className = 'p2-soc-msg p2-soc-msg-err';
+    });
+    return false;
+}
+</script>
+<?php endif; ?>
+<?php endif; ?>
+
+<?php
+// === ATHLETES SIMILAIRES — 3 sections : meme niveau / niveau superieur / niveau inferieur ===
+function _p2_buildSimList($conn, $BASE_API, $id, $mode, $limit = 4) {
+    $data = apiCall("$BASE_API/similar.php?id=$id&mode=$mode");
+    $list = [];
+    if (!$data || !($data['success'] ?? false)) return $list;
+    foreach (($data['clubs'] ?? []) as $cl) {
+        foreach (($cl['athletes'] ?? []) as $a) {
+            $list[] = [
+                'id'         => $a['athlete_id'] ?? 0,
+                'nom'        => $a['nom_complet'] ?? '',
+                'niveau'     => $a['niveau'] ?? '',
+                'niveau_ep'  => $a['niveau_ep'] ?? '',
+                'similarite' => (int)($a['similarite'] ?? 0),
+                'cat'        => $a['categorie'] ?? '',
+                'club'       => $cl['club_nom'] ?? '',
+            ];
+        }
+    }
+    $seen = [];
+    $list = array_values(array_filter($list, function($a) use (&$seen) {
+        if (!$a['id'] || isset($seen[$a['id']])) return false;
+        $seen[$a['id']] = 1;
+        return true;
+    }));
+    usort($list, function($a, $b) { return $b['similarite'] - $a['similarite']; });
+    return array_slice($list, 0, $limit);
+}
+
+$_simSame = _p2_buildSimList($conn, $BASE_API, $id, 'niveau', 4);
+$_simSup  = _p2_buildSimList($conn, $BASE_API, $id, 'niveau_sup', 4);
+$_simInf  = _p2_buildSimList($conn, $BASE_API, $id, 'niveau_inf', 4);
+
+function _p2_renderSimRow($title, $subtitle, $list, $variant = 'same') {
+    if (empty($list)) return '';
+    $html = '<div class="p2-sim-section p2-sim-section--' . $variant . '">';
+    $html .= '<div class="p2-sim-section-head"><span class="p2-sim-section-title">' . htmlspecialchars($title) . '</span>';
+    if ($subtitle) $html .= '<span class="p2-sim-section-sub">' . htmlspecialchars($subtitle) . '</span>';
+    $html .= '</div>';
+    $html .= '<div class="p2-sim-row">';
+    foreach ($list as $idx => $s) {
+        $nc = $s['niveau'];
+        if (in_array($nc, ['IA','IB','IE'], true)) $col = '#e879f9';
+        elseif (preg_match('/^IR/', $nc)) $col = '#c084fc';
+        elseif ($nc !== '' && $nc[0] === 'N') $col = '#fb7185';
+        elseif ($nc !== '' && $nc[0] === 'R') $col = '#22d3ee';
+        else $col = '#fb923c';
+        $html .= '<a class="p2-sim-card" href="?page=profil&id=' . (int)$s['id'] . '">';
+        $html .= '<div class="p2-sim-num">' . str_pad($idx + 1, 2, '0', STR_PAD_LEFT) . '</div>';
+        $html .= '<div class="p2-sim-name">' . htmlspecialchars($s['nom']) . '</div>';
+        $html .= '<div class="p2-sim-meta">';
+        if ($nc) $html .= '<span class="p2-sim-niv" style="color: ' . $col . '; text-shadow: 0 1px 2px rgba(0,0,0,0.7), 0 0 4px rgba(0,0,0,0.4);">' . htmlspecialchars($nc) . '</span>';
+        if ($s['cat']) $html .= '<span class="p2-sim-cat">' . htmlspecialchars($s['cat']) . '</span>';
+        $html .= '</div>';
+        if (!empty($s['niveau_ep'])) $html .= '<div class="p2-sim-ep"><em>sur</em> ' . htmlspecialchars($s['niveau_ep']) . '</div>';
+        $html .= '<div class="p2-sim-club">' . htmlspecialchars($s['club']) . '</div>';
+        $html .= '<div class="p2-sim-score">' . $s['similarite'] . '%</div>';
+        $html .= '</a>';
+    }
+    $html .= '</div></div>';
+    return $html;
+}
+$_anySim = !empty($_simSame) || !empty($_simSup) || !empty($_simInf);
+?>
+
+<?php if ($_anySim): ?>
+<div class="p2-sim">
+    <div class="p2-sim-rubrique">Dans la meme constellation</div>
+    <?= _p2_renderSimRow('Meme niveau', 'Athletes au meme niveau', $_simSame, 'same') ?>
+    <?= _p2_renderSimRow('Niveau superieur', 'Athletes du niveau au-dessus', $_simSup, 'sup') ?>
+    <?= _p2_renderSimRow('Niveau inferieur', 'Athletes du niveau en-dessous', $_simInf, 'inf') ?>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($_chartJS)): ?>
+<div class="p2-chart">
+    <div class="p2-chart-rubrique">Progression <span id="p2ChartEpLabel"><?= htmlspecialchars($_chartEpDefault) ?></span></div>
+
+    <div class="p2-chart-eps" id="p2ChartEps">
+    <?php $_idx = 0; foreach ($_chartJS as $_ep => $_e): ?>
+        <button type="button" class="p2-chart-ep<?= $_idx === 0 ? ' active' : '' ?>" data-ep="<?= htmlspecialchars($_ep, ENT_QUOTES) ?>"><?= htmlspecialchars($_ep) ?></button>
+    <?php $_idx++; endforeach; ?>
+    </div>
+
+    <div class="p2-chart-canvas-wrap">
+        <canvas id="p2ProgChart" height="180"></canvas>
+    </div>
+    <div class="p2-chart-foot">
+        <span class="p2-chart-yr" id="p2ChartFirstYr"></span>
+        <span class="p2-chart-line"></span>
+        <span class="p2-chart-yr" id="p2ChartLastYr"></span>
+    </div>
+    <p class="p2-chart-summary" id="p2ChartSummary"></p>
+</div>
+<script>
+(function() {
+    var ctx = document.getElementById('p2ProgChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    var EPS = <?= json_encode($_chartJS, JSON_UNESCAPED_UNICODE) ?>;
+    var chart = null;
+
+    function fmtPerfInt(perfInt, isDist) {
+        // Recompose une lecture lisible depuis l'entier (centiemes pour temps, cm pour distance)
+        if (isDist) {
+            // distance en cm
+            if (perfInt >= 100) return (perfInt / 100).toFixed(2).replace('.', ',') + ' m';
+            return perfInt + ' cm';
+        }
+        // temps en centiemes
+        if (perfInt >= 6000) {
+            // > 1 minute
+            var min = Math.floor(perfInt / 6000);
+            var sec = Math.floor((perfInt % 6000) / 100);
+            var cs  = perfInt % 100;
+            return min + "'" + (sec < 10 ? '0' : '') + sec + "''" + (cs < 10 ? '0' : '') + cs;
+        }
+        var sec = Math.floor(perfInt / 100);
+        var cs  = perfInt % 100;
+        return sec + "''" + (cs < 10 ? '0' : '') + cs;
+    }
+
+    function buildSummary(ep, d) {
+        var n = d.labels.length;
+        if (n < 2) return '';
+        var first = d.labels[0], last = d.labels[n - 1];
+        var startInt = d.data[0], endInt = d.data[n - 1];
+        var startBrut = d.bruts[0] || fmtPerfInt(startInt, d.isDist);
+        // Meilleure perf
+        var bestInt = d.data[0], bestIdx = 0;
+        for (var k = 0; k < n; k++) {
+            if ((d.isDist && d.data[k] > bestInt) || (!d.isDist && d.data[k] < bestInt)) {
+                bestInt = d.data[k]; bestIdx = k;
+            }
+        }
+        var bestBrut = d.bruts[bestIdx] || fmtPerfInt(bestInt, d.isDist);
+        var bestYear = d.labels[bestIdx];
+
+        // Delta perf depart -> meilleure
+        var deltaTxt = '';
+        var deltaInt = d.isDist ? (bestInt - startInt) : (startInt - bestInt);
+        if (deltaInt > 0) {
+            if (d.isDist) {
+                deltaTxt = (deltaInt >= 100) ? (deltaInt / 100).toFixed(2).replace('.', ',') + ' m' : deltaInt + ' cm';
+            } else {
+                deltaTxt = (deltaInt >= 100) ? (deltaInt / 100).toFixed(2).replace('.', ',') + ' s' : deltaInt + ' centiemes';
+            }
+        }
+
+        // Tendance recente : derniere vs meilleure
+        var tendance = '';
+        if (bestIdx === n - 1) tendance = ' actuellement <em>au sommet</em> de sa progression';
+        else if (bestIdx === 0) tendance = ', <em>pic atteint des le depart</em>';
+        else {
+            var dec = d.isDist ? (bestInt - endInt) : (endInt - bestInt);
+            if (dec > 0) {
+                var decTxt;
+                if (d.isDist) decTxt = (dec >= 100) ? (dec / 100).toFixed(2).replace('.', ',') + ' m' : dec + ' cm';
+                else decTxt = (dec >= 100) ? (dec / 100).toFixed(2).replace('.', ',') + ' s' : dec + ' centiemes';
+                tendance = ', avec un leger recul de <em>' + decTxt + '</em> depuis';
+            }
+        }
+
+        var s = '<strong>' + n + '</strong> saison' + (n > 1 ? 's' : '') + ' documentee' + (n > 1 ? 's' : '');
+        s += ' entre <strong>' + first + '</strong> et <strong>' + last + '</strong>';
+        s += '. Pic atteint en <strong>' + bestYear + '</strong> avec <strong>' + bestBrut + '</strong>';
+        if (deltaTxt && bestIdx !== 0) {
+            s += ', soit <em>' + deltaTxt + '</em> d\'amelioration depuis ' + startBrut;
+        }
+        s += tendance + '.';
+        return s;
+    }
+
+    function render(ep) {
+        var d = EPS[ep]; if (!d) return;
+        document.getElementById('p2ChartEpLabel').textContent = ep;
+        document.getElementById('p2ChartFirstYr').textContent = d.labels[0] || '';
+        document.getElementById('p2ChartLastYr').textContent  = d.labels[d.labels.length - 1] || '';
+        var sumEl = document.getElementById('p2ChartSummary');
+        if (sumEl) sumEl.innerHTML = buildSummary(ep, d);
+        if (chart) {
+            chart.data.labels = d.labels;
+            chart.data.datasets[0].data = d.data;
+            chart.options.scales.y.reverse = !d.isDist;
+            chart._bruts = d.bruts;
+            chart.update();
+            return;
+        }
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: d.labels,
+                datasets: [{
+                    data: d.data,
+                    borderColor: '#a29bfe',
+                    backgroundColor: 'rgba(162,155,254,0.06)',
+                    borderWidth: 1.6,
+                    pointRadius: 4,
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: '#0d1117',
+                    pointBorderColor: '#a29bfe',
+                    pointBorderWidth: 1.5,
+                    tension: 0.35,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#0d1117',
+                        titleColor: '#f0f6fc',
+                        bodyColor: '#a29bfe',
+                        borderColor: '#30363d',
+                        borderWidth: 1,
+                        padding: 10,
+                        titleFont: { family: 'Bodoni Moda, serif', size: 12, style: 'italic' },
+                        bodyFont:  { family: 'Bodoni Moda, serif', size: 14, weight: 700 },
+                        displayColors: false,
+                        callbacks: {
+                            label: function(c) { return (chart._bruts && chart._bruts[c.dataIndex]) || c.parsed.y; }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false, drawBorder: false },
+                        ticks: { color: '#6e7681', font: { family: 'Bodoni Moda, serif', size: 11, style: 'italic' } }
+                    },
+                    y: {
+                        reverse: !d.isDist,
+                        grid: { color: '#21262d', drawBorder: false },
+                        ticks: { display: false }
+                    }
+                }
+            }
+        });
+        chart._bruts = d.bruts;
+    }
+
+    document.querySelectorAll('#p2ChartEps .p2-chart-ep').forEach(function(b) {
+        b.addEventListener('click', function() {
+            document.querySelectorAll('#p2ChartEps .p2-chart-ep').forEach(function(x) { x.classList.toggle('active', x === b); });
+            render(b.dataset.ep);
+        });
+    });
+
+    var firstEp = Object.keys(EPS)[0];
+    if (firstEp) render(firstEp);
+})();
+</script>
+<?php endif; ?>
+
+<?php
+// === VOIR PLUS — agregations par annee / discipline / niveau ===
+$_nivOrder = ['IA'=>40,'IB'=>35,'IE'=>34,'N1'=>30,'N2'=>28,'N3'=>26,'N4'=>24,'IR1'=>21,'IR2'=>20,'IR3'=>19,'IR4'=>18,'IR'=>17,'R1'=>15,'R2'=>14,'R3'=>13,'R4'=>12,'R5'=>11,'R6'=>10,'D1'=>8,'D2'=>7,'D3'=>6,'D4'=>5,'D5'=>4,'D6'=>3,'D7'=>2];
+
+// Par annee
+$_byYear = [];
+foreach ($_records as $r) {
+    $_yr = !empty($r['date']) ? (int)substr($r['date'], 0, 4) : 0;
+    if ($_yr > 0) {
+        if (!isset($_byYear[$_yr])) $_byYear[$_yr] = ['perfs'=>0,'best_niv'=>'','best_pts'=>0,'top_ep'=>''];
+        $_byYear[$_yr]['perfs']++;
+        foreach (($r['niveaux'] ?? []) as $_nc) {
+            $_pts = $_nivOrder[$_nc] ?? 0;
+            if ($_pts > $_byYear[$_yr]['best_pts']) {
+                $_byYear[$_yr]['best_pts'] = $_pts;
+                $_byYear[$_yr]['best_niv'] = $_nc;
+                $_byYear[$_yr]['top_ep'] = $r['epreuve'] ?? '';
+            }
+        }
+    }
+}
+foreach ($_progressions as $p) {
+    $_yr = (int)($p['annee'] ?? 0);
+    if ($_yr > 0) {
+        if (!isset($_byYear[$_yr])) $_byYear[$_yr] = ['perfs'=>0,'best_niv'=>'','best_pts'=>0,'top_ep'=>''];
+        $_byYear[$_yr]['perfs']++;
+        foreach (($p['niveaux'] ?? []) as $_nc) {
+            $_pts = $_nivOrder[$_nc] ?? 0;
+            if ($_pts > $_byYear[$_yr]['best_pts']) {
+                $_byYear[$_yr]['best_pts'] = $_pts;
+                $_byYear[$_yr]['best_niv'] = $_nc;
+                $_byYear[$_yr]['top_ep'] = $p['epreuve'] ?? '';
+            }
+        }
+    }
+}
+krsort($_byYear);
+
+// Par discipline (depuis records)
+$_byEp = [];
+foreach ($_records as $r) {
+    $_ep = $r['epreuve'] ?? '';
+    if ($_ep === '') continue;
+    if (!isset($_byEp[$_ep])) {
+        $_topNiv = '';
+        $_topPts = 0;
+        foreach (($r['niveaux'] ?? []) as $_nc) {
+            $_pts = $_nivOrder[$_nc] ?? 0;
+            if ($_pts > $_topPts) { $_topPts = $_pts; $_topNiv = $_nc; }
+        }
+        $_byEp[$_ep] = [
+            'perf'   => $r['performance_brut'] ?? $r['performance'] ?? '',
+            'annee'  => !empty($r['date']) ? substr($r['date'], 0, 4) : '',
+            'niveau' => $_topNiv,
+            'pts'    => $_topPts,
+            'nb'     => 0,
+        ];
+    }
+}
+foreach ($_progressions as $p) {
+    $_ep = $p['epreuve'] ?? '';
+    if (isset($_byEp[$_ep])) $_byEp[$_ep]['nb']++;
+}
+uasort($_byEp, function($a, $b) { return $b['pts'] - $a['pts']; });
+
+// Par niveau
+$_byNiv = [];
+foreach ($_records as $r) {
+    foreach (($r['niveaux'] ?? []) as $_nc) {
+        if (!isset($_byNiv[$_nc])) $_byNiv[$_nc] = ['count'=>0,'years'=>[],'eps'=>[]];
+        $_byNiv[$_nc]['count']++;
+        $_yr = !empty($r['date']) ? (int)substr($r['date'], 0, 4) : 0;
+        if ($_yr > 0) $_byNiv[$_nc]['years'][$_yr] = 1;
+        if (!empty($r['epreuve'])) $_byNiv[$_nc]['eps'][$r['epreuve']] = 1;
+    }
+}
+foreach ($_progressions as $p) {
+    foreach (($p['niveaux'] ?? []) as $_nc) {
+        if (!isset($_byNiv[$_nc])) $_byNiv[$_nc] = ['count'=>0,'years'=>[],'eps'=>[]];
+        $_byNiv[$_nc]['count']++;
+        $_yr = (int)($p['annee'] ?? 0);
+        if ($_yr > 0) $_byNiv[$_nc]['years'][$_yr] = 1;
+        if (!empty($p['epreuve'])) $_byNiv[$_nc]['eps'][$p['epreuve']] = 1;
+    }
+}
+uksort($_byNiv, function($a, $b) use ($_nivOrder) {
+    return ($_nivOrder[$b] ?? 0) - ($_nivOrder[$a] ?? 0);
+});
+
+$_hasMoreData = !empty($_byYear) || !empty($_byEp) || !empty($_byNiv);
+
+function _p2NivCol($nc) {
+    if (in_array($nc, ['IA','IB','IE'], true)) return '#e879f9';
+    if (preg_match('/^IR/', $nc)) return '#c084fc';
+    if ($nc !== '' && $nc[0] === 'N') return '#fb7185';
+    if ($nc !== '' && $nc[0] === 'R') return '#22d3ee';
+    return '#fb923c';
+}
+
+// ================================================================
+//  #8 CARRIERE EN CHIFFRES + #7 TIMELINE CHRONOLOGIQUE
+// ================================================================
+// Compteur de competitions : une competition = (date, lieu) unique
+// agregee sur toutes les sources de perfs (records, resultats, progressions, podiums, medailles)
+$_competsKeys = [];
+$_addCompet = function($d, $l) use (&$_competsKeys) {
+    $d = trim((string)$d); $l = trim((string)$l);
+    if ($d === '' && $l === '') return;
+    $_competsKeys[$d . '|' . $l] = 1;
+};
+foreach ($_records      as $_r) $_addCompet($_r['date'] ?? '', $_r['lieu'] ?? '');
+foreach ($_resultats    as $_r) $_addCompet($_r['date'] ?? '', $_r['lieu'] ?? '');
+foreach ($_progressions as $_r) $_addCompet($_r['date'] ?? '', $_r['lieu'] ?? '');
+foreach ($_podiums      as $_r) $_addCompet($_r['date'] ?? '', $_r['lieu'] ?? '');
+foreach (($data['medailles'] ?? []) as $_m) $_addCompet($_m['date'] ?? '', $_m['lieu'] ?? '');
+
+$_career = [
+    'annees' => [],
+    'nb_competitions' => count($_competsKeys),
+    'nb_records' => count($_records),
+    'nb_progressions' => count($_progressions),
+    'nb_podiums' => count($_podiums),
+    'nb_selections' => count($_selections),
+    'nb_medailles' => count($data['medailles'] ?? []),
+    'nb_or' => 0, 'nb_argent' => 0, 'nb_bronze' => 0,
+    'distance_km' => 0,
+    'disciplines' => [],
+    'villes' => [],
+    'best_niv' => '', 'best_niv_order' => 99,
+];
+foreach ($_resultats as $_r) if (!empty($_r['annee'])) $_career['annees'][(int)$_r['annee']] = 1;
+foreach ($_progressions as $_r) if (!empty($_r['annee'])) $_career['annees'][(int)$_r['annee']] = 1;
+foreach ($_records as $_r) if (!empty($_r['date'])) { $_yyy = (int)substr($_r['date'],0,4); if ($_yyy > 0) $_career['annees'][$_yyy] = 1; }
+foreach (($data['medailles'] ?? []) as $_m) {
+    $_t = strtolower(trim($_m['type'] ?? ''));
+    if ($_t === 'or') $_career['nb_or']++;
+    elseif ($_t === 'argent') $_career['nb_argent']++;
+    elseif ($_t === 'bronze') $_career['nb_bronze']++;
+}
+foreach ($_resultats as $_r) {
+    $_ep = trim($_r['epreuve'] ?? '');
+    if ($_ep !== '') $_career['disciplines'][$_ep] = 1;
+    $_vL = trim($_r['lieu'] ?? '');
+    if ($_vL !== '') $_career['villes'][$_vL] = ($_career['villes'][$_vL] ?? 0) + 1;
+    // Distance cumulee : extraire la distance depuis le nom d'epreuve si course
+    $_eN = strtolower($_r['epreuve'] ?? '');
+    if (preg_match('/^\s*(\d+(?:\s+\d+)*)\s*m\b/', $_eN, $_dm)) {
+        $_career['distance_km'] += (int)str_replace(' ', '', $_dm[1]) / 1000;
+    } elseif (preg_match('/(\d+)\s*km/', $_eN, $_km)) {
+        $_career['distance_km'] += (int)$_km[1];
+    } elseif (strpos($_eN, 'marathon') !== false && strpos($_eN, 'semi') === false) {
+        $_career['distance_km'] += 42.195;
+    } elseif (strpos($_eN, 'semi') !== false) {
+        $_career['distance_km'] += 21.0975;
+    }
+}
+foreach ($_records as $_r) {
+    $_ep = trim($_r['epreuve'] ?? '');
+    if ($_ep !== '') $_career['disciplines'][$_ep] = 1;
+    $_vL = trim($_r['lieu'] ?? '');
+    if ($_vL !== '') $_career['villes'][$_vL] = ($_career['villes'][$_vL] ?? 0) + 1;
+    foreach (($_r['niveaux'] ?? []) as $_nc) {
+        $_o = _p2_nivOrder($_nc);
+        if ($_o < $_career['best_niv_order']) { $_career['best_niv_order'] = $_o; $_career['best_niv'] = $_nc; }
+    }
+}
+foreach ($_progressions as $_r) {
+    $_ep = trim($_r['epreuve'] ?? '');
+    if ($_ep !== '') $_career['disciplines'][$_ep] = 1;
+    $_vL = trim($_r['lieu'] ?? '');
+    if ($_vL !== '') $_career['villes'][$_vL] = ($_career['villes'][$_vL] ?? 0) + 1;
+    foreach (($_r['niveaux'] ?? []) as $_nc) {
+        $_o = _p2_nivOrder($_nc);
+        if ($_o < $_career['best_niv_order']) { $_career['best_niv_order'] = $_o; $_career['best_niv'] = $_nc; }
+    }
+}
+foreach ($_podiums as $_r) {
+    $_vL = trim($_r['lieu'] ?? '');
+    if ($_vL !== '') $_career['villes'][$_vL] = ($_career['villes'][$_vL] ?? 0) + 1;
+}
+foreach (($data['medailles'] ?? []) as $_m) {
+    $_vL = trim($_m['lieu'] ?? '');
+    if ($_vL !== '') $_career['villes'][$_vL] = ($_career['villes'][$_vL] ?? 0) + 1;
+}
+foreach (($data['niveaux'] ?? []) as $_n) {
+    $_o = _p2_nivOrder($_n['code_niveau'] ?? '');
+    if ($_o < $_career['best_niv_order']) { $_career['best_niv_order'] = $_o; $_career['best_niv'] = $_n['code_niveau']; }
+}
+$_career['nb_annees_actives'] = count($_career['annees']);
+$_career['nb_disciplines'] = count(array_filter(array_keys($_career['disciplines']), function($k){ return $k !== ''; }));
+$_career['nb_villes'] = count($_career['villes']);
+$_career['premiere_annee'] = !empty($_career['annees']) ? min(array_keys($_career['annees'])) : 0;
+$_career['derniere_annee'] = !empty($_career['annees']) ? max(array_keys($_career['annees'])) : 0;
+
+// Construction de la timeline (moments cles)
+$_timeline = [];
+$_seenLevel = [];
+// Agrege tous les niveaux atteints par annee (best annuel)
+$_nivByYearTL = [];
+foreach (($data['niveaux'] ?? []) as $_n) {
+    $_yT = (int)($_n['annee'] ?? 0);
+    $_codeT = $_n['code_niveau'] ?? '';
+    if ($_yT <= 0 || !$_codeT) continue;
+    if (!isset($_nivByYearTL[$_yT]) || _p2_nivOrder($_codeT) < _p2_nivOrder($_nivByYearTL[$_yT])) {
+        $_nivByYearTL[$_yT] = $_codeT;
+    }
+}
+foreach ($_records as $_r) {
+    foreach (($_r['niveaux'] ?? []) as $_nc) {
+        $_yT = !empty($_r['date']) ? (int)substr($_r['date'],0,4) : 0;
+        if ($_yT <= 0) continue;
+        if (!isset($_nivByYearTL[$_yT]) || _p2_nivOrder($_nc) < _p2_nivOrder($_nivByYearTL[$_yT])) {
+            $_nivByYearTL[$_yT] = $_nc;
+        }
+    }
+}
+ksort($_nivByYearTL);
+$_bestSoFarOrder = 99;
+foreach ($_nivByYearTL as $_yr => $_code) {
+    $_o = _p2_nivOrder($_code);
+    if ($_o < $_bestSoFarOrder) {
+        $_bestSoFarOrder = $_o;
+        $_timeline[] = ['y'=>$_yr, 'icon'=>'&#9733;', 'col'=>'#e879f9', 'lab'=>'Premier classement <strong>' . htmlspecialchars($_code) . '</strong>'];
+    }
+}
+// Premiere competition
+if ($_career['premiere_annee'] > 0) {
+    $_timeline[] = ['y'=>$_career['premiere_annee'], 'icon'=>'&#127939;', 'col'=>'#34d399', 'lab'=>'Debut de carriere documentee'];
+}
+// Premiere medaille
+$_medSorted = [];
+foreach (($data['medailles'] ?? []) as $_m) {
+    $_yM = (int)($_m['annee'] ?? (!empty($_m['date']) ? substr($_m['date'],0,4) : 0));
+    if ($_yM > 0) $_medSorted[] = ['y'=>$_yM, 'type'=>strtolower(trim($_m['type']??'')), 'ep'=>$_m['epreuve']??''];
+}
+usort($_medSorted, function($a,$b){ return $a['y'] - $b['y']; });
+$_seenMedTypes = [];
+foreach ($_medSorted as $_m) {
+    if (!isset($_seenMedTypes[$_m['type']])) {
+        $_seenMedTypes[$_m['type']] = 1;
+        $_iconM = $_m['type'] === 'or' ? '&#129351;' : ($_m['type'] === 'argent' ? '&#129352;' : ($_m['type'] === 'bronze' ? '&#129353;' : '&#127941;'));
+        $_colM = $_m['type'] === 'or' ? '#fbbf24' : ($_m['type'] === 'argent' ? '#cbd5e1' : ($_m['type'] === 'bronze' ? '#d97706' : '#a78bfa'));
+        $_timeline[] = ['y'=>$_m['y'], 'icon'=>$_iconM, 'col'=>$_colM, 'lab'=>'Premiere medaille <strong>' . htmlspecialchars($_m['type']) . '</strong>' . ($_m['ep'] ? ' sur <em>' . htmlspecialchars($_m['ep']) . '</em>' : '')];
+    }
+}
+// Premier podium
+if (!empty($_podiums)) {
+    $_pSort = $_podiums;
+    usort($_pSort, function($a,$b){ return ($a['annee']??0) - ($b['annee']??0); });
+    $_p1 = $_pSort[0];
+    if (!empty($_p1['annee'])) {
+        $_timeline[] = ['y'=>(int)$_p1['annee'], 'icon'=>'&#129351;', 'col'=>'#a78bfa', 'lab'=>'Premier podium' . (!empty($_p1['epreuve']) ? ' sur <em>' . htmlspecialchars($_p1['epreuve']) . '</em>' : '')];
+    }
+}
+// Premiere selection
+if (!empty($_selections)) {
+    $_sSort = $_selections;
+    usort($_sSort, function($a,$b){ $ya = !empty($a['date']) ? (int)substr($a['date'],0,4) : 0; $yb = !empty($b['date']) ? (int)substr($b['date'],0,4) : 0; return $ya - $yb; });
+    $_s1 = $_sSort[0];
+    $_yS = !empty($_s1['date']) ? (int)substr($_s1['date'],0,4) : 0;
+    if ($_yS > 0) {
+        $_timeline[] = ['y'=>$_yS, 'icon'=>'&#127942;', 'col'=>'#34d399', 'lab'=>'Premiere selection ' . htmlspecialchars($_s1['type'] ?? '') . ' (<em>' . htmlspecialchars($_s1['competition'] ?? '') . '</em>)'];
+    }
+}
+// Trier la timeline par annee, dedoublonner par (annee,label)
+usort($_timeline, function($a,$b){ return $a['y'] - $b['y']; });
+$_timelineUniq = [];
+$_seenKey = [];
+foreach ($_timeline as $_t) {
+    $_k = $_t['y'] . '|' . strip_tags($_t['lab']);
+    if (isset($_seenKey[$_k])) continue;
+    $_seenKey[$_k] = 1;
+    $_timelineUniq[] = $_t;
+}
+$_timeline = $_timelineUniq;
+?>
+
+<style>
+.p2-careers { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin:30px auto 14px; max-width:900px; padding:0 12px; }
+.p2-career-stat { text-align:center; padding:14px 8px; background:rgba(162,155,254,0.06); border:1px solid #1f2940; border-radius:8px; }
+.p2-career-stat .v { font-family:'Bodoni Moda', serif; font-size:26px; font-weight:800; color:#a29bfe; line-height:1; margin-bottom:4px; }
+.p2-career-stat .k { font-size:10px; color:#8b949e; text-transform:uppercase; letter-spacing:0.4px; font-weight:600; }
+.p2-career-stat.gold .v { color:#fbbf24; }
+.p2-career-stat.silver .v { color:#cbd5e1; }
+.p2-career-stat.bronze .v { color:#d97706; }
+.p2-career-stat.total .v { color:#34d399; }
+
+/* Periode editoriale : "2004 ─── 2026" */
+.p2-career-stat.period {
+    grid-column: span 2;
+    padding: 18px 18px 14px;
+    background: linear-gradient(135deg, rgba(167,139,250,0.18) 0%, rgba(108,92,231,0.06) 100%);
+    border: 1px solid rgba(167,139,250,0.4);
+    box-shadow: 0 4px 20px rgba(108,92,231,0.15), inset 0 1px 0 rgba(255,255,255,0.06);
+    position: relative;
+    overflow: hidden;
+}
+.p2-career-stat.period::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 50%;
+    width: 60%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(167,139,250,0.7), transparent);
+    transform: translateX(-50%);
+}
+.p2-career-stat.period .period-eyebrow {
+    font-family: 'Bodoni Moda', serif;
+    font-style: italic;
+    font-size: 9px;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    color: rgba(167,139,250,0.7);
+    margin-bottom: 8px;
+    text-align: center;
+}
+.p2-career-stat.period .year-range {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    font-family: 'Bodoni Moda', serif;
+    font-weight: 800;
+    font-size: 30px;
+    color: #c4b5fd;
+    line-height: 1;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+    text-shadow: 0 0 16px rgba(167,139,250,0.5), 0 2px 4px rgba(0,0,0,0.4);
+}
+.p2-career-stat.period .year-range .year {
+    transition: color 0.2s;
+}
+.p2-career-stat.period .year-range .dash {
+    flex: 0 0 36px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #a78bfa 50%, transparent);
+    opacity: 0.85;
+    border-radius: 2px;
+}
+.p2-career-stat.period .k {
+    color: rgba(196,181,253,0.85);
+    font-style: italic;
+    font-family: 'Bodoni Moda', serif;
+    font-size: 11px;
+    text-transform: none;
+    letter-spacing: 0.08em;
+}
+.p2-career-stat.period .k strong {
+    color: #e9d5ff;
+    font-weight: 800;
+    font-size: 13px;
+    margin: 0 3px;
+}
+@media (max-width:600px) {
+    .p2-career-stat.period { grid-column: span 2; padding: 14px 10px 10px; }
+    .p2-career-stat.period .year-range { font-size: 22px; gap: 10px; }
+    .p2-career-stat.period .year-range .dash { flex: 0 0 24px; }
+}
+body.p2-light .p2-career-stat.period { background: linear-gradient(135deg, rgba(108,92,231,0.10) 0%, rgba(108,92,231,0.02) 100%); border-color: rgba(108,92,231,0.35); }
+body.p2-light .p2-career-stat.period .year-range { color: #5a3a8a; text-shadow: 0 0 8px rgba(108,92,231,0.3); }
+body.p2-light .p2-career-stat.period .period-eyebrow { color: rgba(90,58,138,0.6); }
+body.p2-light .p2-career-stat.period .k { color: rgba(90,58,138,0.8); }
+body.p2-light .p2-career-stat.period .k strong { color: #4c1d95; }
+body.p2-light .p2-career-stat { background:rgba(255,255,255,0.4); border-color:#c9bfa6; }
+body.p2-light .p2-career-stat .v { color:#5a3a8a; }
+body.p2-light .p2-career-stat .k { color:#5a5040; }
+body.p2-light .p2-career-stat.gold .v { color:#92400e; }
+body.p2-light .p2-career-stat.silver .v { color:#475569; }
+body.p2-light .p2-career-stat.bronze .v { color:#7c2d12; }
+body.p2-light .p2-career-stat.total .v { color:#1a4d3a; }
+
+.p2-villes { max-width:900px; margin:18px auto 8px; padding:0 12px; }
+.p2-villes-rubrique { font-family:'Bodoni Moda',serif; font-style:italic; font-size:11px; color:#6e7681; letter-spacing:0.45em; text-transform:uppercase; text-align:center; margin-bottom:14px; }
+.p2-villes-list { display:flex; flex-wrap:wrap; gap:7px; justify-content:center; }
+.p2-ville-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; background:rgba(162,155,254,0.06); border:1px solid #1f2940; border-radius:20px; text-decoration:none; transition:border-color .15s, background .15s; }
+.p2-ville-chip:hover { border-color:#a29bfe; background:rgba(162,155,254,0.12); }
+.p2-ville-nom { font-size:12px; color:#c9d1d9; font-weight:600; }
+.p2-ville-cnt { font-size:10px; font-weight:800; color:#a29bfe; background:rgba(162,155,254,0.15); border-radius:10px; padding:1px 6px; min-width:16px; text-align:center; }
+body.p2-light .p2-villes-rubrique { color:#5a5040; }
+body.p2-light .p2-ville-chip { background:rgba(255,255,255,0.4); border-color:#c9bfa6; }
+body.p2-light .p2-ville-chip:hover { border-color:#5a3a8a; }
+body.p2-light .p2-ville-nom { color:#1a1814; }
+body.p2-light .p2-ville-cnt { color:#5a3a8a; background:rgba(90,58,138,0.12); }
+
+.p2-map-block { margin-top:26px; }
+.p2-map-wrap { position:relative; }
+#p2VillesMap { height:380px; border:1px solid #1f2940; border-radius:10px; overflow:hidden; background:#0d1117; transition:height .5s ease; }
+.p2-map-wrap.is-3d #p2VillesMap { height:620px; }
+#p2VillesMap .maplibregl-map { background:#0d1117; }
+.p2-map-status { text-align:center; font-size:14px; color:#a29bfe; font-weight:700; margin-top:12px; }
+body.p2-light #p2VillesMap { border-color:#c9bfa6; background:#e8e0d0; }
+body.p2-light #p2VillesMap .maplibregl-map { background:#e8e0d0; }
+body.p2-light .p2-map-status { color:#5a3a8a; }
+@media (max-width:600px) {
+    #p2VillesMap { height:300px; }
+    .p2-map-wrap.is-3d #p2VillesMap { height:460px; }
+}
+
+/* Boutons bascule 2D / globe 3D / inclinaison */
+.p2-map-controls { position:absolute; top:10px; right:10px; z-index:500; display:flex; flex-direction:column; gap:6px; }
+.p2-map-btn {
+    font-family:inherit; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;
+    padding:7px 11px; border-radius:8px;
+    background:rgba(13,17,23,0.85); color:#c9d1d9; border:1px solid #2a3550;
+    -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+    transition:border-color .15s, background .15s, color .15s;
+}
+.p2-map-btn:hover { border-color:#a29bfe; color:#fff; }
+.p2-map-btn.is-active { background:#6c5ce7; color:#fff; border-color:#a29bfe; }
+body.p2-light .p2-map-btn { background:rgba(244,237,224,0.9); color:#1a1814; border-color:#c9bfa6; }
+body.p2-light .p2-map-btn:hover { border-color:#5a3a8a; }
+body.p2-light .p2-map-btn.is-active { background:#6c5ce7; color:#fff; border-color:#6c5ce7; }
+
+/* Overlay de chargement de la carte — bien visible pendant le geocodage progressif */
+.p2-map-loader {
+    position:absolute; inset:0; z-index:600; border-radius:10px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; padding:24px; text-align:center;
+    background:rgba(13,17,23,0.94); backdrop-filter:blur(2px);
+    transition:opacity .45s ease;
+}
+.p2-map-loader.is-done { opacity:0; pointer-events:none; }
+.p2-map-spinner {
+    width:60px; height:60px; border-radius:50%;
+    border:6px solid rgba(162,155,254,0.22); border-top-color:#a29bfe;
+    animation:p2MapSpin .85s linear infinite;
+}
+@keyframes p2MapSpin { to { transform:rotate(360deg); } }
+.p2-map-loader-title { font-size:20px; font-weight:800; color:#a29bfe; letter-spacing:.4px; }
+.p2-map-loader-sub { font-size:15px; color:#c9d1d9; font-weight:600; }
+.p2-map-progress { width:min(280px,82%); height:10px; border-radius:6px; background:rgba(162,155,254,0.18); overflow:hidden; }
+.p2-map-progress-bar { height:100%; width:0; border-radius:6px; background:linear-gradient(90deg,#6c5ce7,#a29bfe); transition:width .4s ease; }
+.p2-map-loader.is-error .p2-map-spinner { animation:none; border-top-color:#ef4444; border-color:rgba(239,68,68,0.3); }
+.p2-map-loader.is-error .p2-map-loader-title { color:#ff7675; }
+body.p2-light .p2-map-loader { background:rgba(244,237,224,0.95); }
+body.p2-light .p2-map-loader-sub { color:#1a1814; }
+
+.p2-tl { max-width:760px; margin:30px auto 24px; padding:0 12px; }
+.p2-tl-rubrique { font-family:'Bodoni Moda',serif; font-style:italic; font-size:11px; color:#6e7681; letter-spacing:0.45em; text-transform:uppercase; text-align:center; margin-bottom:18px; }
+.p2-tl-list { position:relative; list-style:none; padding:0 0 0 32px; margin:0; border-left:2px solid #1f2940; }
+.p2-tl-item { position:relative; padding:0 0 18px 18px; }
+.p2-tl-item:last-child { padding-bottom:0; }
+.p2-tl-dot { position:absolute; left:-43px; top:0; width:24px; height:24px; border-radius:50%; background:#0d1117; border:2px solid currentColor; display:flex; align-items:center; justify-content:center; font-size:13px; }
+.p2-tl-yr { font-family:'Bodoni Moda',serif; font-style:italic; font-weight:700; font-size:14px; margin-right:8px; }
+.p2-tl-lab { color:#c9d1d9; font-size:13px; line-height:1.5; }
+body.p2-light .p2-tl-rubrique { color:#5a5040; }
+body.p2-light .p2-tl-list { border-left-color:#c9bfa6; }
+body.p2-light .p2-tl-dot { background:#f4ede0; }
+body.p2-light .p2-tl-lab { color:#1a1814; }
+body.p2-light .p2-tl-lab strong { color:#0a0805; }
+
+@media (max-width:600px) {
+    .p2-careers { grid-template-columns:repeat(2,1fr); gap:8px; }
+    .p2-career-stat .v { font-size:22px; }
+}
+</style>
+
+<?php if ($_career['nb_annees_actives'] > 0): ?>
+<div class="p2-careers">
+    <div class="p2-career-stat period">
+        <div class="period-eyebrow">&mdash; Carriere &mdash;</div>
+        <div class="year-range">
+            <span class="year"><?= $_career['premiere_annee'] ?></span>
+            <span class="dash"></span>
+            <span class="year"><?= $_career['derniere_annee'] ?></span>
+        </div>
+        <div class="k"><strong><?= $_career['nb_annees_actives'] ?></strong> annee<?= $_career['nb_annees_actives'] > 1 ? 's' : '' ?> active<?= $_career['nb_annees_actives'] > 1 ? 's' : '' ?></div>
+    </div>
+    <div class="p2-career-stat"><div class="v"><?= $_career['nb_competitions'] ?></div><div class="k">Competitions</div></div>
+    <div class="p2-career-stat"><div class="v"><?= $_career['nb_disciplines'] ?></div><div class="k">Disciplines</div></div>
+    <div class="p2-career-stat"><div class="v"><?= $_career['nb_podiums'] ?></div><div class="k">Podiums</div></div>
+    <?php if ($_career['nb_or'] > 0): ?><div class="p2-career-stat gold"><div class="v"><?= $_career['nb_or'] ?></div><div class="k">Medailles or</div></div><?php endif; ?>
+    <?php if ($_career['nb_argent'] > 0): ?><div class="p2-career-stat silver"><div class="v"><?= $_career['nb_argent'] ?></div><div class="k">Medailles argent</div></div><?php endif; ?>
+    <?php if ($_career['nb_bronze'] > 0): ?><div class="p2-career-stat bronze"><div class="v"><?= $_career['nb_bronze'] ?></div><div class="k">Medailles bronze</div></div><?php endif; ?>
+    <?php if ($_career['nb_selections'] > 0): ?><div class="p2-career-stat"><div class="v"><?= $_career['nb_selections'] ?></div><div class="k">Selections</div></div><?php endif; ?>
+    <?php if ($_career['distance_km'] >= 1): ?><div class="p2-career-stat total"><div class="v"><?= number_format($_career['distance_km'], 0, ',', ' ') ?></div><div class="k">km parcourus</div></div><?php endif; ?>
+    <div class="p2-career-stat"><div class="v"><?= $_career['nb_villes'] ?></div><div class="k">Lieux differents</div></div>
+</div>
+<?php endif; ?>
+
+<?php
+// Lieux de competition — liste des villes (triees par frequence), base d'un futur graphique
+$_villesSorted = $_career['villes'];
+arsort($_villesSorted);
+?>
+<?php if (!empty($_villesSorted)): ?>
+<div class="p2-villes">
+    <div class="p2-villes-rubrique">Lieux de comp&eacute;tition &mdash; <?= $_career['nb_villes'] ?> ville<?= $_career['nb_villes'] > 1 ? 's' : '' ?></div>
+    <div class="p2-villes-list">
+        <?php foreach ($_villesSorted as $_vn => $_vc): ?>
+            <a class="p2-ville-chip" href="?page=villes&open=<?= urlencode($_vn) ?>" title="<?= (int)$_vc ?> performance<?= $_vc > 1 ? 's' : '' ?> enregistr&eacute;e<?= $_vc > 1 ? 's' : '' ?> dans cette ville">
+                <span class="p2-ville-nom"><?= htmlspecialchars($_vn) ?></span>
+                <span class="p2-ville-cnt"><?= (int)$_vc ?></span>
+            </a>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($_villesSorted)): ?>
+<!-- Carte monde des lieux de competition (MapLibre GL : 2D + globe 3D, geocodage via api/geocode.php) -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" />
+<div class="p2-villes p2-map-block">
+    <div class="p2-villes-rubrique">Carte des lieux de comp&eacute;tition</div>
+    <div class="p2-map-wrap" id="p2MapWrap">
+        <div id="p2VillesMap"></div>
+        <div class="p2-map-controls" id="p2MapControls">
+            <button type="button" class="p2-map-btn" id="p2MapBtn3D">&#127757; Vue 3D</button>
+        </div>
+        <div class="p2-map-loader" id="p2MapLoader">
+            <div class="p2-map-spinner"></div>
+            <div class="p2-map-loader-title">Chargement de la carte&hellip;</div>
+            <div class="p2-map-loader-sub" id="p2MapLoaderSub">Localisation des villes en cours&hellip;</div>
+            <div class="p2-map-progress"><div class="p2-map-progress-bar" id="p2MapProgressBar"></div></div>
+        </div>
+    </div>
+    <div class="p2-map-status" id="p2MapStatus"></div>
+</div>
+<script>window._p2VillesData = <?= json_encode($_villesSorted, JSON_UNESCAPED_UNICODE) ?>;</script>
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script>
+(function () {
+    var data = window._p2VillesData || {};
+    var names = Object.keys(data);
+    var statusEl   = document.getElementById('p2MapStatus');
+    var mapEl      = document.getElementById('p2VillesMap');
+    var loaderEl   = document.getElementById('p2MapLoader');
+    var loaderSub  = document.getElementById('p2MapLoaderSub');
+    var progressEl = document.getElementById('p2MapProgressBar');
+    var btn3D      = document.getElementById('p2MapBtn3D');
+    var wrapEl     = document.getElementById('p2MapWrap');
+    var controlsEl = document.getElementById('p2MapControls');
+    if (!mapEl || !names.length) {
+        if (statusEl) statusEl.style.display = 'none';
+        if (loaderEl) loaderEl.style.display = 'none';
+        if (controlsEl) controlsEl.style.display = 'none';
+        return;
+    }
+
+    var maxCount = 1;
+    names.forEach(function (n) { if (data[n] > maxCount) maxCount = data[n]; });
+
+    function esc(s) {
+        return String(s).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+    }
+    function setProgress(located, total) {
+        var pct = total > 0 ? Math.round(located / total * 100) : 0;
+        if (progressEl) progressEl.style.width = pct + '%';
+        if (loaderSub) loaderSub.textContent = located + ' / ' + total + ' lieux localises';
+    }
+    function hideLoader() {
+        if (loaderEl) loaderEl.classList.add('is-done');
+    }
+    function errorLoader(msg) {
+        if (loaderEl) {
+            loaderEl.classList.add('is-error');
+            var t = loaderEl.querySelector('.p2-map-loader-title');
+            if (t) t.textContent = msg;
+            if (loaderSub) loaderSub.textContent = 'Reessayez plus tard.';
+        }
+        if (statusEl) statusEl.textContent = msg + '.';
+    }
+
+    var tries = 0;
+    function start() {
+        if (typeof maplibregl === 'undefined') {
+            if (++tries > 50) { errorLoader('Carte indisponible'); return; }
+            setTimeout(start, 150);
+            return;
+        }
+
+        var map;
+        try {
+            map = new maplibregl.Map({
+                container: 'p2VillesMap',
+                style: {
+                    version: 8,
+                    sources: {
+                        osm: {
+                            type: 'raster',
+                            tiles: [
+                                'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                            ],
+                            tileSize: 256,
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        }
+                    },
+                    layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+                },
+                center: [2.5, 46.6],
+                zoom: 4,
+                scrollZoom: false,
+                maxPitch: 0
+            });
+        } catch (e) {
+            errorLoader('Carte 3D non supportee par ce navigateur');
+            return;
+        }
+
+        map.addControl(new maplibregl.NavigationControl(), 'top-left');
+
+        // ── Bouton : bascule carte 2D <-> globe 3D (le globe agrandit la carte) ──
+        var is3D = false, lastBounds = null;
+
+        function animateResize(ms) {
+            var t0 = Date.now();
+            (function step() {
+                try { map.resize(); } catch (e) {}
+                if (Date.now() - t0 < ms) requestAnimationFrame(step);
+            })();
+        }
+
+        btn3D.addEventListener('click', function () {
+            is3D = !is3D;
+            if (wrapEl) wrapEl.classList.toggle('is-3d', is3D);
+            animateResize(560);
+            try { map.setProjection({ type: is3D ? 'globe' : 'mercator' }); } catch (e) {}
+            if (lastBounds) {
+                try {
+                    map.fitBounds(lastBounds, is3D
+                        ? { padding: 70, maxZoom: 3.2, duration: 800 }
+                        : { padding: 45, maxZoom: 10, duration: 800 });
+                } catch (e) {}
+            }
+            btn3D.classList.toggle('is-active', is3D);
+            btn3D.innerHTML = is3D ? '🗺️ Vue 2D' : '🌍 Vue 3D';
+        });
+
+        var rounds = 0, MAX_ROUNDS = 25;
+
+        function render(coords) {
+            var features = [];
+            Object.keys(coords).forEach(function (name) {
+                var c = coords[name];
+                if (!c || c.lat == null) return;
+                var cnt = data[name] || 1;
+                var r = 5 + Math.round(11 * Math.sqrt(cnt / maxCount));
+                features.push({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [c.lng, c.lat] },
+                    properties: { name: name, cnt: cnt, r: r }
+                });
+            });
+            var src = map.getSource('villes');
+            if (src) src.setData({ type: 'FeatureCollection', features: features });
+            if (features.length) {
+                var b = new maplibregl.LngLatBounds();
+                features.forEach(function (f) { b.extend(f.geometry.coordinates); });
+                lastBounds = b;
+                if (!is3D) { try { map.fitBounds(b, { padding: 45, maxZoom: 10, duration: 500 }); } catch (e) {} }
+            }
+        }
+
+        function poll() {
+            rounds++;
+            fetch('<?= $BASE_API ?>/geocode.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ villes: names })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!res || !res.success) { errorLoader('Carte momentanement indisponible'); return; }
+                render(res.coords || {});
+                setProgress(res.located, res.total);
+                if (res.pending > 0 && rounds < MAX_ROUNDS) {
+                    setTimeout(poll, 1400);
+                } else {
+                    statusEl.textContent = res.located + ' / ' + res.total + ' lieux localises sur la carte.';
+                    hideLoader();
+                }
+            })
+            .catch(function () { errorLoader('Carte momentanement indisponible'); });
+        }
+
+        map.on('load', function () {
+            map.addSource('villes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+            map.addLayer({
+                id: 'villes-pts',
+                type: 'circle',
+                source: 'villes',
+                paint: {
+                    'circle-radius': ['get', 'r'],
+                    'circle-color': '#a29bfe',
+                    'circle-opacity': 0.6,
+                    'circle-stroke-color': '#7c6cf0',
+                    'circle-stroke-width': 2
+                }
+            });
+            map.on('mouseenter', 'villes-pts', function () { map.getCanvas().style.cursor = 'pointer'; });
+            map.on('mouseleave', 'villes-pts', function () { map.getCanvas().style.cursor = ''; });
+            map.on('click', 'villes-pts', function (e) {
+                var p = e.features[0].properties;
+                var cnt = +p.cnt || 1;
+                new maplibregl.Popup({ closeButton: true, maxWidth: '240px' })
+                    .setLngLat(e.features[0].geometry.coordinates.slice())
+                    .setHTML('<strong>' + esc(p.name) + '</strong><br>' + cnt + ' performance' + (cnt > 1 ? 's' : '') + ' enregistree' + (cnt > 1 ? 's' : ''))
+                    .addTo(map);
+            });
+            poll();
+        });
+    }
+    start();
+})();
+</script>
+<?php endif; ?>
+
+<?php if (!empty($_timeline)): ?>
+<div class="p2-tl">
+    <div class="p2-tl-rubrique">Temps forts</div>
+    <ul class="p2-tl-list">
+        <?php foreach ($_timeline as $_t): ?>
+            <li class="p2-tl-item">
+                <span class="p2-tl-dot" style="color:<?= $_t['col'] ?>;"><?= $_t['icon'] ?></span>
+                <span class="p2-tl-yr" style="color:<?= $_t['col'] ?>;"><?= $_t['y'] ?></span>
+                <span class="p2-tl-lab"><?= $_t['lab'] ?></span>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+</div>
+<?php endif; ?>
+
+<?php if ($_hasMoreData): ?>
+<div class="p2-more">
+    <button type="button" class="p2-more-btn" onclick="p2ToggleMore(this)">
+        <span class="p2-more-label">Voir plus</span>
+        <span class="p2-more-arrow">&#8595;</span>
+    </button>
+
+    <div class="p2-more-panel">
+        <nav class="p2-more-tabs">
+            <button type="button" class="p2-more-tab active" data-view="annee">Par annee</button>
+            <button type="button" class="p2-more-tab" data-view="disc">Par discipline</button>
+            <button type="button" class="p2-more-tab" data-view="niveau">Par niveau</button>
+            <button type="button" class="p2-more-tab" data-view="brut">Brut (annee &gt; discipline)</button>
+            <button type="button" class="p2-more-tab" data-view="courbes">&#128200; Courbes</button>
+            <button type="button" class="p2-more-tab" data-view="cmpyr">&#9878; Comparer 2 annees</button>
+        </nav>
+
+        <!-- Par annee -->
+        <div class="p2-more-view active" data-pane="annee">
+            <ul class="p2-more-list">
+            <?php foreach ($_byYear as $_yr => $_v):
+                $_col = _p2NivCol($_v['best_niv']);
+            ?>
+                <li>
+                    <span class="p2-more-key"><?= $_yr ?></span>
+                    <span class="p2-more-val"><?= $_v['perfs'] ?> <span class="muted">perf<?= $_v['perfs'] > 1 ? 's' : '' ?></span></span>
+                    <span class="p2-more-niv" style="color: <?= $_col ?>;"><?= htmlspecialchars($_v['best_niv'] ?: '&mdash;') ?></span>
+                    <span class="p2-more-extra"><?= htmlspecialchars($_v['top_ep']) ?></span>
+                </li>
+            <?php endforeach; ?>
+            </ul>
+        </div>
+
+        <!-- Par discipline -->
+        <div class="p2-more-view" data-pane="disc">
+            <ul class="p2-more-list">
+            <?php foreach ($_byEp as $_ep => $_v):
+                $_col = _p2NivCol($_v['niveau']);
+            ?>
+                <li>
+                    <span class="p2-more-key" style="font-style:italic;"><?= htmlspecialchars($_ep) ?></span>
+                    <span class="p2-more-val"><?= htmlspecialchars($_v['perf']) ?></span>
+                    <span class="p2-more-niv" style="color: <?= $_col ?>;"><?= htmlspecialchars($_v['niveau'] ?: '&mdash;') ?></span>
+                    <span class="p2-more-extra"><?= htmlspecialchars($_v['annee']) ?></span>
+                </li>
+            <?php endforeach; ?>
+            </ul>
+        </div>
+
+        <!-- Par niveau -->
+        <div class="p2-more-view" data-pane="niveau">
+            <ul class="p2-more-list">
+            <?php foreach ($_byNiv as $_nc => $_v):
+                $_col = _p2NivCol($_nc);
+                $_yrs = array_keys($_v['years']);
+                if ($_yrs) { sort($_yrs); $_yrLabel = $_yrs[0] === end($_yrs) ? (string)$_yrs[0] : $_yrs[0] . '-' . end($_yrs); } else $_yrLabel = '';
+                $_nbEp = count($_v['eps']);
+            ?>
+                <li>
+                    <span class="p2-more-key" style="color: <?= $_col ?>; font-weight:700;"><?= htmlspecialchars($_nc) ?></span>
+                    <span class="p2-more-val"><?= $_v['count'] ?> <span class="muted">perf<?= $_v['count'] > 1 ? 's' : '' ?></span></span>
+                    <span class="p2-more-niv" style="font-style:italic;color:#8b949e;font-size:13px;"><?= $_nbEp ?> ep.</span>
+                    <span class="p2-more-extra"><?= htmlspecialchars($_yrLabel) ?></span>
+                </li>
+            <?php endforeach; ?>
+            </ul>
+        </div>
+
+        <!-- Brut : annee > discipline avec toutes les donnees -->
+        <div class="p2-more-view" data-pane="brut">
+        <?php
+            // Construction inline : toutes les sources, tous les champs, groupees par annee > discipline
+            $_brutAll = [];
+            $_yearOf = function($o) {
+                if (!empty($o['annee']) && (int)$o['annee'] > 0) return (int)$o['annee'];
+                if (!empty($o['date']) && substr($o['date'], 0, 4) !== '0000') return (int)substr($o['date'], 0, 4);
+                return 0;
+            };
+            foreach ($_records as $r)      $_brutAll[] = ['src'=>'record',      'data'=>$r, 'y'=>$_yearOf($r), 'disc'=>_p2_categEpreuve($r['epreuve'] ?? '')];
+            foreach ($_progressions as $r) $_brutAll[] = ['src'=>'progression', 'data'=>$r, 'y'=>$_yearOf($r), 'disc'=>_p2_categEpreuve($r['epreuve'] ?? '')];
+            foreach ($_resultats as $r)    $_brutAll[] = ['src'=>'resultat',    'data'=>$r, 'y'=>$_yearOf($r), 'disc'=>_p2_categEpreuve($r['epreuve'] ?? '')];
+            foreach ($_podiums as $r)      $_brutAll[] = ['src'=>'podium',      'data'=>$r, 'y'=>$_yearOf($r), 'disc'=>_p2_categEpreuve($r['epreuve'] ?? '')];
+            foreach ($_selections as $r)   $_brutAll[] = ['src'=>'selection',   'data'=>$r, 'y'=>$_yearOf($r), 'disc'=>_p2_categEpreuve($r['epreuve'] ?? '')];
+            foreach (($data['medailles'] ?? []) as $r) $_brutAll[] = ['src'=>'medaille', 'data'=>$r, 'y'=>$_yearOf($r), 'disc'=>_p2_categEpreuve($r['epreuve'] ?? '')];
+            foreach (($data['niveaux'] ?? []) as $n) {
+                foreach (($n['performances'] ?? []) as $perf) {
+                    $perfData = $perf;
+                    $perfData['annee_niveau'] = $n['annee'] ?? null;
+                    $perfData['code_niveau_global'] = $n['code_niveau'] ?? '';
+                    $perfData['points_niveau'] = $n['points_niveau'] ?? null;
+                    $perfData['club_niveau'] = $n['club'] ?? '';
+                    $_brutAll[] = ['src'=>'niveau', 'data'=>$perfData, 'y'=>(int)($n['annee'] ?? 0), 'disc'=>_p2_categEpreuve($perf['epreuve'] ?? '')];
+                }
+            }
+            // Groupement
+            $_brutGroup = [];
+            foreach ($_brutAll as $e) {
+                $y = $e['y'] ?: 0;
+                if (!isset($_brutGroup[$y])) $_brutGroup[$y] = [];
+                if (!isset($_brutGroup[$y][$e['disc']])) $_brutGroup[$y][$e['disc']] = [];
+                $_brutGroup[$y][$e['disc']][] = $e;
+            }
+            krsort($_brutGroup);
+            $_discLabels = ['sprint'=>'Sprint','haies'=>'Haies','demi-fond'=>'Demi-fond','fond'=>'Fond','steeple'=>'Steeple','sauts'=>'Sauts','lancers'=>'Lancers','combines'=>'Combines','autre'=>'Autres'];
+            $_discOrder = ['sprint','haies','demi-fond','fond','steeple','sauts','lancers','combines','autre'];
+            $_srcInfo = [
+                'record'      => ['label'=>'RECORD',      'color'=>'#ef4444'],
+                'progression' => ['label'=>'PROGRESSION', 'color'=>'#f59e0b'],
+                'resultat'    => ['label'=>'RESULTAT',    'color'=>'#22d3ee'],
+                'podium'      => ['label'=>'PODIUM',      'color'=>'#a78bfa'],
+                'selection'   => ['label'=>'SELECTION',   'color'=>'#34d399'],
+                'medaille'    => ['label'=>'MEDAILLE',    'color'=>'#fbbf24'],
+                'niveau'      => ['label'=>'NIVEAU FFA',  'color'=>'#e879f9'],
+            ];
+            $_nivStyleInline = function($code) {
+                $f = isset($code[0]) ? $code[0] : '';
+                if ($f === 'I') return 'background:#c026d320;border:1px solid #c026d3;color:#e879f9;';
+                if ($f === 'N') return 'background:#e11d4820;border:1px solid #e11d48;color:#fb7185;';
+                if ($f === 'R') return 'background:#0891b220;border:1px solid #0891b2;color:#22d3ee;';
+                if ($f === 'D') return 'background:#f9731620;border:1px solid #f97316;color:#fb923c;';
+                return 'background:#30363d;border:1px solid #6e7681;color:#c9d1d9;';
+            };
+            $_fieldLabels = [
+                'date'=>'Date','annee'=>'Annee','annee_niveau'=>'Annee niv.','annee_progression'=>'Annee prog.',
+                'performance'=>'Perf int','niveaux'=>'Niveaux','niveau'=>'Niv. resultat','niveau_competition'=>'Niv. compet',
+                'code_niveau'=>'Code niv','code_niveau_global'=>'Niv global annee','points_niveau'=>'Points niv','points'=>'Points',
+                'vent'=>'Vent','tour'=>'Tour','place'=>'Place','rang'=>'Rang','classement'=>'Classement',
+                'type'=>'Type','duree_jours'=>'Duree j','age'=>'Age','competition'=>'Competition',
+                'club'=>'Club','club_niveau'=>'Club annee','categorie'=>'Cat','cat'=>'Cat',
+                'ligue_dept'=>'Ligue/Dept','lieu'=>'Lieu',
+            ];
+        ?>
+            <style>
+            /* Mode clair : surcharge tous les inline styles du brut tab */
+            body.p2-light .p2-brut-banner { background:#fff !important; color:#5a5040 !important; border-color:#c9bfa6 !important; }
+            body.p2-light .p2-brut-banner strong { color:#1a4d3a !important; }
+            body.p2-light .p2-brut-yhead { color:#1a4d3a !important; background:linear-gradient(90deg,#34d39920,transparent) !important; border-left-color:#1a4d3a !important; }
+            body.p2-light .p2-brut-yhead span { color:#5a5040 !important; }
+            body.p2-light .p2-brut-dhead { color:#5a3a8a !important; background:#fff !important; border:1px solid #c9bfa6 !important; }
+            body.p2-light .p2-brut-card { background:#fff !important; border-color:#c9bfa6 !important; }
+            body.p2-light .p2-brut-card-head { border-bottom-color:#c9bfa6 !important; }
+            body.p2-light .p2-brut-card-perf { color:#5a3a8a !important; }
+            body.p2-light .p2-brut-card-ep { color:#1a1814 !important; }
+            body.p2-light .p2-brut-k { color:#5a5040 !important; }
+            body.p2-light .p2-brut-v { color:#1a1814 !important; }
+            body.p2-light .p2-brut-empty { color:#5a5040 !important; }
+            body.p2-light .p2-brut-desc { background:#fff !important; border-color:#c9bfa6 !important; border-left-color:#5a3a8a !important; color:#1a1814 !important; }
+            body.p2-light .p2-brut-desc-intro { color:#5a3a8a !important; }
+            body.p2-light .p2-brut-desc-body { color:#1a1814 !important; }
+            body.p2-light .p2-brut-desc-body strong { color:#0a0805 !important; }
+            body.p2-light .p2-brut-desc-meta { border-top-color:#c9bfa6 !important; }
+            body.p2-light .p2-brut-desc-meta li { color:#5a5040 !important; }
+            body.p2-light .p2-brut-desc-meta li span { color:#5a3a8a !important; }
+            body.p2-light .p2-brut-desc-meta li strong { color:#1a1814 !important; }
+            </style>
+            <?php
+            // Pre-computations pour les descriptions enrichies
+            // Meilleure perf par (annee, epreuve) — pour comparaison vs annee precedente
+            $_bestPerfYE = [];
+            foreach ($_progressions as $_p2) {
+                $_ep2 = $_p2['epreuve'] ?? '';
+                $_yr2 = (int)($_p2['annee'] ?? 0);
+                $_pi2 = (int)($_p2['performance'] ?? 0);
+                if (!$_ep2 || $_yr2 <= 0 || $_pi2 <= 0) continue;
+                $_isDist2 = (bool)preg_match('/Longueur|Triple|Hauteur|Perche|Poids|Disque|Marteau|Javelot/i', $_ep2);
+                if (!isset($_bestPerfYE[$_yr2][$_ep2])) {
+                    $_bestPerfYE[$_yr2][$_ep2] = ['p'=>$_pi2, 'b'=>$_p2['performance_brut'] ?? '', 'd'=>$_isDist2];
+                } else {
+                    $_ex = $_bestPerfYE[$_yr2][$_ep2]['p'];
+                    if (($_isDist2 && $_pi2 > $_ex) || (!$_isDist2 && $_pi2 < $_ex)) {
+                        $_bestPerfYE[$_yr2][$_ep2] = ['p'=>$_pi2, 'b'=>$_p2['performance_brut'] ?? '', 'd'=>$_isDist2];
+                    }
+                }
+            }
+            // Niveau FFA par annee
+            $_nivFFAYr = [];
+            foreach (($data['niveaux'] ?? []) as $_nF) {
+                $_ynF = (int)($_nF['annee'] ?? 0);
+                if ($_ynF > 0 && !empty($_nF['code_niveau'])) $_nivFFAYr[$_ynF] = $_nF['code_niveau'];
+            }
+            // Helper : difference de perf (delta) entre 2 perfs int
+            $_fmtDeltaPerf = function($delta, $isDist) {
+                if ($delta <= 0) return '';
+                if ($isDist) {
+                    return ($delta >= 100 ? number_format($delta / 100, 2, ',', '') . ' m' : $delta . ' cm');
+                }
+                return ($delta >= 100 ? number_format($delta / 100, 2, ',', '') . ' s' : $delta . ' centiemes');
+            };
+            ?>
+            <?php if (empty($_brutAll)): ?>
+                <p class="p2-brut-empty" style="color:#8b949e;font-size:13px;padding:12px 0;">Aucune donnee brute disponible.</p>
+            <?php else: ?>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px;">
+                    <p class="p2-brut-banner" style="color:#8b949e;font-size:12px;margin:0;padding:8px 12px;background:#0a1020;border-radius:6px;border:1px solid #1a2540;flex:1;min-width:240px;">
+                        <strong style="color:#34d399;"><?= count($_brutAll) ?></strong> entrees au total : tous les champs (perf brut + int, niveaux, vent, lieu, club, cat, ligue, points, tour, place, age, duree, competition...) groupees par annee &gt; discipline.
+                    </p>
+                    <input type="search" id="p2BrutSearch" placeholder="&#128269; Filtrer par mot (epreuve, ville, club, perf...)"
+                           oninput="p2BrutFilter(this.value)" autocomplete="off"
+                           class="p2-brut-search"
+                           style="background:#0a1020;border:1px solid #1a2540;color:#e6edf3;padding:8px 12px;border-radius:6px;font-size:13px;min-width:280px;flex:1;">
+                </div>
+                <?php foreach ($_brutGroup as $_y => $_byDisc):
+                    // Generer la description par annee : pour chaque epreuve, resume des resultats
+                    $_yearEps = [];
+                    foreach ($_byDisc as $_d => $_arr) {
+                        foreach ($_arr as $_e) {
+                            $_epname = $_e['data']['epreuve'] ?? '';
+                            if (!$_epname) continue;
+                            if (!isset($_yearEps[$_epname])) {
+                                $_yearEps[$_epname] = [
+                                    'record'=>0,'progression'=>0,'resultat'=>0,'podium'=>0,'selection'=>0,'niveau'=>0,
+                                    'medailles'=>[],'best_niv'=>'','best_perf'=>'','best_place'=>null,
+                                ];
+                            }
+                            $_src = $_e['src'];
+                            if (isset($_yearEps[$_epname][$_src])) $_yearEps[$_epname][$_src]++;
+                            // Meilleure perf brute
+                            $_pb = $_e['data']['performance_brut'] ?? '';
+                            if ($_pb && empty($_yearEps[$_epname]['best_perf'])) $_yearEps[$_epname]['best_perf'] = $_pb;
+                            // Meilleur niveau
+                            $_nivs = [];
+                            if (is_array($_e['data']['niveaux'] ?? null)) $_nivs = $_e['data']['niveaux'];
+                            elseif (!empty($_e['data']['niveau'])) $_nivs = [$_e['data']['niveau']];
+                            elseif (!empty($_e['data']['niveau_competition'])) $_nivs = [$_e['data']['niveau_competition']];
+                            elseif (!empty($_e['data']['code_niveau'])) $_nivs = [$_e['data']['code_niveau']];
+                            foreach ($_nivs as $_nc) {
+                                if (!$_nc) continue;
+                                if (empty($_yearEps[$_epname]['best_niv']) || _p2_nivOrder($_nc) < _p2_nivOrder($_yearEps[$_epname]['best_niv'])) {
+                                    $_yearEps[$_epname]['best_niv'] = $_nc;
+                                }
+                            }
+                            // Medailles : compter par type
+                            if ($_src === 'medaille') {
+                                $_t = strtolower(trim($_e['data']['type'] ?? ''));
+                                $_yearEps[$_epname]['medailles'][] = $_t;
+                            }
+                            // Meilleure place (rang)
+                            $_pl = null;
+                            if (isset($_e['data']['rang']) && $_e['data']['rang'] > 0) $_pl = (int)$_e['data']['rang'];
+                            elseif (isset($_e['data']['place']) && $_e['data']['place'] > 0) $_pl = (int)$_e['data']['place'];
+                            elseif (isset($_e['data']['classement']) && $_e['data']['classement'] > 0) $_pl = (int)$_e['data']['classement'];
+                            if ($_pl !== null && ($_yearEps[$_epname]['best_place'] === null || $_pl < $_yearEps[$_epname]['best_place'])) {
+                                $_yearEps[$_epname]['best_place'] = $_pl;
+                            }
+                        }
+                    }
+                    // Construire les phrases par epreuve
+                    $_descParts = [];
+                    foreach ($_yearEps as $_epname => $_inf) {
+                        $_bits = [];
+                        if ($_inf['resultat'] > 0)    $_bits[] = $_inf['resultat'] . ' competition' . ($_inf['resultat'] > 1 ? 's' : '');
+                        if ($_inf['record'] > 0)      $_bits[] = 'record personnel';
+                        if ($_inf['podium'] > 0)      $_bits[] = $_inf['podium'] . ' podium' . ($_inf['podium'] > 1 ? 's' : '');
+                        if ($_inf['selection'] > 0)   $_bits[] = $_inf['selection'] . ' selection' . ($_inf['selection'] > 1 ? 's' : '');
+                        if (!empty($_inf['medailles'])) {
+                            $_mt = ['or'=>0,'argent'=>0,'bronze'=>0,'autre'=>0];
+                            foreach ($_inf['medailles'] as $_t) {
+                                if (isset($_mt[$_t])) $_mt[$_t]++; else $_mt['autre']++;
+                            }
+                            $_medP = [];
+                            foreach ($_mt as $_tn => $_nb) if ($_nb > 0) $_medP[] = $_nb . ' ' . $_tn;
+                            if (!empty($_medP)) $_bits[] = implode('/', $_medP);
+                        }
+                        if (!empty($_inf['best_perf'])) $_bits[] = 'meilleure perf ' . htmlspecialchars($_inf['best_perf']);
+                        if (!empty($_inf['best_niv'])) $_bits[] = 'niveau ' . htmlspecialchars($_inf['best_niv']);
+                        if ($_inf['best_place'] !== null && $_inf['best_place'] <= 10) $_bits[] = $_inf['best_place'] . ($_inf['best_place'] === 1 ? 'er' : 'e') . ' place';
+
+                        // === #2 SPARKLINE inline : 5 dernieres annees pour cette epreuve ===
+                        $_spark = '';
+                        $_sparkPts = [];
+                        for ($_yi = $_y - 4; $_yi <= $_y; $_yi++) {
+                            if (isset($_bestPerfYE[$_yi][$_epname])) $_sparkPts[$_yi] = $_bestPerfYE[$_yi][$_epname];
+                        }
+                        if (count($_sparkPts) >= 2) {
+                            $_isDistSp = $_sparkPts[array_key_first($_sparkPts)]['d'];
+                            $_vals = array_map(function($p){ return $p['p']; }, $_sparkPts);
+                            $_minV = min($_vals); $_maxV = max($_vals);
+                            $_W = 60; $_H = 14; $_pad = 1;
+                            $_n = count($_vals);
+                            $_pts = [];
+                            $_idx = 0;
+                            foreach ($_sparkPts as $_yk => $_pk) {
+                                $_x = $_pad + ($_n > 1 ? ($_idx * ($_W - 2 * $_pad) / ($_n - 1)) : ($_W / 2));
+                                $_norm = $_maxV === $_minV ? 0.5 : ($_pk['p'] - $_minV) / ($_maxV - $_minV);
+                                // Pour course (temps), on inverse pour que le bas = bon
+                                if (!$_isDistSp) $_norm = 1 - $_norm;
+                                $_yp = $_pad + (1 - $_norm) * ($_H - 2 * $_pad);
+                                $_pts[] = number_format($_x, 1, '.', '') . ',' . number_format($_yp, 1, '.', '');
+                                $_idx++;
+                            }
+                            $_spark = '<svg class="p2-brut-spark" width="' . $_W . '" height="' . $_H . '" viewBox="0 0 ' . $_W . ' ' . $_H . '" preserveAspectRatio="none">'
+                                . '<polyline points="' . implode(' ', $_pts) . '" fill="none" stroke="#a29bfe" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
+                                . '<circle cx="' . explode(',', end($_pts))[0] . '" cy="' . explode(',', end($_pts))[1] . '" r="1.6" fill="#a29bfe"/>'
+                                . '</svg>';
+                        }
+                        $_descParts[] = $_spark . '<strong>' . htmlspecialchars($_epname) . '</strong>' . (!empty($_bits) ? ' &mdash; ' . implode(', ', $_bits) : '');
+                    }
+                    // === Stats agregees pour les 8 infos enrichies ===
+                    $_yearCat = '';
+                    $_catCounts = [];
+                    $_yearClubs = [];
+                    $_discCounts = [];
+                    $_villeCounts = [];
+                    $_ventVals = [];
+                    $_totalNbY = 0;
+                    $_totalRecords = 0;
+                    foreach ($_byDisc as $_d2 => $_arr2) {
+                        $_discCounts[$_d2] = ($_discCounts[$_d2] ?? 0) + count($_arr2);
+                        foreach ($_arr2 as $_e2) {
+                            $_totalNbY++;
+                            // Categorie
+                            $_c = trim($_e2['data']['categorie'] ?? $_e2['data']['cat'] ?? '');
+                            if ($_c !== '') $_catCounts[$_c] = ($_catCounts[$_c] ?? 0) + 1;
+                            // Club
+                            $_cl = trim($_e2['data']['club'] ?? $_e2['data']['club_niveau'] ?? '');
+                            if ($_cl !== '') {
+                                $_cl = rtrim($_cl, '* ');
+                                if (!in_array($_cl, $_yearClubs, true)) $_yearClubs[] = $_cl;
+                            }
+                            // Ville
+                            $_lv = trim($_e2['data']['lieu'] ?? '');
+                            if ($_lv !== '') $_villeCounts[$_lv] = ($_villeCounts[$_lv] ?? 0) + 1;
+                            // Vent (uniquement disciplines de course)
+                            if (in_array($_d2, ['sprint','haies','demi-fond','fond','steeple'], true)) {
+                                $_v = trim((string)($_e2['data']['vent'] ?? ''));
+                                if ($_v !== '' && preg_match('/^[+-]?\d+(?:[.,]\d+)?$/', str_replace(',', '.', $_v))) {
+                                    $_ventVals[] = (float)str_replace(',', '.', $_v);
+                                }
+                            }
+                            // Records perso
+                            if ($_e2['src'] === 'record') $_totalRecords++;
+                        }
+                    }
+                    if (!empty($_catCounts)) { arsort($_catCounts); $_yearCat = (string)array_key_first($_catCounts); }
+
+                    // Phrase d'introduction
+                    $_yLab = $_y > 0 ? "En $_y" : "Sans annee";
+                    if ($_yearCat !== '') $_yLab .= ' (categorie ' . htmlspecialchars($_yearCat) . ')';
+                    $_nbEpY = count($_yearEps);
+                    $_introY = $_yLab . ', l\'athlete s\'est illustre' . ($_nbEpY > 1 ? ' sur ' . $_nbEpY . ' epreuves' : ' sur 1 epreuve') . ' :';
+
+                    // === Lignes complementaires ===
+                    $_footerLines = [];
+                    // 2. Club(s)
+                    if (!empty($_yearClubs)) {
+                        $_footerLines[] = '<strong>Club' . (count($_yearClubs) > 1 ? 's' : '') . ' :</strong> ' . implode(', ', array_map(function($c){ return htmlspecialchars($c); }, $_yearClubs));
+                    }
+                    // 4. Discipline dominante (>= 50% des perfs OU plus de 60% si une seule)
+                    if (!empty($_discCounts) && $_totalNbY > 0) {
+                        arsort($_discCounts);
+                        $_topD = array_key_first($_discCounts);
+                        $_topNb = $_discCounts[$_topD];
+                        $_pct = round($_topNb * 100 / $_totalNbY);
+                        if ($_pct >= 50) {
+                            $_footerLines[] = '<strong>Specialite :</strong> ' . htmlspecialchars($_discLabels[$_topD] ?? $_topD) . ' (' . $_topNb . ' entrees / ' . $_totalNbY . ', ' . $_pct . '%)';
+                        }
+                    }
+                    // 3. Comparaison vs annee precedente
+                    $_compaParts = [];
+                    if ($_y > 0 && isset($_bestPerfYE[$_y]) && isset($_bestPerfYE[$_y - 1])) {
+                        foreach ($_bestPerfYE[$_y] as $_epC => $_curr) {
+                            if (!isset($_bestPerfYE[$_y - 1][$_epC])) continue;
+                            $_prev = $_bestPerfYE[$_y - 1][$_epC];
+                            $_isDistC = $_curr['d'];
+                            $_delta = $_isDistC ? ($_curr['p'] - $_prev['p']) : ($_prev['p'] - $_curr['p']);
+                            if ($_delta > 0) {
+                                $_dStr = $_fmtDeltaPerf($_delta, $_isDistC);
+                                $_compaParts[] = htmlspecialchars($_epC) . ' +' . $_dStr;
+                            }
+                        }
+                    }
+                    if (!empty($_compaParts)) {
+                        $_footerLines[] = '<strong>Vs annee precedente :</strong> amelioration sur ' . implode(', ', array_slice($_compaParts, 0, 5)) . (count($_compaParts) > 5 ? ' &hellip;' : '');
+                    }
+                    // 5. Lieu principal (>= 30% des entrees)
+                    if (!empty($_villeCounts) && $_totalNbY > 0) {
+                        arsort($_villeCounts);
+                        $_topV = array_key_first($_villeCounts);
+                        $_topVNb = $_villeCounts[$_topV];
+                        $_pctV = round($_topVNb * 100 / $_totalNbY);
+                        if ($_pctV >= 30) {
+                            $_footerLines[] = '<strong>Lieu principal :</strong> ' . htmlspecialchars($_topV) . ' (' . $_topVNb . '/' . $_totalNbY . ' entrees)';
+                        }
+                    }
+                    // 6. Niveau global FFA
+                    if (!empty($_nivFFAYr[$_y])) {
+                        $_footerLines[] = '<strong>Niveau FFA :</strong> classe <span style="font-weight:700;">' . htmlspecialchars($_nivFFAYr[$_y]) . '</span> sur l\'ensemble de la saison';
+                    }
+                    // 7. Type de saison (auto-deduit)
+                    $_typeSaison = '';
+                    $_pctRec = $_totalNbY > 0 ? ($_totalRecords * 100 / $_totalNbY) : 0;
+                    $_prevNiv = !empty($_nivFFAYr[$_y - 1]) ? $_nivFFAYr[$_y - 1] : '';
+                    $_currNiv = $_nivFFAYr[$_y] ?? '';
+                    if ($_currNiv && $_prevNiv && _p2_nivOrder($_currNiv) < _p2_nivOrder($_prevNiv)) {
+                        $_typeSaison = 'annee charniere (passage du niveau ' . htmlspecialchars($_prevNiv) . ' au niveau ' . htmlspecialchars($_currNiv) . ')';
+                    } elseif ($_pctRec >= 30) {
+                        $_typeSaison = 'saison record (' . $_totalRecords . ' RP)';
+                    } elseif ($_totalNbY < 5) {
+                        $_typeSaison = 'saison discrete (' . $_totalNbY . ' entrees)';
+                    } else {
+                        $_typeSaison = 'saison reguliere';
+                    }
+                    $_footerLines[] = '<strong>Bilan :</strong> ' . $_typeSaison;
+                    // 8. Vent moyen sur courses
+                    if (count($_ventVals) >= 3) {
+                        $_vmoy = array_sum($_ventVals) / count($_ventVals);
+                        $_vstr = ($_vmoy >= 0 ? '+' : '') . number_format($_vmoy, 1, '.', '');
+                        $_footerLines[] = '<strong>Vent moyen :</strong> ' . $_vstr . ' m/s sur ' . count($_ventVals) . ' courses';
+                    }
+                ?>
+                    <div style="margin-bottom:24px;">
+                        <h3 class="p2-brut-yhead" style="color:#34d399;font-size:18px;margin:0 0 10px;padding:8px 14px;background:linear-gradient(90deg,#05966930,transparent);border-left:4px solid #34d399;border-radius:4px;font-weight:800;">
+                            <?= $_y > 0 ? $_y : 'Sans annee' ?>
+                            <span style="color:#8b949e;font-weight:400;font-size:13px;">(<?= array_sum(array_map('count', $_byDisc)) ?> entrees)</span>
+                        </h3>
+                        <?php if (!empty($_descParts)): ?>
+                        <div class="p2-brut-desc" style="background:#0a1020;border:1px solid #1a2540;border-left:3px solid #a29bfe;border-radius:6px;padding:12px 16px;margin:0 0 14px;font-size:13px;line-height:1.7;color:#c9d1d9;">
+                            <p class="p2-brut-desc-intro" style="color:#a29bfe;font-style:italic;font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;"><?= $_introY ?></p>
+                            <p class="p2-brut-desc-body" style="margin:0 0 10px;color:#c9d1d9;"><?= implode(' <span style="color:#5a6580;">&middot;</span> ', $_descParts) ?>.</p>
+                            <?php if (!empty($_footerLines)): ?>
+                            <ul class="p2-brut-desc-meta" style="list-style:none;padding:8px 0 0;margin:8px 0 0;border-top:1px dashed #1a2540;font-size:12px;line-height:1.8;">
+                                <?php foreach ($_footerLines as $_fl): ?>
+                                    <li style="color:#8b949e;margin:0;padding:0;"><span style="color:#a29bfe;margin-right:4px;">&rsaquo;</span> <?= $_fl ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
+                        <?php foreach ($_discOrder as $_d): if (empty($_byDisc[$_d])) continue; $_arr = $_byDisc[$_d]; ?>
+                            <div style="margin:12px 0 16px;">
+                                <div class="p2-brut-dhead" style="color:#a29bfe;font-size:14px;margin:0 0 8px;padding:5px 12px;background:#161e30;border-radius:4px;display:inline-block;font-weight:700;">
+                                    <?= htmlspecialchars($_discLabels[$_d]) ?> (<?= count($_arr) ?>)
+                                </div>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px;">
+                                    <?php foreach ($_arr as $_e): $_d_ = $_e['data']; $_inf = $_srcInfo[$_e['src']]; ?>
+                                        <div class="p2-brut-card" style="background:#0a1020;border:1px solid #1a2540;border-radius:8px;padding:10px 12px;font-size:12px;">
+                                            <div class="p2-brut-card-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #1a2540;">
+                                                <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:<?= $_inf['color'] ?>20;color:<?= $_inf['color'] ?>;border:1px solid <?= $_inf['color'] ?>60;"><?= $_inf['label'] ?></span>
+                                                <span class="p2-brut-card-perf" style="color:#a29bfe;font-weight:800;font-size:14px;"><?= htmlspecialchars($_d_['performance_brut'] ?? $_d_['performance'] ?? '-') ?></span>
+                                            </div>
+                                            <?php if (!empty($_d_['epreuve'])): ?>
+                                                <p class="p2-brut-card-ep" style="color:#e6edf3;font-style:italic;font-size:13px;margin:0 0 6px;font-weight:600;">
+                                                    <a href="?page=epreuves&nom=<?= urlencode($_d_['epreuve']) ?>" style="color:inherit;text-decoration:none;border-bottom:1px dotted currentColor;"><?= htmlspecialchars($_d_['epreuve']) ?></a>
+                                                </p>
+                                            <?php endif; ?>
+                                            <?php
+                                                // Bouton "Qui d'autre ?" si on a date + epreuve
+                                                $_dDate = $_d_['date'] ?? '';
+                                                $_dEp = $_d_['epreuve'] ?? '';
+                                                if ($_dEp !== '' && $_dDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_dDate) && $_dDate !== '0000-00-00'):
+                                            ?>
+                                                <button type="button" class="p2-brut-sameday" onclick="p2LoadSameDay(this)" data-ep="<?= htmlspecialchars($_dEp, ENT_QUOTES) ?>" data-date="<?= htmlspecialchars($_dDate, ENT_QUOTES) ?>" data-exclude="<?= (int)$id ?>" style="margin:0 0 8px;padding:4px 10px;background:#a29bfe15;border:1px solid #a29bfe40;color:#a29bfe;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all 0.15s;">
+                                                    &#128101; Qui d'autre sur cette epreuve ce jour-la ?
+                                                </button>
+                                                <div class="p2-brut-sameday-result" style="margin:0 0 8px;display:none;"></div>
+                                            <?php endif; ?>
+                                            <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;">
+                                                <?php foreach ($_fieldLabels as $_k => $_kl):
+                                                    if ($_k === 'performance_brut') continue;
+                                                    $_v = $_d_[$_k] ?? null;
+                                                    if ($_v === null || $_v === '' || $_v === 0 || $_v === '0' || $_v === '0000-00-00') continue;
+                                                ?>
+                                                    <div class="p2-brut-k" style="color:#5a6580;font-size:10px;text-transform:uppercase;letter-spacing:0.3px;font-weight:600;"><?= $_kl ?></div>
+                                                    <div class="p2-brut-v" style="color:#c9d1d9;font-size:12px;word-break:break-word;">
+                                                        <?php if (is_array($_v)):
+                                                            if ($_k === 'niveaux'):
+                                                                foreach ($_v as $_nc): if (!$_nc) continue; ?>
+                                                                    <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin-right:3px;<?= $_nivStyleInline($_nc) ?>"><?= htmlspecialchars($_nc) ?></span>
+                                                                <?php endforeach;
+                                                            else:
+                                                                echo htmlspecialchars(implode(', ', $_v));
+                                                            endif;
+                                                        else:
+                                                            if ($_k === 'date'):
+                                                                $_pp = explode('-', $_v);
+                                                                echo count($_pp) >= 3 ? htmlspecialchars($_pp[2].'/'.$_pp[1].'/'.$_pp[0]) : htmlspecialchars($_v);
+                                                            elseif (in_array($_k, ['club','club_niveau'], true)):
+                                                                $_clubName = rtrim($_v, '* ');
+                                                                ?><a href="?page=recherche&club=<?= urlencode($_clubName) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($_v) ?></a><?php
+                                                            elseif ($_k === 'lieu'):
+                                                                ?><a href="?page=villes&open=<?= urlencode($_v) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($_v) ?></a><?php
+                                                            elseif ($_k === 'competition'):
+                                                                ?><a href="?page=recherche&competition=<?= urlencode($_v) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($_v) ?></a><?php
+                                                            else:
+                                                                echo htmlspecialchars($_v);
+                                                            endif;
+                                                        endif; ?>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <!-- Courbes : progression par discipline depuis les debuts -->
+        <div class="p2-more-view" data-pane="courbes">
+        <?php
+            // Construire les series : discipline > epreuve > [{year, perf_int, perf_brut}]
+            $_courbesData = [];
+            $_isTimeDiscipline = ['sprint'=>true,'haies'=>true,'demi-fond'=>true,'fond'=>true,'steeple'=>true,'combines'=>false,'sauts'=>false,'lancers'=>false,'autre'=>false];
+            foreach ($_progressions as $p) {
+                $ep = $p['epreuve'] ?? '';
+                $yr = (int)($p['annee'] ?? 0);
+                $pi = isset($p['performance']) ? (int)$p['performance'] : 0;
+                if ($ep === '' || $yr <= 0 || $pi <= 0) continue;
+                $disc = _p2_categEpreuve($ep);
+                if (!isset($_courbesData[$disc])) $_courbesData[$disc] = [];
+                if (!isset($_courbesData[$disc][$ep])) $_courbesData[$disc][$ep] = [];
+                $_courbesData[$disc][$ep][$yr] = ['p'=>$pi, 'b'=>$p['performance_brut'] ?? ''];
+            }
+            foreach ($_resultats as $r) {
+                $ep = $r['epreuve'] ?? '';
+                $yr = (int)($r['annee'] ?? 0);
+                $pi = isset($r['performance']) ? (int)$r['performance'] : 0;
+                if ($ep === '' || $yr <= 0 || $pi <= 0) continue;
+                $disc = _p2_categEpreuve($ep);
+                $isTime = !empty($_isTimeDiscipline[$disc]);
+                if (!isset($_courbesData[$disc])) $_courbesData[$disc] = [];
+                if (!isset($_courbesData[$disc][$ep])) $_courbesData[$disc][$ep] = [];
+                if (!isset($_courbesData[$disc][$ep][$yr])) {
+                    $_courbesData[$disc][$ep][$yr] = ['p'=>$pi, 'b'=>$r['performance_brut'] ?? ''];
+                } else {
+                    $existing = $_courbesData[$disc][$ep][$yr]['p'];
+                    if ($isTime ? ($pi < $existing) : ($pi > $existing)) {
+                        $_courbesData[$disc][$ep][$yr] = ['p'=>$pi, 'b'=>$r['performance_brut'] ?? ''];
+                    }
+                }
+            }
+            $_courbesClean = [];
+            foreach ($_courbesData as $disc => $eps) {
+                foreach ($eps as $ep => $pts) {
+                    if (count($pts) < 1) continue;
+                    ksort($pts);
+                    if (!isset($_courbesClean[$disc])) $_courbesClean[$disc] = [];
+                    $_courbesClean[$disc][$ep] = $pts;
+                }
+            }
+            $_discLabelsC = ['sprint'=>'Sprint','haies'=>'Haies','demi-fond'=>'Demi-fond','fond'=>'Fond','steeple'=>'Steeple','sauts'=>'Sauts','lancers'=>'Lancers','combines'=>'Combines','autre'=>'Autres'];
+            $_discOrderC = ['sprint','haies','demi-fond','fond','steeple','sauts','lancers','combines','autre'];
+        ?>
+            <?php if (empty($_courbesClean)): ?>
+                <p style="color:#6e7681;font-family:'Bodoni Moda',serif;font-style:italic;font-size:13px;padding:24px 0;text-align:center;">Pas de donnees de progression disponibles pour tracer des courbes.</p>
+            <?php else: ?>
+                <div class="p2-chart" style="margin:0;padding:24px 12px 0;border-top:none;">
+                    <div class="p2-chart-rubrique">
+                        Progression par discipline
+                        <span id="p2CrbDiscLabel"></span>
+                    </div>
+                    <div class="p2-chart-eps" id="p2CrbDiscList">
+                        <?php $_iD = 0; foreach ($_discOrderC as $_d): if (empty($_courbesClean[$_d])) continue; ?>
+                            <button type="button" class="p2-chart-ep<?= $_iD === 0 ? ' active' : '' ?>" data-disc="<?= htmlspecialchars($_d, ENT_QUOTES) ?>"><?= htmlspecialchars($_discLabelsC[$_d]) ?></button>
+                        <?php $_iD++; endforeach; ?>
+                    </div>
+
+                    <!-- #6 Toggle 2nd discipline overlay -->
+                    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 14px;flex-wrap:wrap;">
+                        <label style="color:#8b949e;font-family:'Bodoni Moda',serif;font-style:italic;font-size:11px;">Comparer avec :</label>
+                        <select id="p2CrbDisc2" onchange="p2RenderCourbe(window._p2CrbCurrent)" class="p2-cmp-sel" style="background:#161e30;border:1px solid #2a3560;color:#e6edf3;padding:5px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'Bodoni Moda',serif;font-style:italic;">
+                            <option value="">Aucune</option>
+                            <?php foreach ($_discOrderC as $_d2): if (empty($_courbesClean[$_d2])) continue; ?>
+                                <option value="<?= htmlspecialchars($_d2, ENT_QUOTES) ?>"><?= htmlspecialchars($_discLabelsC[$_d2]) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <label style="color:#8b949e;font-family:'Bodoni Moda',serif;font-style:italic;font-size:11px;margin-left:14px;display:flex;align-items:center;gap:5px;cursor:pointer;">
+                            <input type="checkbox" id="p2CrbAnnots" checked onchange="p2RenderCourbe(window._p2CrbCurrent)" style="cursor:pointer;"> Afficher icones evenements
+                        </label>
+                    </div>
+
+                    <div class="p2-chart-canvas-wrap" style="height:300px;">
+                        <canvas id="p2CrbCanvas"></canvas>
+                    </div>
+                    <div class="p2-chart-foot">
+                        <span class="p2-chart-yr" id="p2CrbFirstYr"></span>
+                        <span class="p2-chart-line"></span>
+                        <span class="p2-chart-yr" id="p2CrbLastYr"></span>
+                    </div>
+
+                    <!-- #4 Legende des niveaux atteints -->
+                    <div id="p2CrbNivLegend" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:14px;font-size:11px;"></div>
+
+                    <!-- Legende icones #5 -->
+                    <div style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:10px;font-family:'Bodoni Moda',serif;font-style:italic;font-size:11px;color:#8b949e;">
+                        <span>&#9733; Record perso</span>
+                        <span>&#129351; Medaille</span>
+                        <span>&#127942; Podium</span>
+                        <span>&#127942; Selection</span>
+                    </div>
+
+                    <p class="p2-chart-summary" id="p2CrbSummary" style="margin-top:14px;"></p>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- #9 Comparer 2 annees cote a cote -->
+        <div class="p2-more-view" data-pane="cmpyr">
+            <?php
+                $_yearsAvail = array_keys($_brutGroup);
+                sort($_yearsAvail);
+                $_yearsAvail = array_filter($_yearsAvail, function($y){ return $y > 0; });
+            ?>
+            <?php if (count($_yearsAvail) < 2): ?>
+                <p style="color:#8b949e;font-size:13px;padding:24px;text-align:center;">Au moins deux annees sont necessaires pour la comparaison.</p>
+            <?php else: ?>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:0 0 18px;padding:14px;background:#0a1020;border:1px solid #1a2540;border-radius:8px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <label style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Annee A</label>
+                        <select id="p2CmpYrA" onchange="p2CmpRender()" class="p2-cmp-sel" style="background:#161e30;border:1px solid #2a3560;color:#e6edf3;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">
+                            <?php foreach ($_yearsAvail as $_yA): ?><option value="<?= $_yA ?>"<?= $_yA === end($_yearsAvail) ? ' selected' : '' ?>><?= $_yA ?></option><?php endforeach; ?>
+                        </select>
+                    </div>
+                    <span style="color:#a29bfe;font-size:18px;font-weight:800;">VS</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <label style="color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Annee B</label>
+                        <select id="p2CmpYrB" onchange="p2CmpRender()" class="p2-cmp-sel" style="background:#161e30;border:1px solid #2a3560;color:#e6edf3;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">
+                            <?php foreach ($_yearsAvail as $_yB): $_yPrev = end($_yearsAvail); reset($_yearsAvail); ?><option value="<?= $_yB ?>"<?= $_yB === (count($_yearsAvail) >= 2 ? array_values($_yearsAvail)[count($_yearsAvail) - 2] : $_yB) ? ' selected' : '' ?>><?= $_yB ?></option><?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div id="p2CmpResult"></div>
+            <?php endif; ?>
+        </div>
+
+    </div>
+</div>
+
+<script>
+window._p2CmpData = <?= json_encode([
+    'brutGroup' => $_brutGroup ?? [],
+    'bestPerfYE' => $_bestPerfYE ?? [],
+    'discLabels' => $_discLabels ?? [],
+    'discOrder' => $_discOrder ?? [],
+    'nivFFAYr' => $_nivFFAYr ?? [],
+], JSON_UNESCAPED_UNICODE) ?>;
+window.p2CmpRender = function() {
+    var A = parseInt(document.getElementById('p2CmpYrA').value, 10);
+    var B = parseInt(document.getElementById('p2CmpYrB').value, 10);
+    var d = window._p2CmpData;
+    var groupA = d.brutGroup[A] || {};
+    var groupB = d.brutGroup[B] || {};
+    function _stats(grp) {
+        var s = {nb:0, recs:0, prog:0, res:0, pod:0, sel:0, med:0, or:0, ar:0, br:0, eps:{}};
+        Object.keys(grp).forEach(function(disc){
+            grp[disc].forEach(function(e){
+                s.nb++;
+                if (e.src === 'record') s.recs++;
+                else if (e.src === 'progression') s.prog++;
+                else if (e.src === 'resultat') s.res++;
+                else if (e.src === 'podium') s.pod++;
+                else if (e.src === 'selection') s.sel++;
+                else if (e.src === 'medaille') {
+                    s.med++;
+                    var t = (e.data.type || '').toLowerCase();
+                    if (t === 'or') s.or++; else if (t === 'argent') s.ar++; else if (t === 'bronze') s.br++;
+                }
+                var ep = e.data.epreuve || '';
+                if (ep) s.eps[ep] = 1;
+            });
+        });
+        s.nbEp = Object.keys(s.eps).length;
+        return s;
+    }
+    var sA = _stats(groupA), sB = _stats(groupB);
+    function _delta(a, b) {
+        if (a === b) return '<span style="color:#8b949e;">=</span>';
+        var diff = a - b;
+        var col = diff > 0 ? '#34d399' : '#fb7185';
+        var sign = diff > 0 ? '+' : '';
+        return '<span style="color:' + col + ';font-weight:700;">' + sign + diff + '</span>';
+    }
+    function _row(label, vA, vB) {
+        return '<tr><td style="padding:8px 12px;font-size:12px;color:#8b949e;text-transform:uppercase;letter-spacing:0.4px;">' + label + '</td>'
+            + '<td style="padding:8px 12px;font-weight:700;color:#a29bfe;text-align:center;font-size:18px;">' + vA + '</td>'
+            + '<td style="padding:8px 12px;text-align:center;font-size:13px;">' + _delta(vA, vB) + '</td>'
+            + '<td style="padding:8px 12px;font-weight:700;color:#fbbf24;text-align:center;font-size:18px;">' + vB + '</td></tr>';
+    }
+    var html = '<div style="overflow-x:auto;"><table class="p2-cmp-table" style="width:100%;border-collapse:collapse;background:#0a1020;border:1px solid #1a2540;border-radius:8px;">';
+    html += '<thead><tr><th style="padding:10px 12px;text-align:left;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #1a2540;">Metrique</th>';
+    html += '<th style="padding:10px 12px;text-align:center;font-size:14px;color:#a29bfe;border-bottom:1px solid #1a2540;">' + A + '</th>';
+    html += '<th style="padding:10px 12px;text-align:center;font-size:11px;color:#8b949e;border-bottom:1px solid #1a2540;">A vs B</th>';
+    html += '<th style="padding:10px 12px;text-align:center;font-size:14px;color:#fbbf24;border-bottom:1px solid #1a2540;">' + B + '</th></tr></thead><tbody>';
+    html += _row('Entrees totales', sA.nb, sB.nb);
+    html += _row('Epreuves pratiquees', sA.nbEp, sB.nbEp);
+    html += _row('Competitions', sA.res, sB.res);
+    html += _row('Records perso', sA.recs, sB.recs);
+    html += _row('Podiums', sA.pod, sB.pod);
+    html += _row('Medailles or', sA.or, sB.or);
+    html += _row('Medailles argent', sA.ar, sB.ar);
+    html += _row('Medailles bronze', sA.br, sB.br);
+    html += _row('Selections', sA.sel, sB.sel);
+    html += '<tr><td style="padding:8px 12px;font-size:12px;color:#8b949e;text-transform:uppercase;letter-spacing:0.4px;">Niveau FFA</td>';
+    html += '<td style="padding:8px 12px;text-align:center;font-weight:700;color:#e879f9;">' + (d.nivFFAYr[A] || '-') + '</td>';
+    html += '<td style="padding:8px 12px;text-align:center;color:#8b949e;font-style:italic;">-</td>';
+    html += '<td style="padding:8px 12px;text-align:center;font-weight:700;color:#e879f9;">' + (d.nivFFAYr[B] || '-') + '</td></tr>';
+    html += '</tbody></table></div>';
+
+    // Comparaison perf par epreuve commune
+    var commonEps = [];
+    var bestA = d.bestPerfYE[A] || {}, bestB = d.bestPerfYE[B] || {};
+    Object.keys(bestA).forEach(function(ep){ if (bestB[ep]) commonEps.push(ep); });
+    if (commonEps.length > 0) {
+        html += '<h4 style="color:#a29bfe;font-size:14px;margin:18px 0 8px;padding:6px 12px;background:#161e30;border-radius:4px;display:inline-block;">Perfs sur epreuves communes</h4>';
+        html += '<div style="overflow-x:auto;"><table class="p2-cmp-table" style="width:100%;border-collapse:collapse;background:#0a1020;border:1px solid #1a2540;border-radius:8px;">';
+        html += '<thead><tr><th style="padding:8px 12px;text-align:left;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #1a2540;">Epreuve</th>';
+        html += '<th style="padding:8px 12px;text-align:center;font-size:13px;color:#a29bfe;border-bottom:1px solid #1a2540;">' + A + '</th>';
+        html += '<th style="padding:8px 12px;text-align:center;font-size:11px;color:#8b949e;border-bottom:1px solid #1a2540;">Diff</th>';
+        html += '<th style="padding:8px 12px;text-align:center;font-size:13px;color:#fbbf24;border-bottom:1px solid #1a2540;">' + B + '</th></tr></thead><tbody>';
+        commonEps.forEach(function(ep){
+            var pA = bestA[ep], pB = bestB[ep];
+            var isDist = pA.d;
+            var deltaInt = isDist ? (pA.p - pB.p) : (pB.p - pA.p);
+            var deltaTxt;
+            if (deltaInt === 0) deltaTxt = '<span style="color:#8b949e;">=</span>';
+            else {
+                var col = deltaInt > 0 ? '#34d399' : '#fb7185';
+                var abs = Math.abs(deltaInt);
+                var unit = isDist ? (abs >= 100 ? (abs/100).toFixed(2) + ' m' : abs + ' cm') : (abs >= 100 ? (abs/100).toFixed(2) + ' s' : abs + ' centiemes');
+                deltaTxt = '<span style="color:' + col + ';font-weight:700;">' + (deltaInt > 0 ? '+' : '-') + unit + '</span>';
+            }
+            html += '<tr><td style="padding:8px 12px;font-size:12px;font-style:italic;color:#e6edf3;">' + ep + '</td>';
+            html += '<td style="padding:8px 12px;text-align:center;font-weight:600;color:#a29bfe;">' + pA.b + '</td>';
+            html += '<td style="padding:8px 12px;text-align:center;">' + deltaTxt + '</td>';
+            html += '<td style="padding:8px 12px;text-align:center;font-weight:600;color:#fbbf24;">' + pB.b + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+    }
+    document.getElementById('p2CmpResult').innerHTML = html;
+};
+// auto render au switch
+document.querySelectorAll('.p2-more-tab[data-view="cmpyr"]').forEach(function(t){
+    t.addEventListener('click', function(){ setTimeout(p2CmpRender, 60); });
+});
+</script>
+
+<style>
+body.p2-light .p2-brut-search { background:#fff !important; border-color:#c9bfa6 !important; color:#1a1814 !important; }
+body.p2-light .p2-brut-search::placeholder { color:#8a7d63 !important; }
+.p2-brut-spark { display:inline-block; vertical-align:middle; margin-right:6px; }
+body.p2-light .p2-cmp-sel { background:#fff !important; border-color:#c9bfa6 !important; color:#1a1814 !important; }
+body.p2-light .p2-cmp-table { background:#fff !important; border-color:#c9bfa6 !important; }
+body.p2-light .p2-cmp-table th { color:#5a5040 !important; border-bottom-color:#c9bfa6 !important; }
+body.p2-light .p2-cmp-table td { color:#1a1814 !important; }
+</style>
+<style>
+.p2-brut-sameday:hover { background:#a29bfe30 !important; border-color:#a29bfe !important; transform:translateY(-1px); }
+.p2-brut-sameday[disabled] { opacity:0.6; cursor:wait; }
+.p2-brut-sameday.loaded { background:#34d39915 !important; border-color:#34d39940 !important; color:#34d399 !important; }
+body.p2-light .p2-brut-sameday { background:rgba(90,58,138,0.08) !important; border-color:#5a3a8a40 !important; color:#5a3a8a !important; }
+body.p2-light .p2-brut-sameday:hover { background:rgba(90,58,138,0.18) !important; border-color:#5a3a8a !important; }
+body.p2-light .p2-brut-sameday.loaded { background:rgba(26,77,58,0.1) !important; border-color:#1a4d3a40 !important; color:#1a4d3a !important; }
+.p2-sd-list { font-size:11px; line-height:1.6; padding:8px 10px; background:rgba(162,155,254,0.05); border:1px dashed #a29bfe40; border-radius:4px; }
+body.p2-light .p2-sd-list { background:rgba(90,58,138,0.05); border-color:#5a3a8a40; }
+.p2-sd-row { display:grid; grid-template-columns:auto 1fr auto auto; gap:6px 10px; padding:3px 0; align-items:center; }
+.p2-sd-row + .p2-sd-row { border-top:1px solid rgba(255,255,255,0.04); }
+body.p2-light .p2-sd-row + .p2-sd-row { border-top-color:rgba(0,0,0,0.06); }
+.p2-sd-place { font-weight:700; color:#fbbf24; min-width:24px; }
+.p2-sd-name a { color:#a29bfe; text-decoration:none; font-weight:600; }
+body.p2-light .p2-sd-name a { color:#5a3a8a; }
+.p2-sd-name a:hover { text-decoration:underline; }
+.p2-sd-perf { color:#34d399; font-weight:700; font-family:monospace; }
+body.p2-light .p2-sd-perf { color:#1a4d3a; }
+.p2-sd-meta { color:#8b949e; font-size:10px; }
+body.p2-light .p2-sd-meta { color:#5a5040; }
+</style>
+<script>
+// === Bouton "Qui d'autre le meme jour" — fetch on demand uniquement ===
+window.p2LoadSameDay = function(btn) {
+    if (btn.disabled || btn.classList.contains('loaded')) {
+        // Toggle l'affichage si deja charge
+        var rNext = btn.nextElementSibling;
+        if (rNext && rNext.classList.contains('p2-brut-sameday-result')) {
+            rNext.style.display = (rNext.style.display === 'none' ? 'block' : 'none');
+        }
+        return;
+    }
+    var ep = btn.dataset.ep;
+    var dt = btn.dataset.date;
+    var exc = btn.dataset.exclude || '';
+    var resDiv = btn.nextElementSibling;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Recherche...';
+
+    var apiBase = (location.hostname === 'bokonzi.com' || location.hostname === 'www.bokonzi.com')
+        ? 'https://bokonzi.com/api'
+        : (location.pathname.indexOf('/BK/') !== -1 ? '/BK/api' : '/api');
+    var url = apiBase + '/same_day_perf.php'
+        + '?epreuve=' + encodeURIComponent(ep)
+        + '&date=' + encodeURIComponent(dt)
+        + (exc ? '&exclude_id=' + encodeURIComponent(exc) : '');
+    fetch(url, { credentials: 'omit' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            btn.disabled = false;
+            if (!d || !d.success) {
+                btn.innerHTML = '⚠ Erreur';
+                if (resDiv) { resDiv.style.display = 'block'; resDiv.innerHTML = '<div class="p2-sd-list" style="color:#fb7185;">Erreur : ' + ((d && d.error) ? d.error : 'inconnue') + '</div>'; }
+                return;
+            }
+            btn.classList.add('loaded');
+            btn.innerHTML = '&#128101; ' + d.count + ' autre' + (d.count > 1 ? 's' : '') + ' (replier)';
+            if (!resDiv) return;
+            resDiv.style.display = 'block';
+            if (d.count === 0) {
+                resDiv.innerHTML = '<div class="p2-sd-list" style="color:#8b949e;font-style:italic;">Personne d\'autre dans la BDD pour cette epreuve a cette date.</div>';
+                return;
+            }
+            function _esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+            var html = '<div class="p2-sd-list">';
+            d.athletes.forEach(function(a){
+                var place = a.place ? '<span class="p2-sd-place">' + a.place + (a.place === 1 ? 'er' : 'e') + '</span>' : '<span class="p2-sd-place">-</span>';
+                var name = '<span class="p2-sd-name"><a href="?page=profil&id=' + a.id + '" target="_blank" rel="noopener">' + _esc(a.nom) + '</a></span>';
+                var perf = '<span class="p2-sd-perf">' + _esc(a.perf || '-') + '</span>';
+                var metaParts = [];
+                if (a.cat)  metaParts.push(a.cat);
+                if (a.sexe) metaParts.push(a.sexe);
+                if (a.nat)  metaParts.push(a.nat);
+                if (a.niveau) metaParts.push('niv ' + a.niveau);
+                if (a.vent) metaParts.push('vent ' + a.vent);
+                if (a.lieu) metaParts.push(a.lieu);
+                var meta = '<span class="p2-sd-meta">' + _esc(metaParts.join(' · ')) + '</span>';
+                html += '<div class="p2-sd-row">' + place + name + perf + meta + '</div>';
+            });
+            html += '</div>';
+            resDiv.innerHTML = html;
+        })
+        .catch(function(){
+            btn.disabled = false;
+            btn.innerHTML = '⚠ Reseau';
+            if (resDiv) { resDiv.style.display = 'block'; resDiv.innerHTML = '<div class="p2-sd-list" style="color:#fb7185;">Erreur reseau, reessayez.</div>'; }
+        });
+};
+// Definir BASE_API si pas deja defini (URL relative -> suit le host courant)
+if (typeof window.BASE_API === 'undefined') window.BASE_API = <?= json_encode($BASE_API_JS) ?>;
+
+// === #3 Filtre texte sur le tab Brut ===
+window.p2BrutFilter = function(query) {
+    var q = (query || '').toLowerCase().trim();
+    var pane = document.querySelector('.p2-more-view[data-pane="brut"]');
+    if (!pane) return;
+    var cards = pane.querySelectorAll('.p2-brut-card');
+    cards.forEach(function(c){
+        if (q === '') { c.style.display = ''; return; }
+        var text = (c.textContent || '').toLowerCase();
+        c.style.display = text.indexOf(q) !== -1 ? '' : 'none';
+    });
+    // Cacher les groupes annee/discipline qui n'ont aucune carte visible
+    pane.querySelectorAll('.p2-brut-yhead').forEach(function(h){
+        var yWrap = h.parentNode;
+        var any = false;
+        yWrap.querySelectorAll('.p2-brut-card').forEach(function(c){ if (c.style.display !== 'none') any = true; });
+        yWrap.style.display = any ? '' : 'none';
+    });
+    pane.querySelectorAll('.p2-brut-dhead').forEach(function(h){
+        var dWrap = h.parentNode;
+        var any = false;
+        dWrap.querySelectorAll('.p2-brut-card').forEach(function(c){ if (c.style.display !== 'none') any = true; });
+        dWrap.style.display = any ? '' : 'none';
+    });
+};
+
+window._p2CourbesData = <?= json_encode($_courbesClean ?? [], JSON_UNESCAPED_UNICODE) ?>;
+window._p2IsTimeDisc = {sprint:true, haies:true, 'demi-fond':true, fond:true, steeple:true, combines:false, sauts:false, lancers:false, autre:false};
+window._p2DiscLabels = <?= json_encode($_discLabelsC, JSON_UNESCAPED_UNICODE) ?>;
+window._p2CrbChart = null;
+window._p2CrbCurrent = null;
+// === #5 Evenements par (epreuve, annee) pour annotations ===
+<?php
+    $_eventsByEpYr = [];
+    $_pushEv = function($ep, $yr, $type) use (&$_eventsByEpYr) {
+        if (!$ep || $yr <= 0) return;
+        if (!isset($_eventsByEpYr[$ep])) $_eventsByEpYr[$ep] = [];
+        if (!isset($_eventsByEpYr[$ep][$yr])) $_eventsByEpYr[$ep][$yr] = [];
+        if (!in_array($type, $_eventsByEpYr[$ep][$yr], true)) $_eventsByEpYr[$ep][$yr][] = $type;
+    };
+    foreach ($_records as $_r) $_pushEv($_r['epreuve'] ?? '', !empty($_r['date']) ? (int)substr($_r['date'],0,4) : 0, 'record');
+    foreach ($_podiums as $_r) $_pushEv($_r['epreuve'] ?? '', (int)($_r['annee'] ?? 0), 'podium');
+    foreach ($_selections as $_r) $_pushEv($_r['epreuve'] ?? '', !empty($_r['date']) ? (int)substr($_r['date'],0,4) : 0, 'selection');
+    foreach (($data['medailles'] ?? []) as $_r) $_pushEv($_r['epreuve'] ?? '', (int)($_r['annee'] ?? (!empty($_r['date']) ? substr($_r['date'],0,4) : 0)), 'medaille');
+?>
+window._p2EventsByEpYr = <?= json_encode($_eventsByEpYr, JSON_UNESCAPED_UNICODE) ?>;
+// === #4 Niveaux atteints par (epreuve, annee) ===
+<?php
+    $_nivByEpYr = [];
+    $_pushN = function($ep, $yr, $codes) use (&$_nivByEpYr) {
+        if (!$ep || $yr <= 0 || empty($codes)) return;
+        if (!isset($_nivByEpYr[$ep])) $_nivByEpYr[$ep] = [];
+        if (!isset($_nivByEpYr[$ep][$yr])) $_nivByEpYr[$ep][$yr] = [];
+        foreach ($codes as $c) {
+            if ($c && !in_array($c, $_nivByEpYr[$ep][$yr], true)) $_nivByEpYr[$ep][$yr][] = $c;
+        }
+    };
+    foreach ($_records as $_r) $_pushN($_r['epreuve'] ?? '', !empty($_r['date']) ? (int)substr($_r['date'],0,4) : 0, $_r['niveaux'] ?? []);
+    foreach ($_progressions as $_r) $_pushN($_r['epreuve'] ?? '', (int)($_r['annee'] ?? 0), $_r['niveaux'] ?? []);
+    foreach ($_resultats as $_r) {
+        $nv = !empty($_r['niveau']) ? [$_r['niveau']] : [];
+        $_pushN($_r['epreuve'] ?? '', (int)($_r['annee'] ?? 0), $nv);
+    }
+?>
+window._p2NivByEpYr = <?= json_encode($_nivByEpYr, JSON_UNESCAPED_UNICODE) ?>;
+
+function p2ToggleMore(btn) {
+    var panel = btn.parentNode.querySelector('.p2-more-panel');
+    var arrow = btn.querySelector('.p2-more-arrow');
+    var label = btn.querySelector('.p2-more-label');
+    var open = panel.classList.toggle('open');
+    btn.classList.toggle('open', open);
+    arrow.innerHTML = open ? '&#8593;' : '&#8595;';
+    label.textContent = open ? 'Voir moins' : 'Voir plus';
+}
+document.querySelectorAll('.p2-more-tab').forEach(function(t) {
+    t.addEventListener('click', function() {
+        var v = this.dataset.view;
+        var wrap = this.closest('.p2-more-panel');
+        wrap.querySelectorAll('.p2-more-tab').forEach(function(x){ x.classList.toggle('active', x === t); });
+        wrap.querySelectorAll('.p2-more-view').forEach(function(p){ p.classList.toggle('active', p.dataset.pane === v); });
+        if (v === 'courbes') setTimeout(function(){
+            // si une discipline est active, render. Sinon prend la 1ere
+            var act = document.querySelector('#p2CrbDiscList .p2-chart-ep.active');
+            if (act) p2RenderCourbe(act.dataset.disc);
+        }, 60);
+    });
+});
+
+// Bind disc buttons
+document.querySelectorAll('#p2CrbDiscList .p2-chart-ep').forEach(function(b){
+    b.addEventListener('click', function(){
+        document.querySelectorAll('#p2CrbDiscList .p2-chart-ep').forEach(function(x){ x.classList.remove('active'); });
+        this.classList.add('active');
+        p2RenderCourbe(this.dataset.disc);
+    });
+});
+
+function p2CrbFmtPerf(perfInt, isTime) {
+    if (!perfInt || perfInt <= 0) return '';
+    if (isTime) {
+        if (perfInt >= 360000) {
+            var h = Math.floor(perfInt / 360000);
+            var rest = perfInt - h * 360000;
+            var m = Math.floor(rest / 6000);
+            var s = Math.floor((rest % 6000) / 100);
+            return h + 'h' + (m < 10 ? '0' : '') + m + "'" + (s < 10 ? '0' : '') + s;
+        }
+        if (perfInt >= 6000) {
+            var min = Math.floor(perfInt / 6000);
+            var sec = Math.floor((perfInt % 6000) / 100);
+            var cs  = perfInt % 100;
+            return min + "'" + (sec < 10 ? '0' : '') + sec + "''" + (cs < 10 ? '0' : '') + cs;
+        }
+        var sec2 = Math.floor(perfInt / 100);
+        var cs2  = perfInt % 100;
+        return sec2 + "''" + (cs2 < 10 ? '0' : '') + cs2;
+    }
+    if (perfInt >= 100) return (perfInt / 100).toFixed(2).replace('.', ',') + ' m';
+    return perfInt + ' cm';
+}
+
+function p2CrbBuildSummary(disc, eps, years, isTime) {
+    var nbEp = Object.keys(eps).length;
+    var minY = years[0], maxY = years[years.length - 1];
+    var nbPts = 0;
+    var bestEp = null, bestVal = isTime ? Infinity : 0, bestYr = null;
+    Object.keys(eps).forEach(function(ep){
+        Object.keys(eps[ep]).forEach(function(y){
+            nbPts++;
+            var v = eps[ep][y].p;
+            if (isTime ? v < bestVal : v > bestVal) { bestVal = v; bestEp = ep; bestYr = y; }
+        });
+    });
+    var s = '<strong>' + nbEp + '</strong> epreuve' + (nbEp > 1 ? 's' : '') + ' suivie' + (nbEp > 1 ? 's' : '');
+    s += ' sur <strong>' + nbPts + '</strong> point' + (nbPts > 1 ? 's' : '');
+    s += ' entre <strong>' + minY + '</strong> et <strong>' + maxY + '</strong>';
+    if (bestEp) {
+        var brut = eps[bestEp][bestYr].b || p2CrbFmtPerf(bestVal, isTime);
+        s += '. Meilleure marque sur <em>' + bestEp + '</em> en <strong>' + bestYr + '</strong> avec <strong>' + brut + '</strong>';
+    }
+    s += '.';
+    return s;
+}
+
+function p2RenderCourbe(disc) {
+    var data = window._p2CourbesData[disc];
+    if (!data) return;
+    var isTime = !!window._p2IsTimeDisc[disc];
+    var canvas = document.getElementById('p2CrbCanvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+
+    // Eventuelle 2eme discipline a superposer
+    var sel2 = document.getElementById('p2CrbDisc2');
+    var disc2 = sel2 ? sel2.value : '';
+    var data2 = (disc2 && window._p2CourbesData[disc2]) ? window._p2CourbesData[disc2] : null;
+
+    // Toutes les annees (combinees si disc2)
+    var allYears = {};
+    Object.keys(data).forEach(function(ep){
+        Object.keys(data[ep]).forEach(function(y){ allYears[parseInt(y,10)] = 1; });
+    });
+    if (data2) Object.keys(data2).forEach(function(ep){
+        Object.keys(data2[ep]).forEach(function(y){ allYears[parseInt(y,10)] = 1; });
+    });
+    var years = Object.keys(allYears).map(Number).sort(function(a,b){ return a-b; });
+
+    // Annotations checkbox
+    var annotsOn = document.getElementById('p2CrbAnnots');
+    var showAnnots = annotsOn ? annotsOn.checked : true;
+    var EVENTS = window._p2EventsByEpYr || {};
+    var EV_ICON = { record: '★', medaille: '🥇', podium: '🏆', selection: '🏆' };
+
+    // Palette elegante magazine — tons sobres, harmonieux
+    var palette = [
+        '#a29bfe', '#fbbf24', '#22d3ee', '#e879f9', '#34d399', '#fb7185',
+        '#c084fc', '#fda4af', '#94a3b8', '#f0abfc', '#a78bfa', '#fbcfe8'
+    ];
+    var palette2 = [
+        '#fb923c', '#facc15', '#06b6d4', '#f472b6', '#10b981', '#ef4444',
+        '#7c3aed', '#fdba74', '#64748b', '#e879f9', '#9333ea', '#f9a8d4'
+    ];
+
+    function _buildDS(ep, idx, srcData, paletteUsed, dashed) {
+        var color = paletteUsed[idx % paletteUsed.length];
+        var pts = years.map(function(y){ return srcData[ep][y] ? srcData[ep][y].p : null; });
+        // #5 Custom point styles si annotations actives
+        var pointStyles = years.map(function(y){
+            if (!showAnnots) return 'circle';
+            if (!srcData[ep][y]) return 'circle';
+            var ev = EVENTS[ep] && EVENTS[ep][y];
+            if (!ev || !ev.length) return 'circle';
+            // Priorite : medaille > selection > podium > record
+            if (ev.indexOf('medaille') !== -1) return 'rectRot';
+            if (ev.indexOf('selection') !== -1) return 'triangle';
+            if (ev.indexOf('podium') !== -1) return 'rect';
+            if (ev.indexOf('record') !== -1) return 'star';
+            return 'circle';
+        });
+        var pointRads = years.map(function(y){
+            var s = srcData[ep][y];
+            if (!s) return 4;
+            var ev = EVENTS[ep] && EVENTS[ep][y];
+            return (showAnnots && ev && ev.length) ? 7 : 4;
+        });
+        return {
+            label: ep + (dashed ? ' (' + window._p2DiscLabels[disc2] + ')' : ''),
+            data: pts,
+            borderColor: color,
+            backgroundColor: 'rgba(0,0,0,0)',
+            borderWidth: 1.6,
+            borderDash: dashed ? [5, 4] : [],
+            pointRadius: pointRads,
+            pointStyle: pointStyles,
+            pointHoverRadius: 8,
+            pointBackgroundColor: color,
+            pointBorderColor: color,
+            pointBorderWidth: 1.5,
+            tension: 0.35,
+            fill: false,
+            spanGaps: true
+        };
+    }
+
+    var datasets = Object.keys(data).map(function(ep, idx){ return _buildDS(ep, idx, data, palette, false); });
+    if (data2) {
+        Object.keys(data2).forEach(function(ep, idx){ datasets.push(_buildDS(ep, idx, data2, palette2, true)); });
+    }
+
+    if (window._p2CrbChart) { window._p2CrbChart.destroy(); window._p2CrbChart = null; }
+
+    // Detection mode clair pour adapter les couleurs Chart.js
+    var isLight = document.body.classList.contains('p2-light');
+    var col = {
+        legend:  isLight ? '#5a5040' : '#8b949e',
+        tipBg:   isLight ? '#fff'    : '#0d1117',
+        tipBd:   isLight ? '#c9bfa6' : '#30363d',
+        tipTit:  isLight ? '#1a1814' : '#f0f6fc',
+        tipBod:  isLight ? '#5a3a8a' : '#a29bfe',
+        xtick:   isLight ? '#8a7d63' : '#6e7681',
+        ygrid:   isLight ? '#e8dec8' : '#21262d',
+        pointBg: isLight ? '#f4ede0' : '#0d1117'
+    };
+
+    window._p2CrbChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: years, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'nearest', intersect: false },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    align: 'center',
+                    labels: {
+                        color: col.legend,
+                        font: { family: 'Bodoni Moda, serif', size: 11, style: 'italic' },
+                        boxWidth: 10,
+                        boxHeight: 10,
+                        padding: 12,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    backgroundColor: col.tipBg,
+                    titleColor: col.tipTit,
+                    bodyColor: col.tipBod,
+                    borderColor: col.tipBd,
+                    borderWidth: 1,
+                    padding: 10,
+                    titleFont: { family: 'Bodoni Moda, serif', size: 12, style: 'italic' },
+                    bodyFont:  { family: 'Bodoni Moda, serif', size: 14, weight: 700 },
+                    displayColors: true,
+                    boxWidth: 8,
+                    boxHeight: 8,
+                    usePointStyle: true,
+                    callbacks: {
+                        title: function(items){ return items[0] ? items[0].label : ''; },
+                        label: function(c){
+                            var ep = c.dataset.label;
+                            var y = years[c.dataIndex];
+                            var pt = data[ep] && data[ep][y];
+                            if (!pt) return ep + ' : -';
+                            return '  ' + ep + ' : ' + (pt.b || p2CrbFmtPerf(pt.p, isTime));
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false, drawBorder: false },
+                    ticks: { color: col.xtick, font: { family: 'Bodoni Moda, serif', size: 11, style: 'italic' } }
+                },
+                y: {
+                    reverse: isTime,
+                    grid: { color: col.ygrid, drawBorder: false },
+                    ticks: { display: false }
+                }
+            }
+        }
+    });
+
+    // Footer
+    var f = document.getElementById('p2CrbFirstYr'); if (f) f.textContent = years[0] || '';
+    var l = document.getElementById('p2CrbLastYr');  if (l) l.textContent = years[years.length - 1] || '';
+    var lab = document.getElementById('p2CrbDiscLabel'); if (lab) lab.textContent = window._p2DiscLabels[disc] || '';
+    var sum = document.getElementById('p2CrbSummary');
+    if (sum) sum.innerHTML = p2CrbBuildSummary(disc, data, years, isTime);
+    window._p2CrbCurrent = disc;
+
+    // === #4 Legende des niveaux atteints par epreuve (dans cette discipline) ===
+    var nivLeg = document.getElementById('p2CrbNivLegend');
+    if (nivLeg) {
+        var NIVS = window._p2NivByEpYr || {};
+        var order = {IA:1,IB:2,IE:3,N1:4,N2:5,N3:6,N4:7,IR:8,IR1:8,IR2:9,IR3:10,IR4:11,R1:14,R2:15,R3:16,R4:17,R5:18,R6:19,D1:20,D2:21,D3:22,D4:23,D5:24,D6:25,D7:26,D8:27};
+        function _nivStyle(c) {
+            var f = (c || '').charAt(0);
+            if (f === 'I') return 'background:#c026d320;border:1px solid #c026d3;color:#e879f9;';
+            if (f === 'N') return 'background:#e11d4820;border:1px solid #e11d48;color:#fb7185;';
+            if (f === 'R') return 'background:#0891b220;border:1px solid #0891b2;color:#22d3ee;';
+            if (f === 'D') return 'background:#f9731620;border:1px solid #f97316;color:#fb923c;';
+            return 'background:#30363d;border:1px solid #6e7681;color:#c9d1d9;';
+        }
+        var html = '';
+        Object.keys(data).forEach(function(ep){
+            // Best niv tous ans confondus
+            var best = null, bo = 99;
+            if (NIVS[ep]) Object.keys(NIVS[ep]).forEach(function(y){
+                NIVS[ep][y].forEach(function(c){ var o = order[c] || 99; if (o < bo) { bo = o; best = c; } });
+            });
+            if (best) {
+                html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;font-family:Bodoni Moda,serif;font-style:italic;">'
+                    + '<span style="color:#8b949e;">' + ep + '</span>'
+                    + '<span style="display:inline-block;padding:1px 7px;border-radius:3px;font-style:normal;' + _nivStyle(best) + '">' + best + '</span>'
+                    + '</span>';
+            }
+        });
+        nivLeg.innerHTML = html;
+    }
+}
+</script>
+<?php endif; ?>
+
+<?php
+// ================================================================
+//  MODAL "TOUT EN DETAIL" — toutes les performances classees
+// ================================================================
+$_allDetail = [];
+foreach ($_records as $r) {
+    $_allDetail[] = [
+        'src'=>'record','date'=>$r['date'] ?? '',
+        'annee'=>!empty($r['date']) && substr($r['date'],0,4) !== '0000' ? (int)substr($r['date'],0,4) : 0,
+        'epreuve'=>$r['epreuve'] ?? '', 'perf'=>$r['performance_brut'] ?? '',
+        'niveaux'=>$r['niveaux'] ?? [], 'lieu'=>$r['lieu'] ?? '',
+        'club'=>$r['club'] ?? '', 'cat'=>$r['categorie'] ?? '',
+        'vent'=>'', 'place'=>null, 'compet'=>'',
+    ];
+}
+foreach ($_progressions as $p) {
+    $_allDetail[] = [
+        'src'=>'progression','date'=>$p['date'] ?? '',
+        'annee'=>(int)($p['annee'] ?? 0),
+        'epreuve'=>$p['epreuve'] ?? '', 'perf'=>$p['performance_brut'] ?? '',
+        'niveaux'=>$p['niveaux'] ?? [], 'lieu'=>$p['lieu'] ?? '',
+        'club'=>$p['club'] ?? '', 'cat'=>$p['categorie'] ?? '',
+        'vent'=>$p['vent'] ?? '', 'place'=>null, 'compet'=>'',
+    ];
+}
+foreach ($_resultats as $r) {
+    $_allDetail[] = [
+        'src'=>'resultat','date'=>$r['date'] ?? '',
+        'annee'=>(int)($r['annee'] ?? 0),
+        'epreuve'=>$r['epreuve'] ?? '', 'perf'=>$r['performance_brut'] ?? '',
+        'niveaux'=>!empty($r['niveau']) ? [$r['niveau']] : [],
+        'lieu'=>$r['lieu'] ?? '', 'club'=>'', 'cat'=>'',
+        'vent'=>$r['vent'] ?? '', 'place'=>$r['place'] ?? null, 'compet'=>'',
+    ];
+}
+foreach ($_podiums as $p) {
+    $_allDetail[] = [
+        'src'=>'podium','date'=>$p['date'] ?? '',
+        'annee'=>(int)($p['annee'] ?? 0),
+        'epreuve'=>$p['epreuve'] ?? '', 'perf'=>$p['performance_brut'] ?? '',
+        'niveaux'=>!empty($p['niveau_competition']) ? [$p['niveau_competition']] : [],
+        'lieu'=>$p['lieu'] ?? '', 'club'=>'', 'cat'=>'',
+        'vent'=>$p['vent'] ?? '', 'place'=>$p['rang'] ?? null, 'compet'=>'',
+    ];
+}
+foreach ($_selections as $s) {
+    $_allDetail[] = [
+        'src'=>'selection','date'=>$s['date'] ?? '',
+        'annee'=>!empty($s['date']) && substr($s['date'],0,4) !== '0000' ? (int)substr($s['date'],0,4) : 0,
+        'epreuve'=>$s['epreuve'] ?? '', 'perf'=>$s['performance_brut'] ?? '',
+        'niveaux'=>$s['niveaux'] ?? [], 'lieu'=>'', 'club'=>'', 'cat'=>'',
+        'vent'=>'', 'place'=>$s['classement'] ?? null, 'compet'=>$s['competition'] ?? '',
+    ];
+}
+foreach (($data['medailles'] ?? []) as $m) {
+    $_allDetail[] = [
+        'src'=>'medaille_'.($m['type'] ?? ''),'date'=>$m['date'] ?? '',
+        'annee'=>(int)($m['annee'] ?? (!empty($m['date']) ? substr($m['date'],0,4) : 0)),
+        'epreuve'=>$m['epreuve'] ?? '', 'perf'=>$m['performance_brut'] ?? '',
+        'niveaux'=>[], 'lieu'=>$m['lieu'] ?? '', 'club'=>'', 'cat'=>'',
+        'vent'=>'', 'place'=>null, 'compet'=>$m['competition'] ?? '',
+    ];
+}
+?>
+
+<style>
+.bk-detail-overlay { display:none; position:fixed; inset:0; background:rgba(8,12,20,0.92); z-index:99999; overflow-y:auto; }
+.bk-detail-overlay.active { display:block; }
+.bk-detail-modal { max-width:1200px; margin:30px auto; background:#0d1117; border:1px solid #1a2540; border-radius:14px; padding:24px 28px; box-shadow:0 12px 40px rgba(0,0,0,0.6); }
+.bk-detail-modal h2 { color:#f0f6fc; font-size:22px; margin:0 0 6px; border:none; }
+.bk-detail-modal .bk-detail-sub { color:#8b949e; font-size:13px; margin:0 0 16px; }
+.bk-detail-close { position:fixed; top:20px; right:20px; background:#1f2940; border:1px solid #2a3560; color:#fff; width:40px; height:40px; border-radius:50%; font-size:22px; cursor:pointer; z-index:100000; display:flex; align-items:center; justify-content:center; }
+.bk-detail-close:hover { background:#2a3560; }
+.bk-detail-filters { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; padding:14px; background:#0a1020; border:1px solid #1a2540; border-radius:10px; }
+.bk-detail-filters > div { display:flex; align-items:center; gap:6px; }
+.bk-detail-filters label { color:#8b949e; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+.bk-detail-filters select { background:#161e30; border:1px solid #2a3560; color:#e6edf3; padding:6px 10px; border-radius:6px; font-size:13px; cursor:pointer; }
+.bk-detail-filters select:hover { border-color:#6c5ce7; }
+.bk-detail-stats { display:flex; gap:14px; margin:0 0 16px; flex-wrap:wrap; }
+.bk-detail-stat { background:#0a1020; border:1px solid #1a2540; border-radius:8px; padding:8px 14px; }
+.bk-detail-stat .v { color:#a29bfe; font-size:18px; font-weight:800; }
+.bk-detail-stat .k { color:#8b949e; font-size:11px; text-transform:uppercase; }
+.bk-detail-group { margin-bottom:22px; }
+.bk-detail-group h3 { color:#f0f6fc; font-size:16px; margin:0 0 10px; padding:8px 14px; background:linear-gradient(90deg, #6c5ce720, transparent); border-left:3px solid #6c5ce7; border-radius:4px; }
+.bk-detail-group h4 { color:#a29bfe; font-size:14px; margin:14px 0 8px; padding:4px 10px; background:#0a1020; border-radius:4px; display:inline-block; }
+.bk-detail-table { width:100%; border-collapse:collapse; font-size:13px; }
+.bk-detail-table th { background:#161e30; color:#8b949e; text-align:left; padding:8px 10px; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid #2a3560; }
+.bk-detail-table td { padding:8px 10px; border-bottom:1px solid #1a2540; color:#e6edf3; }
+.bk-detail-table tr:hover { background:#161e3060; }
+.bk-detail-niv { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; }
+.bk-detail-src { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.3px; }
+.bk-detail-empty { text-align:center; padding:40px 20px; color:#5a6580; font-size:14px; }
+@media (max-width:768px) {
+    .bk-detail-modal { margin:10px; padding:16px; }
+    .bk-detail-table { font-size:12px; }
+    .bk-detail-table th, .bk-detail-table td { padding:6px 8px; }
+}
+body.p2-light .bk-detail-overlay { background:rgba(244,237,224,0.96); }
+body.p2-light .bk-detail-modal { background:#f4ede0; border-color:#1a1814; color:#0a0805; }
+body.p2-light .bk-detail-modal h2,
+body.p2-light .bk-detail-table td { color:#0a0805; }
+body.p2-light .bk-detail-filters,
+body.p2-light .bk-detail-stat { background:#fff; border-color:#1a1814; }
+body.p2-light .bk-detail-table th { background:#fff; color:#0a0805; }
+</style>
+
+<div class="bk-detail-overlay" id="bkDetailOverlay" onclick="if(event.target===this)closeDetailFullModal()">
+    <button class="bk-detail-close" onclick="closeDetailFullModal()" title="Fermer">&times;</button>
+    <div class="bk-detail-modal">
+        <h2>&#128202; Toutes les performances de <?= htmlspecialchars($i['nom_complet']) ?></h2>
+        <p class="bk-detail-sub">Toutes les donnees classees par discipline, annee et niveau (records, progressions, resultats, podiums, selections, medailles)</p>
+
+        <div class="bk-detail-stats" id="bkDetailStats"></div>
+
+        <div class="bk-detail-filters">
+            <div><label>Grouper par</label>
+                <select id="bkDetailGroup" onchange="renderDetailFull()">
+                    <option value="disc_year">Discipline &gt; Annee</option>
+                    <option value="year_disc">Annee &gt; Discipline</option>
+                    <option value="niv_year">Niveau &gt; Annee</option>
+                    <option value="flat">Tout a plat (date DESC)</option>
+                </select>
+            </div>
+            <div><label>Discipline</label>
+                <select id="bkDetailDisc" onchange="renderDetailFull()">
+                    <option value="">Toutes</option>
+                    <option value="sprint">Sprint</option>
+                    <option value="haies">Haies</option>
+                    <option value="demi-fond">Demi-fond</option>
+                    <option value="fond">Fond</option>
+                    <option value="steeple">Steeple</option>
+                    <option value="sauts">Sauts</option>
+                    <option value="lancers">Lancers</option>
+                    <option value="combines">Combines</option>
+                    <option value="autre">Autres</option>
+                </select>
+            </div>
+            <div><label>Annee</label>
+                <select id="bkDetailYear" onchange="renderDetailFull()">
+                    <option value="">Toutes</option>
+                </select>
+            </div>
+            <div><label>Niveau</label>
+                <select id="bkDetailNiv" onchange="renderDetailFull()">
+                    <option value="">Tous</option>
+                    <option value="I">International (I)</option>
+                    <option value="N">National (N)</option>
+                    <option value="R">Regional (R)</option>
+                    <option value="D">Departemental (D)</option>
+                </select>
+            </div>
+            <div><label>Type</label>
+                <select id="bkDetailSrc" onchange="renderDetailFull()">
+                    <option value="">Tous</option>
+                    <option value="record">Records</option>
+                    <option value="progression">Progressions</option>
+                    <option value="resultat">Resultats</option>
+                    <option value="podium">Podiums</option>
+                    <option value="selection">Selections</option>
+                    <option value="medaille">Medailles</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="bkDetailContent"></div>
+    </div>
+</div>
+
+<script>
+window._bkAllPerfs = <?= json_encode($_allDetail, JSON_UNESCAPED_UNICODE) ?>;
+
+(function(){
+    function _disc(nom) {
+        var n = (nom || '').toLowerCase();
+        if (/(poids|disque|javelot|marteau)/.test(n)) return 'lancers';
+        if (/(hauteur|perche|longueur|triple)/.test(n)) return 'sauts';
+        if (/haies/.test(n)) return 'haies';
+        if (/steeple/.test(n)) return 'steeple';
+        if (/(pentathlon|heptathlon|decathlon)/.test(n)) return 'combines';
+        if (/marathon|semi/.test(n)) return 'fond';
+        if (/(\d+)\s*km/.test(n)) return 'fond';
+        var m = n.match(/^\s*(\d+(?:\s+\d+)*)\s*m\b/);
+        if (m) {
+            var d = parseInt(m[1].replace(/\s+/g,''), 10);
+            if (d <= 400) return 'sprint';
+            if (d <= 3000) return 'demi-fond';
+            return 'fond';
+        }
+        return 'autre';
+    }
+    var DISC_LABELS = {sprint:'Sprint', haies:'Haies', 'demi-fond':'Demi-fond', fond:'Fond', steeple:'Steeple', sauts:'Sauts', lancers:'Lancers', combines:'Combines', autre:'Autres'};
+    var DISC_ORDER = ['sprint','haies','demi-fond','fond','steeple','sauts','lancers','combines','autre'];
+    var SRC_LABELS = {record:'Record', progression:'Prog.', resultat:'Resultat', podium:'Podium', selection:'Selection', medaille_or:'Or', medaille_argent:'Argent', medaille_bronze:'Bronze', medaille_autre:'Medaille'};
+    var SRC_COLORS = {record:'#ef4444', progression:'#f59e0b', resultat:'#22d3ee', podium:'#a78bfa', selection:'#34d399', medaille_or:'#fbbf24', medaille_argent:'#cbd5e1', medaille_bronze:'#d97706', medaille_autre:'#8b949e'};
+
+    function _nivStyle(code) {
+        var f = (code || '').charAt(0);
+        if (f === 'I') return 'background:#c026d320;border:1px solid #c026d3;color:#e879f9;';
+        if (f === 'N') return 'background:#e11d4820;border:1px solid #e11d48;color:#fb7185;';
+        if (f === 'R') return 'background:#0891b220;border:1px solid #0891b2;color:#22d3ee;';
+        if (f === 'D') return 'background:#f9731620;border:1px solid #f97316;color:#fb923c;';
+        return 'background:#30363d;border:1px solid #6e7681;color:#c9d1d9;';
+    }
+    function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+    function _fmtDate(d, annee) {
+        if (!d || d === '0000-00-00' || d.indexOf('0000') === 0) return annee ? String(annee) : '-';
+        var parts = d.split('-');
+        if (parts.length >= 3) return parts[2] + '/' + parts[1] + '/' + parts[0];
+        return d;
+    }
+    function _bestNiv(arr) {
+        var order = {IA:1,IB:2,IE:3,N1:4,N2:5,N3:6,N4:7,IR:8,IR1:8,IR2:9,IR3:10,IR4:11,R1:14,R2:15,R3:16,R4:17,R5:18,R6:19,D1:20,D2:21,D3:22,D4:23,D5:24,D6:25,D7:26,D8:27};
+        var best = null, bo = 99;
+        (arr || []).forEach(function(c){ var o = order[c] || 99; if (o < bo) { bo = o; best = c; } });
+        return best;
+    }
+    function _matchesNivFilter(arr, fam) {
+        if (!fam) return true;
+        return (arr || []).some(function(c){ return (c || '').charAt(0) === fam; });
+    }
+
+    window.openDetailFullModal = function() {
+        var ov = document.getElementById('bkDetailOverlay');
+        // Populate year filter
+        var ys = {};
+        window._bkAllPerfs.forEach(function(p){ if (p.annee > 0) ys[p.annee] = 1; });
+        var yArr = Object.keys(ys).map(Number).sort(function(a,b){ return b-a; });
+        var ySel = document.getElementById('bkDetailYear');
+        if (ySel.options.length <= 1) {
+            yArr.forEach(function(y){ var o = document.createElement('option'); o.value = y; o.textContent = y; ySel.appendChild(o); });
+        }
+        ov.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        renderDetailFull();
+    };
+    window.closeDetailFullModal = function() {
+        document.getElementById('bkDetailOverlay').classList.remove('active');
+        document.body.style.overflow = '';
+    };
+    document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape' && document.getElementById('bkDetailOverlay').classList.contains('active')) closeDetailFullModal();
+    });
+
+    function _filtered() {
+        var fDisc = document.getElementById('bkDetailDisc').value;
+        var fYear = document.getElementById('bkDetailYear').value;
+        var fNiv = document.getElementById('bkDetailNiv').value;
+        var fSrc = document.getElementById('bkDetailSrc').value;
+        return window._bkAllPerfs.filter(function(p){
+            if (fDisc && _disc(p.epreuve) !== fDisc) return false;
+            if (fYear && String(p.annee) !== fYear) return false;
+            if (fNiv && !_matchesNivFilter(p.niveaux, fNiv)) return false;
+            if (fSrc) {
+                if (fSrc === 'medaille') { if (p.src.indexOf('medaille') !== 0) return false; }
+                else if (p.src !== fSrc) return false;
+            }
+            return true;
+        });
+    }
+
+    function _renderRow(p) {
+        var srcKey = p.src.indexOf('medaille') === 0 ? p.src : p.src;
+        var srcLabel = SRC_LABELS[srcKey] || p.src;
+        var srcColor = SRC_COLORS[srcKey] || '#8b949e';
+        var nivBadges = (p.niveaux || []).map(function(c){
+            return '<span class="bk-detail-niv" style="' + _nivStyle(c) + '">' + _esc(c) + '</span>';
+        }).join(' ') || '-';
+        var place = p.place ? (p.place + (p.place === 1 ? 'er' : 'e')) : '';
+        var extra = [];
+        if (p.compet) extra.push(_esc(p.compet));
+        if (p.club) extra.push(_esc(p.club));
+        if (p.cat) extra.push('<span style="color:#8b949e;">' + _esc(p.cat) + '</span>');
+        return '<tr>'
+            + '<td style="white-space:nowrap;color:#8b949e;">' + _esc(_fmtDate(p.date, p.annee)) + '</td>'
+            + '<td><span class="bk-detail-src" style="background:' + srcColor + '20;color:' + srcColor + ';border:1px solid ' + srcColor + '60;">' + _esc(srcLabel) + '</span></td>'
+            + '<td style="font-style:italic;">' + _esc(p.epreuve) + '</td>'
+            + '<td style="font-weight:700;color:#a29bfe;">' + _esc(p.perf) + '</td>'
+            + '<td>' + nivBadges + '</td>'
+            + '<td style="color:#8b949e;">' + (p.vent ? _esc(p.vent) : '') + '</td>'
+            + '<td style="color:#8b949e;">' + (place || '') + '</td>'
+            + '<td>' + _esc(p.lieu) + '</td>'
+            + '<td style="font-size:11px;color:#8b949e;">' + extra.join(' &middot; ') + '</td>'
+            + '</tr>';
+    }
+    function _tableHead() {
+        return '<table class="bk-detail-table"><thead><tr>'
+            + '<th>Date</th><th>Type</th><th>Epreuve</th><th>Perf</th><th>Niveau</th><th>Vent</th><th>Place</th><th>Lieu</th><th>Compet/Club/Cat</th>'
+            + '</tr></thead><tbody>';
+    }
+
+    window.renderDetailFull = function() {
+        var data = _filtered();
+        var group = document.getElementById('bkDetailGroup').value;
+        var content = document.getElementById('bkDetailContent');
+        var stats = document.getElementById('bkDetailStats');
+
+        // Stats summary
+        var nbBySrc = {};
+        var years = {}, discs = {}, nivs = {};
+        data.forEach(function(p){
+            var k = p.src.indexOf('medaille') === 0 ? 'medaille' : p.src;
+            nbBySrc[k] = (nbBySrc[k] || 0) + 1;
+            if (p.annee > 0) years[p.annee] = 1;
+            discs[_disc(p.epreuve)] = 1;
+            (p.niveaux || []).forEach(function(c){ nivs[c] = 1; });
+        });
+        var statsHtml = '<div class="bk-detail-stat"><div class="v">' + data.length + '</div><div class="k">Total</div></div>';
+        statsHtml += '<div class="bk-detail-stat"><div class="v">' + Object.keys(years).length + '</div><div class="k">Annees</div></div>';
+        statsHtml += '<div class="bk-detail-stat"><div class="v">' + Object.keys(discs).length + '</div><div class="k">Disciplines</div></div>';
+        ['record','progression','resultat','podium','selection','medaille'].forEach(function(s){
+            if (nbBySrc[s]) statsHtml += '<div class="bk-detail-stat"><div class="v" style="color:' + (SRC_COLORS[s] || '#a29bfe') + ';">' + nbBySrc[s] + '</div><div class="k">' + (SRC_LABELS[s] || s) + '</div></div>';
+        });
+        stats.innerHTML = statsHtml;
+
+        if (data.length === 0) {
+            content.innerHTML = '<div class="bk-detail-empty">Aucune performance ne correspond aux filtres.</div>';
+            return;
+        }
+
+        var html = '';
+        if (group === 'flat') {
+            var sorted = data.slice().sort(function(a,b){
+                var da = a.date || (a.annee ? a.annee + '-12-31' : '0000-00-00');
+                var db = b.date || (b.annee ? b.annee + '-12-31' : '0000-00-00');
+                return db.localeCompare(da);
+            });
+            html += _tableHead();
+            sorted.forEach(function(p){ html += _renderRow(p); });
+            html += '</tbody></table>';
+        } else if (group === 'disc_year') {
+            var byD = {};
+            data.forEach(function(p){ var d = _disc(p.epreuve); if (!byD[d]) byD[d] = []; byD[d].push(p); });
+            DISC_ORDER.forEach(function(d){
+                if (!byD[d]) return;
+                html += '<div class="bk-detail-group"><h3>' + DISC_LABELS[d] + ' <span style="color:#8b949e;font-weight:400;font-size:13px;">(' + byD[d].length + ')</span></h3>';
+                var byY = {};
+                byD[d].forEach(function(p){ var y = p.annee || 'Sans date'; if (!byY[y]) byY[y] = []; byY[y].push(p); });
+                Object.keys(byY).sort(function(a,b){ return String(b).localeCompare(String(a)); }).forEach(function(y){
+                    html += '<h4>' + y + ' <span style="color:#8b949e;font-weight:400;">(' + byY[y].length + ')</span></h4>';
+                    html += _tableHead();
+                    byY[y].sort(function(a,b){ return (b.date || '').localeCompare(a.date || ''); }).forEach(function(p){ html += _renderRow(p); });
+                    html += '</tbody></table>';
+                });
+                html += '</div>';
+            });
+        } else if (group === 'year_disc') {
+            var byY = {};
+            data.forEach(function(p){ var y = p.annee || 'Sans date'; if (!byY[y]) byY[y] = []; byY[y].push(p); });
+            Object.keys(byY).sort(function(a,b){ return String(b).localeCompare(String(a)); }).forEach(function(y){
+                html += '<div class="bk-detail-group"><h3>' + y + ' <span style="color:#8b949e;font-weight:400;font-size:13px;">(' + byY[y].length + ')</span></h3>';
+                var byD = {};
+                byY[y].forEach(function(p){ var d = _disc(p.epreuve); if (!byD[d]) byD[d] = []; byD[d].push(p); });
+                DISC_ORDER.forEach(function(d){
+                    if (!byD[d]) return;
+                    html += '<h4>' + DISC_LABELS[d] + ' <span style="color:#8b949e;font-weight:400;">(' + byD[d].length + ')</span></h4>';
+                    html += _tableHead();
+                    byD[d].forEach(function(p){ html += _renderRow(p); });
+                    html += '</tbody></table>';
+                });
+                html += '</div>';
+            });
+        } else if (group === 'niv_year') {
+            var FAM = [['I','International'],['N','National'],['R','Regional'],['D','Departemental'],['','Sans niveau']];
+            var byN = {I:[], N:[], R:[], D:[], '':[]};
+            data.forEach(function(p){
+                var b = _bestNiv(p.niveaux);
+                var f = b ? b.charAt(0) : '';
+                if (byN[f] === undefined) byN[f] = [];
+                byN[f].push(p);
+            });
+            FAM.forEach(function(fam){
+                var arr = byN[fam[0]] || [];
+                if (!arr.length) return;
+                html += '<div class="bk-detail-group"><h3>' + fam[1] + ' <span style="color:#8b949e;font-weight:400;font-size:13px;">(' + arr.length + ')</span></h3>';
+                var byY = {};
+                arr.forEach(function(p){ var y = p.annee || 'Sans date'; if (!byY[y]) byY[y] = []; byY[y].push(p); });
+                Object.keys(byY).sort(function(a,b){ return String(b).localeCompare(String(a)); }).forEach(function(y){
+                    html += '<h4>' + y + ' <span style="color:#8b949e;font-weight:400;">(' + byY[y].length + ')</span></h4>';
+                    html += _tableHead();
+                    byY[y].forEach(function(p){ html += _renderRow(p); });
+                    html += '</tbody></table>';
+                });
+                html += '</div>';
+            });
+        }
+        content.innerHTML = html;
+    };
+})();
+</script>
+
+<?php
+// ================================================================
+//  MODAL "VUE BRUTE" — toutes les donnees, tous les champs, par annee+discipline
+// ================================================================
+$_brutData = [
+    'records'      => $_records,
+    'progressions' => $_progressions,
+    'resultats'    => $_resultats,
+    'podiums'      => $_podiums,
+    'selections'   => $_selections,
+    'medailles'    => $data['medailles'] ?? [],
+    'niveaux'      => $data['niveaux'] ?? [],
+    'clubs'        => $data['clubs'] ?? [],
+];
+?>
+
+<style>
+.bk-brut-overlay { display:none; position:fixed; inset:0; background:rgba(8,12,20,0.95); z-index:99998; overflow-y:auto; }
+.bk-brut-overlay.active { display:block; }
+.bk-brut-modal { max-width:1400px; margin:30px auto; background:#0d1117; border:1px solid #1a2540; border-radius:14px; padding:24px 28px; box-shadow:0 12px 40px rgba(0,0,0,0.6); }
+.bk-brut-modal h2 { color:#f0f6fc; font-size:22px; margin:0 0 6px; border:none; }
+.bk-brut-modal .bk-brut-sub { color:#8b949e; font-size:13px; margin:0 0 16px; }
+.bk-brut-close { position:fixed; top:20px; right:20px; background:#1f2940; border:1px solid #2a3560; color:#fff; width:40px; height:40px; border-radius:50%; font-size:22px; cursor:pointer; z-index:100000; display:flex; align-items:center; justify-content:center; }
+.bk-brut-close:hover { background:#2a3560; }
+.bk-brut-filters { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; padding:14px; background:#0a1020; border:1px solid #1a2540; border-radius:10px; }
+.bk-brut-filters > div { display:flex; align-items:center; gap:6px; }
+.bk-brut-filters label { color:#8b949e; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+.bk-brut-filters select { background:#161e30; border:1px solid #2a3560; color:#e6edf3; padding:6px 10px; border-radius:6px; font-size:13px; cursor:pointer; }
+.bk-brut-year { margin-bottom:28px; }
+.bk-brut-year-h { color:#34d399; font-size:20px; margin:0 0 12px; padding:10px 16px; background:linear-gradient(90deg, #05966930, transparent); border-left:4px solid #34d399; border-radius:4px; font-weight:800; }
+.bk-brut-disc { margin:14px 0 18px; }
+.bk-brut-disc-h { color:#a29bfe; font-size:15px; margin:0 0 8px; padding:6px 12px; background:#161e30; border-radius:4px; display:inline-block; font-weight:700; }
+.bk-brut-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:10px; }
+.bk-brut-card { background:#0a1020; border:1px solid #1a2540; border-radius:8px; padding:10px 12px; font-size:12px; }
+.bk-brut-card-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #1a2540; }
+.bk-brut-card-type { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; }
+.bk-brut-card-perf { color:#a29bfe; font-weight:800; font-size:14px; }
+.bk-brut-card-ep { color:#e6edf3; font-style:italic; font-size:13px; margin:0 0 6px; font-weight:600; }
+.bk-brut-fields { display:grid; grid-template-columns:auto 1fr; gap:3px 10px; }
+.bk-brut-fields .k { color:#5a6580; font-size:10px; text-transform:uppercase; letter-spacing:0.3px; font-weight:600; }
+.bk-brut-fields .v { color:#c9d1d9; font-size:12px; word-break:break-word; }
+.bk-brut-niv-badge { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700; margin-right:3px; }
+.bk-brut-empty { text-align:center; padding:40px 20px; color:#5a6580; font-size:14px; }
+body.p2-light .bk-brut-overlay { background:rgba(244,237,224,0.96); }
+body.p2-light .bk-brut-modal { background:#f4ede0; border-color:#1a1814; color:#0a0805; }
+body.p2-light .bk-brut-modal h2,
+body.p2-light .bk-brut-card-ep,
+body.p2-light .bk-brut-fields .v { color:#0a0805; }
+body.p2-light .bk-brut-card,
+body.p2-light .bk-brut-filters { background:#fff; border-color:#1a1814; }
+@media (max-width:768px) {
+    .bk-brut-modal { margin:10px; padding:16px; }
+    .bk-brut-cards { grid-template-columns:1fr; }
+}
+</style>
+
+<div class="bk-brut-overlay" id="bkBrutOverlay" onclick="if(event.target===this)closeBrutModal()">
+    <button class="bk-brut-close" onclick="closeBrutModal()" title="Fermer">&times;</button>
+    <div class="bk-brut-modal">
+        <h2>&#128221; Vue brute - toutes les donnees de <?= htmlspecialchars($i['nom_complet']) ?></h2>
+        <p class="bk-brut-sub">Toutes les performances avec <strong>chaque champ</strong> visible (perf brut + int, niveau, vent, ligue, points, tour, age, duree, club, categorie, competition, lieu...) groupees par <strong>annee &gt; discipline</strong>.</p>
+
+        <div class="bk-brut-filters">
+            <div><label>Annee</label>
+                <select id="bkBrutYear" onchange="renderBrut()">
+                    <option value="">Toutes</option>
+                </select>
+            </div>
+            <div><label>Discipline</label>
+                <select id="bkBrutDisc" onchange="renderBrut()">
+                    <option value="">Toutes</option>
+                    <option value="sprint">Sprint</option>
+                    <option value="haies">Haies</option>
+                    <option value="demi-fond">Demi-fond</option>
+                    <option value="fond">Fond</option>
+                    <option value="steeple">Steeple</option>
+                    <option value="sauts">Sauts</option>
+                    <option value="lancers">Lancers</option>
+                    <option value="combines">Combines</option>
+                    <option value="autre">Autres</option>
+                </select>
+            </div>
+            <div><label>Source</label>
+                <select id="bkBrutSrc" onchange="renderBrut()">
+                    <option value="">Toutes</option>
+                    <option value="record">Records</option>
+                    <option value="progression">Progressions</option>
+                    <option value="resultat">Resultats</option>
+                    <option value="podium">Podiums</option>
+                    <option value="selection">Selections</option>
+                    <option value="medaille">Medailles</option>
+                    <option value="niveau">Niveaux FFA</option>
+                </select>
+            </div>
+            <div style="color:#8b949e;font-size:12px;align-self:center;">Total entrees : <strong id="bkBrutCount" style="color:#a29bfe;">0</strong></div>
+        </div>
+
+        <div id="bkBrutContent"></div>
+    </div>
+</div>
+
+<script>
+window._bkBrutData = <?= json_encode($_brutData, JSON_UNESCAPED_UNICODE) ?>;
+
+(function(){
+    function _disc(nom) {
+        var n = (nom || '').toLowerCase();
+        if (/(poids|disque|javelot|marteau)/.test(n)) return 'lancers';
+        if (/(hauteur|perche|longueur|triple)/.test(n)) return 'sauts';
+        if (/haies/.test(n)) return 'haies';
+        if (/steeple/.test(n)) return 'steeple';
+        if (/(pentathlon|heptathlon|decathlon)/.test(n)) return 'combines';
+        if (/marathon|semi/.test(n)) return 'fond';
+        if (/(\d+)\s*km/.test(n)) return 'fond';
+        var m = n.match(/^\s*(\d+(?:\s+\d+)*)\s*m\b/);
+        if (m) {
+            var d = parseInt(m[1].replace(/\s+/g,''), 10);
+            if (d <= 400) return 'sprint';
+            if (d <= 3000) return 'demi-fond';
+            return 'fond';
+        }
+        return 'autre';
+    }
+    var DISC_LABELS = {sprint:'Sprint', haies:'Haies', 'demi-fond':'Demi-fond', fond:'Fond', steeple:'Steeple', sauts:'Sauts', lancers:'Lancers', combines:'Combines', autre:'Autres'};
+    var DISC_ORDER = ['sprint','haies','demi-fond','fond','steeple','sauts','lancers','combines','autre'];
+    var SRC_INFO = {
+        record:      { label:'RECORD',      color:'#ef4444' },
+        progression: { label:'PROGRESSION', color:'#f59e0b' },
+        resultat:    { label:'RESULTAT',    color:'#22d3ee' },
+        podium:      { label:'PODIUM',      color:'#a78bfa' },
+        selection:   { label:'SELECTION',   color:'#34d399' },
+        medaille:    { label:'MEDAILLE',    color:'#fbbf24' },
+        niveau:      { label:'NIVEAU FFA',  color:'#e879f9' }
+    };
+
+    function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+    function _nivStyle(code) {
+        var f = (code || '').charAt(0);
+        if (f === 'I') return 'background:#c026d320;border:1px solid #c026d3;color:#e879f9;';
+        if (f === 'N') return 'background:#e11d4820;border:1px solid #e11d48;color:#fb7185;';
+        if (f === 'R') return 'background:#0891b220;border:1px solid #0891b2;color:#22d3ee;';
+        if (f === 'D') return 'background:#f9731620;border:1px solid #f97316;color:#fb923c;';
+        return 'background:#30363d;border:1px solid #6e7681;color:#c9d1d9;';
+    }
+    function _fmtDate(d) {
+        if (!d || d === '0000-00-00' || d.indexOf('0000') === 0) return '';
+        var p = d.split('-');
+        return p.length >= 3 ? p[2] + '/' + p[1] + '/' + p[0] : d;
+    }
+    function _yearOf(o) {
+        if (o.annee && o.annee > 0) return parseInt(o.annee, 10);
+        if (o.date && o.date.length >= 4 && o.date.substring(0,4) !== '0000') return parseInt(o.date.substring(0,4), 10);
+        return 0;
+    }
+    function _flatten() {
+        var all = [];
+        var d = window._bkBrutData;
+        (d.records || []).forEach(function(r){ all.push({src:'record', y:_yearOf(r), disc:_disc(r.epreuve), data:r}); });
+        (d.progressions || []).forEach(function(r){ all.push({src:'progression', y:_yearOf(r), disc:_disc(r.epreuve), data:r}); });
+        (d.resultats || []).forEach(function(r){ all.push({src:'resultat', y:_yearOf(r), disc:_disc(r.epreuve), data:r}); });
+        (d.podiums || []).forEach(function(r){ all.push({src:'podium', y:_yearOf(r), disc:_disc(r.epreuve), data:r}); });
+        (d.selections || []).forEach(function(r){ all.push({src:'selection', y:_yearOf(r), disc:_disc(r.epreuve), data:r}); });
+        (d.medailles || []).forEach(function(r){ all.push({src:'medaille', y:_yearOf(r), disc:_disc(r.epreuve), data:r}); });
+        (d.niveaux || []).forEach(function(r){
+            (r.performances || []).forEach(function(perf){
+                all.push({src:'niveau', y:r.annee || 0, disc:_disc(perf.epreuve), data:Object.assign({}, perf, {annee_niveau:r.annee, code_niveau_global:r.code_niveau, points_niveau:r.points_niveau, club_niveau:r.club})});
+            });
+        });
+        return all;
+    }
+
+    window.openBrutModal = function() {
+        var ov = document.getElementById('bkBrutOverlay');
+        var all = _flatten();
+        var ys = {};
+        all.forEach(function(e){ if (e.y > 0) ys[e.y] = 1; });
+        var yArr = Object.keys(ys).map(Number).sort(function(a,b){ return b-a; });
+        var ySel = document.getElementById('bkBrutYear');
+        if (ySel.options.length <= 1) {
+            yArr.forEach(function(y){ var o = document.createElement('option'); o.value = y; o.textContent = y; ySel.appendChild(o); });
+        }
+        ov.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        renderBrut();
+    };
+    window.closeBrutModal = function() {
+        document.getElementById('bkBrutOverlay').classList.remove('active');
+        document.body.style.overflow = '';
+    };
+    document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape' && document.getElementById('bkBrutOverlay').classList.contains('active')) closeBrutModal();
+    });
+
+    function _renderCard(entry) {
+        var info = SRC_INFO[entry.src] || {label:entry.src, color:'#8b949e'};
+        var d = entry.data;
+        var perf = d.performance_brut || d.performance || '-';
+        var fields = [];
+        // Liste exhaustive de tous les champs possibles
+        var allKeys = {
+            date: 'Date complete',
+            annee: 'Annee',
+            annee_niveau: 'Annee niveau',
+            annee_progression: 'Annee prog.',
+            performance: 'Perf (int)',
+            performance_brut: 'Perf brute',
+            niveaux: 'Niveaux',
+            niveau: 'Niveau resultat',
+            niveau_competition: 'Niveau compet.',
+            code_niveau: 'Code niveau',
+            code_niveau_global: 'Niveau global annee',
+            points_niveau: 'Points niveau',
+            points: 'Points',
+            vent: 'Vent',
+            tour: 'Tour',
+            place: 'Place',
+            rang: 'Rang',
+            classement: 'Classement',
+            type: 'Type',
+            duree_jours: 'Duree (jours)',
+            age: 'Age',
+            competition: 'Competition',
+            club: 'Club',
+            club_niveau: 'Club annee',
+            categorie: 'Categorie',
+            cat: 'Categorie',
+            ligue_dept: 'Ligue/Dept',
+            lieu: 'Lieu'
+        };
+        Object.keys(allKeys).forEach(function(k){
+            if (k === 'epreuve' || k === 'performance_brut') return;
+            var v = d[k];
+            if (v === undefined || v === null || v === '' || v === 0) return;
+            if (Array.isArray(v)) {
+                if (!v.length) return;
+                if (k === 'niveaux') {
+                    var html = v.map(function(c){ return '<span class="bk-brut-niv-badge" style="' + _nivStyle(c) + '">' + _esc(c) + '</span>'; }).join('');
+                    fields.push({k: allKeys[k], v: html, raw: true});
+                } else {
+                    fields.push({k: allKeys[k], v: v.join(', ')});
+                }
+            } else {
+                if (k === 'date') v = _fmtDate(v);
+                if (k.indexOf('annee') === 0) v = String(v);
+                fields.push({k: allKeys[k], v: v});
+            }
+        });
+
+        var html = '<div class="bk-brut-card">';
+        html += '<div class="bk-brut-card-head">';
+        html += '<span class="bk-brut-card-type" style="background:' + info.color + '20;color:' + info.color + ';border:1px solid ' + info.color + '60;">' + info.label + '</span>';
+        html += '<span class="bk-brut-card-perf">' + _esc(perf) + '</span>';
+        html += '</div>';
+        if (d.epreuve) html += '<p class="bk-brut-card-ep">' + _esc(d.epreuve) + '</p>';
+        html += '<div class="bk-brut-fields">';
+        fields.forEach(function(f){
+            html += '<div class="k">' + _esc(f.k) + '</div>';
+            html += '<div class="v">' + (f.raw ? f.v : _esc(f.v)) + '</div>';
+        });
+        html += '</div></div>';
+        return html;
+    }
+
+    window.renderBrut = function() {
+        var all = _flatten();
+        var fY = document.getElementById('bkBrutYear').value;
+        var fD = document.getElementById('bkBrutDisc').value;
+        var fS = document.getElementById('bkBrutSrc').value;
+        var data = all.filter(function(e){
+            if (fY && String(e.y) !== fY) return false;
+            if (fD && e.disc !== fD) return false;
+            if (fS && e.src !== fS) return false;
+            return true;
+        });
+
+        document.getElementById('bkBrutCount').textContent = data.length;
+        var content = document.getElementById('bkBrutContent');
+        if (!data.length) {
+            content.innerHTML = '<div class="bk-brut-empty">Aucune entree ne correspond aux filtres.</div>';
+            return;
+        }
+
+        // Groupement annee > discipline
+        var byY = {};
+        data.forEach(function(e){
+            var y = e.y || 0;
+            if (!byY[y]) byY[y] = {};
+            if (!byY[y][e.disc]) byY[y][e.disc] = [];
+            byY[y][e.disc].push(e);
+        });
+        var html = '';
+        Object.keys(byY).sort(function(a,b){ return parseInt(b,10) - parseInt(a,10); }).forEach(function(y){
+            var yLabel = parseInt(y,10) > 0 ? y : 'Sans annee';
+            var nbY = 0;
+            Object.keys(byY[y]).forEach(function(d){ nbY += byY[y][d].length; });
+            html += '<div class="bk-brut-year"><h3 class="bk-brut-year-h">' + yLabel + ' <span style="color:#8b949e;font-weight:400;font-size:13px;">(' + nbY + ' entree' + (nbY > 1 ? 's' : '') + ')</span></h3>';
+            DISC_ORDER.forEach(function(d){
+                if (!byY[y][d]) return;
+                var arr = byY[y][d];
+                html += '<div class="bk-brut-disc"><div class="bk-brut-disc-h">' + DISC_LABELS[d] + ' (' + arr.length + ')</div>';
+                html += '<div class="bk-brut-cards">';
+                arr.forEach(function(entry){ html += _renderCard(entry); });
+                html += '</div></div>';
+            });
+            html += '</div>';
+        });
+        content.innerHTML = html;
+    };
+})();
+</script>
 
 <?php else: ?>
 <div class="error">Athlète #<?= htmlspecialchars($id) ?> non trouvé.</div>
@@ -3863,6 +13116,13 @@ elseif ($page === 'villes'):
         if ($vans !== '') $vpBase .= '&ans=' . urlencode($vans);
         if ($vd && ($vd['success'] ?? false)):
 ?>
+
+<?php $_bkYN = (int)date('Y'); $_bkYP = $_bkYN - 1; ?>
+<div style="margin-bottom:16px;padding:14px 20px;background:linear-gradient(135deg,#f59e0b25,#ec489925);border:2px solid #f59e0b;border-radius:12px;display:flex;align-items:center;gap:14px;font-weight:700;flex-wrap:wrap;">
+    <span style="font-size:24px;">&#128197;</span>
+    <span style="color:#fbbf24;font-size:15px;letter-spacing:0.3px;">Donnees affichees : <b style="color:#fff;font-size:18px;"><?= $_bkYP ?> + <?= $_bkYN ?></b> uniquement</span>
+    <span style="margin-left:auto;font-size:11px;color:#fbbf24;background:#f59e0b20;padding:4px 10px;border-radius:100px;border:1px solid #f59e0b50;">Gratuit</span>
+</div>
 
 <div class="profil-header">
     <div>
@@ -4790,12 +14050,31 @@ if (true):
     // ========== MODE LISTE : ?page=villes ==========
     else:
         $nomVille = $_GET['nom'] ?? '';
+        $anneeFiltre = (int)($_GET['annee'] ?? 0);
+        $currentYear = (int)date('Y');
+        if ($anneeFiltre < 1990 || $anneeFiltre > $currentYear) $anneeFiltre = 0;
         $params = ['page' => $p, 'limit' => 50, 'has_athletes' => 1];
         if ($nomVille) $params['nom'] = $nomVille;
+        if ($anneeFiltre > 0) $params['annee'] = $anneeFiltre;
         $data = apiCall("$BASE_API/villes.php?" . http_build_query($params));
 ?>
 
-<h1>Villes</h1>
+<h1>Villes<?= $anneeFiltre > 0 ? ' <span style="color:#a29bfe;font-size:.7em;">— ' . $anneeFiltre . '</span>' : '' ?></h1>
+
+<form method="get" action="" style="display:flex;gap:10px;align-items:center;margin:10px 0 14px;flex-wrap:wrap;">
+    <input type="hidden" name="page" value="villes">
+    <?php if ($nomVille): ?><input type="hidden" name="nom" value="<?= htmlspecialchars($nomVille) ?>"><?php endif; ?>
+    <label style="color:#8b949e;font-size:13px;">Année :</label>
+    <select name="annee" onchange="this.form.submit()" style="background:#0d1117;color:#c9d1d9;border:1px solid #1e2a3a;border-radius:6px;padding:6px 10px;font-size:13px;">
+        <option value="0">Toutes années</option>
+        <?php for ($y = $currentYear; $y >= 2004; $y--): ?>
+        <option value="<?= $y ?>"<?= $anneeFiltre === $y ? ' selected' : '' ?>><?= $y ?></option>
+        <?php endfor; ?>
+    </select>
+    <?php if ($anneeFiltre > 0): ?>
+    <a href="?page=villes<?= $nomVille ? '&nom=' . urlencode($nomVille) : '' ?>" style="color:#fb7185;font-size:12px;text-decoration:none;">&times; Effacer</a>
+    <?php endif; ?>
+</form>
 
 <div class="live-search">
     <span class="ls-icon">&#128269;</span>
@@ -4871,6 +14150,129 @@ document.addEventListener('DOMContentLoaded', function() {
 <?php endif; ?>
 </div>
 <?php endif; ?>
+
+<?php
+// ================================================================
+//  MENTIONS LEGALES
+// ================================================================
+elseif ($page === 'mentions-legales'):
+?>
+
+<div style="max-width:820px;margin:0 auto;padding:40px 20px;font-family:'Inter','Segoe UI',system-ui,sans-serif;">
+    <h1 style="font-size:36px;font-weight:800;color:#fff;margin:0 0 8px 0;letter-spacing:-1px;">Mentions legales</h1>
+    <p style="color:#5a6580;font-size:13px;margin:0 0 40px 0;">Derniere mise a jour : <?= date('d/m/Y') ?></p>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">1. Editeur du site</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 8px 0;">Le site <strong>Bokonzi</strong> (accessible via bokonzi.com) est edite a titre personnel et informatif.</p>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">Contact : <a href="<?= BK_BASE ?>/contact" style="color:#a78bfa;">/contact</a></p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">2. Hebergement</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">Le site est heberge par <strong>Hostinger International Ltd.</strong><br>61 Lordou Vironos Street, 6023 Larnaca, Chypre.<br><a href="https://www.hostinger.fr" target="_blank" rel="noopener" style="color:#a78bfa;">hostinger.fr</a></p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">3. Nature du service</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 8px 0;">Bokonzi est une plateforme <strong>independante a caractere purement informatif et statistique</strong>. Le site n'est affilie a aucune federation sportive ni organisme officiel.</p>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">Les donnees presentees sont issues de <strong>sources publiques</strong>, agregees et structurees a des fins d'information, de recherche et de statistiques.</p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">4. Propriete intellectuelle</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 8px 0;">Le code source, le design et l'organisation editoriale du site sont proteges. Les donnees affichees proviennent de sources publiques et sont reproduites a titre informatif.</p>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">Les noms, marques et logos cites restent la propriete de leurs ayants droit respectifs.</p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">5. Droit de retrait</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 8px 0;">Toute personne physique peut demander a tout moment le retrait de son profil via le formulaire de signalement present sur chaque fiche athlete, ou via la page <a href="<?= BK_BASE ?>/contact" style="color:#a78bfa;">/contact</a>.</p>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">Le retrait est effectue dans un delai de <strong>1 a 30 jours</strong>. Un retrait self-service par email est propose (delai : immediat apres validation).</p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">6. Limitation de responsabilite</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">Les donnees sont presentees <strong>en l'etat</strong>, sans garantie d'exactitude, d'exhaustivite ou de mise a jour. L'editeur ne saurait etre tenu responsable d'erreurs ou d'omissions.</p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">7. Donnees personnelles</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">La gestion des donnees personnelles est detaillee dans notre <a href="<?= BK_BASE ?>/confidentialite" style="color:#a78bfa;font-weight:600;">politique de confidentialite</a>.</p>
+    </div>
+</div>
+
+<?php
+// ================================================================
+//  POLITIQUE DE CONFIDENTIALITE
+// ================================================================
+elseif ($page === 'confidentialite'):
+?>
+
+<div style="max-width:820px;margin:0 auto;padding:40px 20px;font-family:'Inter','Segoe UI',system-ui,sans-serif;">
+    <h1 style="font-size:36px;font-weight:800;color:#fff;margin:0 0 8px 0;letter-spacing:-1px;">Politique de confidentialite</h1>
+    <p style="color:#5a6580;font-size:13px;margin:0 0 40px 0;">Derniere mise a jour : <?= date('d/m/Y') ?></p>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">1. Donnees collectees</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 12px 0;">Bokonzi collecte uniquement les donnees necessaires au fonctionnement du service :</p>
+        <ul style="color:#c9d1d9;line-height:1.8;margin:0;padding-left:22px;">
+            <li><strong>Adresse IP</strong> : loguee de maniere anonyme pour la lutte contre le scraping abusif et les statistiques d'audience.</li>
+            <li><strong>Cookies techniques</strong> : uniquement pour la session de connexion (token d'authentification).</li>
+            <li><strong>Email</strong> : uniquement si vous creez un compte ou vous abonnez volontairement a une fonctionnalite (suivi d'athlete, newsletter, telechargement PDF).</li>
+            <li><strong>Email + profil Google</strong> : si vous vous connectez via Google OAuth. Nous stockons email, prenom et photo de profil.</li>
+        </ul>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">2. Utilisation des donnees</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 12px 0;">Vos donnees sont utilisees exclusivement pour :</p>
+        <ul style="color:#c9d1d9;line-height:1.8;margin:0;padding-left:22px;">
+            <li>Vous identifier lors de la connexion.</li>
+            <li>Vous envoyer les notifications liees aux fonctionnalites que vous avez activees (suivi d'athlete, newsletter).</li>
+            <li>Empecher les abus (scraping massif, tentatives d'intrusion).</li>
+            <li>Produire des statistiques d'audience agregees et anonymes.</li>
+        </ul>
+        <p style="color:#c9d1d9;line-height:1.7;margin:12px 0 0 0;"><strong>Nous ne vendons jamais vos donnees a des tiers.</strong></p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">3. Cookies</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 12px 0;">Bokonzi utilise les cookies suivants :</p>
+        <ul style="color:#c9d1d9;line-height:1.8;margin:0;padding-left:22px;">
+            <li><strong>bk_token</strong> : cookie d'authentification (30 jours, httpOnly, SameSite=Lax).</li>
+            <li><strong>Google Tag Manager / AdSense</strong> : cookies tiers pour l'analyse d'audience et la monetisation publicitaire. Conformes a leur propre politique.</li>
+        </ul>
+        <p style="color:#c9d1d9;line-height:1.7;margin:12px 0 0 0;">Vous pouvez bloquer les cookies dans votre navigateur. Le site reste consultable, seule la connexion utilisateur necessite un cookie.</p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">4. Conservation</h2>
+        <ul style="color:#c9d1d9;line-height:1.8;margin:0;padding-left:22px;">
+            <li>Logs IP : rotation mensuelle automatique.</li>
+            <li>Donnees de compte : conservees tant que le compte est actif.</li>
+            <li>Historique de recherches : 90 jours maximum (nettoyage automatique).</li>
+        </ul>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;margin-bottom:16px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">5. Vos droits (RGPD)</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0 0 12px 0;">Conformement au Reglement General sur la Protection des Donnees (RGPD), vous disposez a tout moment des droits suivants :</p>
+        <ul style="color:#c9d1d9;line-height:1.8;margin:0;padding-left:22px;">
+            <li><strong>Acces</strong> : savoir quelles donnees nous detenons vous concernant.</li>
+            <li><strong>Rectification</strong> : corriger des donnees inexactes.</li>
+            <li><strong>Suppression</strong> : effacer vos donnees (retrait de profil, suppression de compte).</li>
+            <li><strong>Opposition</strong> : refuser l'utilisation de vos donnees.</li>
+            <li><strong>Portabilite</strong> : recuperer vos donnees dans un format lisible.</li>
+        </ul>
+        <p style="color:#c9d1d9;line-height:1.7;margin:12px 0 0 0;">Pour exercer ces droits, contactez-nous via <a href="<?= BK_BASE ?>/contact" style="color:#a78bfa;font-weight:600;">/contact</a>.</p>
+    </div>
+
+    <div style="background:#131a28;border:1px solid #1e2a3a;border-radius:16px;padding:32px;">
+        <h2 style="font-size:18px;color:#a78bfa;margin:0 0 12px 0;font-weight:700;">6. Securite</h2>
+        <p style="color:#c9d1d9;line-height:1.7;margin:0;">Les mots de passe sont hashes (non stockes en clair). Les connexions sont chiffrees en HTTPS. Les tokens de session ont une duree de vie limitee (30 jours).</p>
+    </div>
+</div>
 
 <?php
 // ================================================================
@@ -5206,6 +14608,1437 @@ function _espClearHistory() {
             alert('Erreur : ' + (d.error || 'echec'));
         }
     }).catch(function() { alert('Erreur reseau'); });
+}
+</script>
+
+<?php
+// ================================================================
+//  TARIFS (pricing freemium)
+// ================================================================
+elseif ($page === 'tarifs'):
+?>
+<?php
+// ======================= PAGE TARIFS — abonnements BOKONZI =======================
+if (!function_exists('getCurrentUser')) require_once __DIR__ . '/core/auth.php';
+require_once __DIR__ . '/core/subscription.php'; // + stripe_config.php ($BK_PLANS, bkStripeConfigured)
+
+$tarifUser    = getCurrentUser($conn);
+$tarifSummary = $tarifUser ? getSubscriptionSummary($conn, $tarifUser['id_user'])
+                           : ['active' => false, 'plan' => null, 'plan_name' => null,
+                              'period_end' => null, 'cancel_at_period_end' => false];
+$tarifCurPlan = $tarifSummary['active'] ? $tarifSummary['plan'] : null;
+$tarifCurRank = $tarifCurPlan ? (int)$BK_PLANS[$tarifCurPlan]['rank'] : 0;
+$stripeReady  = isset($BK_PLANS['bronze']['payment_link']) && strpos($BK_PLANS['bronze']['payment_link'], 'buy.stripe.com') !== false;
+$fmtP = function ($cents) { return number_format($cents / 100, 2, ',', "\xc2\xa0"); };
+
+// Détail complet (cumulatif) de chaque offre — pour la modale « + » et la description Stripe
+$_gratuitFeatures = ['1 fiche athlète par jour', 'Aperçu de 2 minutes par fiche', 'Clubs, épreuves & villes en consultation'];
+$BK_PLAN_DETAILS = ['gratuit' => [
+    'name' => 'Gratuit', 'tagline' => 'Pour découvrir BOKONZI', 'color' => '#8b949e',
+    'price' => 'Gratuit, pour toujours', 'features' => $_gratuitFeatures,
+    'stripe' => "BOKONZI Gratuit — Découvrez la base de l'athlétisme français : 1 fiche athlète par jour (consultable 2 minutes), plus les clubs, épreuves et villes en consultation libre. Sans inscription obligatoire.",
+]];
+$_cumul = $_gratuitFeatures;
+foreach ($BK_PLANS as $_pk => $_p) {
+    $_cumul = array_merge($_cumul, $_p['features']);
+    $BK_PLAN_DETAILS[$_pk] = [
+        'name' => $_p['name'], 'tagline' => $_p['tagline'], 'color' => $_p['color'],
+        'price' => $fmtP($_p['price_month']) . ' € / mois  ·  ' . $fmtP($_p['price_year']) . ' € / an (2 mois offerts)',
+        'features' => $_cumul,
+        'stripe' => 'BOKONZI ' . $_p['name'] . ' — ' . $_p['tagline'] . '. Inclus : ' . implode(', ', $_cumul)
+                  . '. À partir de ' . $fmtP($_p['price_month']) . ' €/mois, sans engagement, résiliable à tout moment. Paiement sécurisé Stripe (Google Pay, carte bancaire).',
+    ];
+}
+?>
+<style>
+.bkt-wrap{max-width:1180px;margin:0 auto;padding:48px 20px 80px;font-family:Inter,system-ui,sans-serif;}
+.bkt-hero{text-align:center;margin-bottom:32px;}
+.bkt-badge{display:inline-flex;align-items:center;gap:7px;background:#161b22;border:1px solid #1e2a3a;color:#a78bfa;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:6px 14px;border-radius:100px;}
+.bkt-h1{font-size:clamp(30px,4vw,46px);font-weight:800;color:#fff;letter-spacing:-1px;margin:18px 0 12px;line-height:1.12;}
+.bkt-h1 .g{background:linear-gradient(135deg,#a78bfa,#ec4899 60%,#f59e0b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.bkt-lead{color:#8b949e;font-size:16px;max-width:560px;margin:0 auto;line-height:1.6;}
+.bkt-current{max-width:680px;margin:24px auto 0;background:#10b98114;border:1px solid #10b98140;border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.bkt-current .ic{font-size:22px;}
+.bkt-current .tx{flex:1;min-width:200px;color:#c9d1d9;font-size:14px;line-height:1.5;}
+.bkt-current .tx b{color:#fff;}
+.bkt-current button{background:#161b22;border:1px solid #1e2a3a;color:#c9d1d9;font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer;font-family:inherit;}
+.bkt-current button:hover{border-color:#6c5ce7;color:#a78bfa;}
+.bkt-notice{max-width:680px;margin:20px auto 0;background:#f59e0b12;border:1px solid #f59e0b40;color:#fbbf24;font-size:13px;border-radius:12px;padding:12px 18px;text-align:center;line-height:1.5;}
+.bkt-toggle{display:flex;justify-content:center;align-items:center;gap:10px;margin:30px 0 8px;}
+.bkt-toggle-btns{display:inline-flex;background:#0d1117;border:1px solid #1e2a3a;border-radius:100px;padding:4px;}
+.bkt-tg{border:none;background:transparent;color:#8b949e;font-family:inherit;font-size:13px;font-weight:700;padding:8px 18px;border-radius:100px;cursor:pointer;transition:all .2s;}
+.bkt-tg.on{background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;}
+.bkt-save{color:#34d399;font-size:12px;font-weight:700;background:#10b98118;padding:4px 10px;border-radius:100px;}
+.bkt-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:28px;align-items:stretch;}
+.bkt-card{background:linear-gradient(150deg,#131a28,#0d1117);border:1px solid #1e2a3a;border-radius:16px;padding:24px 18px;display:flex;flex-direction:column;position:relative;transition:transform .25s,box-shadow .25s;}
+.bkt-card:hover{transform:translateY(-4px);box-shadow:0 18px 44px rgba(0,0,0,.45);}
+.bkt-card.featured{border-color:#6c5ce7;box-shadow:0 14px 40px rgba(108,92,231,.22);}
+.bkt-card.is-current{border-color:#34d399;}
+.bkt-pop{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;padding:4px 12px;border-radius:100px;white-space:nowrap;}
+.bkt-curbadge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:#34d399;color:#06281c;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:100px;white-space:nowrap;}
+.bkt-bar{height:4px;width:38px;border-radius:4px;margin-bottom:14px;}
+.bkt-medal{width:62px;height:auto;display:block;margin:-4px 0 8px;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));}
+.bkt-pname{color:#fff;font-size:17px;font-weight:800;margin:0;}
+.bkt-ptag{color:#5a6580;font-size:11.5px;margin:3px 0 14px;min-height:30px;line-height:1.4;}
+.bkt-price{display:flex;align-items:baseline;gap:3px;margin-bottom:4px;}
+.bkt-amt{font-size:32px;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1;}
+.bkt-cur{font-size:18px;font-weight:700;color:#fff;}
+.bkt-per{color:#8b949e;font-size:12px;font-weight:600;margin-left:2px;}
+.bkt-permo{color:#5a6580;font-size:11px;min-height:15px;margin-bottom:14px;}
+.bkt-feats{list-style:none;padding:0;margin:6px 0 18px;flex:1;}
+.bkt-feats li{display:flex;gap:8px;align-items:flex-start;padding:6px 0;color:#c9d1d9;font-size:12.5px;line-height:1.45;border-bottom:1px dashed #1e2a3a;}
+.bkt-feats li:last-child{border-bottom:none;}
+.bkt-feats li .ck{color:#34d399;font-weight:800;flex-shrink:0;}
+.bkt-feats li.head{color:#8b949e;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:none;padding-bottom:2px;}
+.bkt-cta{margin-top:auto;display:block;width:100%;text-align:center;padding:11px 10px;border-radius:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;text-decoration:none;border:1.5px solid #1e2a3a;background:transparent;color:#c9d1d9;transition:all .2s;}
+.bkt-cta:hover{border-color:#6c5ce7;color:#a78bfa;}
+.bkt-cta.primary{background:linear-gradient(135deg,#6c5ce7,#ec4899);border-color:transparent;color:#fff;}
+.bkt-cta.primary:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(236,72,153,.4);color:#fff;}
+/* Chaque offre a un bouton attractif aux couleurs de sa médaille */
+.bkt-cta.cta-bronze{background:linear-gradient(135deg,#e8a868,#b06a22);border-color:transparent;color:#fff;}
+.bkt-cta.cta-argent{background:linear-gradient(135deg,#aeb4bd,#5b6470);border-color:transparent;color:#fff;}
+.bkt-cta.cta-or{background:linear-gradient(135deg,#fbbf24,#d97706);border-color:transparent;color:#fff;}
+.bkt-cta.cta-platine{background:linear-gradient(135deg,#8b7cf0,#6d28d9);border-color:transparent;color:#fff;}
+.bkt-cta.cta-bronze:hover,.bkt-cta.cta-argent:hover,.bkt-cta.cta-or:hover,.bkt-cta.cta-platine:hover{transform:translateY(-2px);color:#fff;}
+.bkt-cta.cta-bronze:hover{box-shadow:0 10px 24px rgba(205,127,50,.5);}
+.bkt-cta.cta-argent:hover{box-shadow:0 10px 24px rgba(120,130,145,.5);}
+.bkt-cta.cta-or:hover{box-shadow:0 10px 24px rgba(245,158,11,.5);}
+.bkt-cta.cta-platine:hover{box-shadow:0 10px 24px rgba(108,92,231,.55);}
+.bkt-cta.cta-bronze,.bkt-cta.cta-argent,.bkt-cta.cta-or,.bkt-cta.cta-platine{box-shadow:0 6px 16px rgba(0,0,0,.28);}
+.bkt-cta.muted{opacity:.55;cursor:default;}
+.bkt-cta.muted:hover{border-color:#1e2a3a;color:#c9d1d9;transform:none;box-shadow:none;}
+.bkt-cta.current{border-color:#34d399;color:#34d399;cursor:default;}
+.bkt-reassure{display:flex;justify-content:center;gap:22px;flex-wrap:wrap;margin-top:30px;color:#8b949e;font-size:12.5px;}
+.bkt-reassure span{display:flex;align-items:center;gap:6px;}
+.bkt-faq{max-width:720px;margin:48px auto 0;}
+.bkt-faq h3{color:#fff;font-size:20px;text-align:center;margin-bottom:18px;}
+.bkt-faq details{background:#131a28;border:1px solid #1e2a3a;border-radius:10px;padding:14px 18px;margin-bottom:8px;}
+.bkt-faq summary{color:#c9d1d9;font-size:14px;font-weight:600;cursor:pointer;}
+.bkt-faq p{color:#8b949e;font-size:13px;line-height:1.6;margin:10px 0 0;}
+@media(max-width:1000px){.bkt-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.bkt-grid{grid-template-columns:1fr;}}
+/* Bouton "+ Détail complet" + modale */
+.bkt-more{background:transparent;border:1px dashed #2a3550;color:#8b949e;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;padding:7px 0;margin-bottom:10px;border-radius:8px;width:100%;transition:all .15s;}
+.bkt-more:hover{color:#a78bfa;border-color:#6c5ce7;}
+.bkt-modal{display:none;position:fixed;inset:0;z-index:100000;background:rgba(8,12,20,.86);backdrop-filter:blur(4px);align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;}
+.bkt-modal.open{display:flex;}
+.bkt-modal-box{background:linear-gradient(160deg,#161b22,#0d1117);border:1px solid #1e2a3a;border-radius:16px;max-width:480px;width:100%;padding:28px 26px 26px;position:relative;box-shadow:0 30px 70px rgba(0,0,0,.6);}
+.bkt-modal-accent{position:absolute;top:0;left:0;right:0;height:4px;border-radius:16px 16px 0 0;}
+.bkt-modal-x{position:absolute;top:10px;right:14px;background:transparent;border:none;color:#8b949e;font-size:26px;cursor:pointer;line-height:1;}
+.bkt-modal-x:hover{color:#fff;}
+.bkt-modal-title{color:#fff;font-size:20px;font-weight:800;margin:6px 0 2px;}
+.bkt-modal-tag{color:#8b949e;font-size:13px;margin:0 0 6px;}
+.bkt-modal-price{color:#a78bfa;font-size:13.5px;font-weight:700;margin:0;}
+.bkt-modal-sec{color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px;}
+.bkt-modal-feats{list-style:none;padding:0;margin:0;}
+.bkt-modal-feats li{display:flex;gap:8px;color:#c9d1d9;font-size:13px;padding:5px 0;border-bottom:1px dashed #1e2a3a;line-height:1.45;}
+.bkt-modal-feats li:last-child{border-bottom:none;}
+.bkt-modal-feats li b{color:#34d399;font-weight:800;}
+.bkt-modal-desc{width:100%;box-sizing:border-box;min-height:120px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;color:#c9d1d9;font-size:12.5px;font-family:inherit;padding:11px 13px;line-height:1.55;resize:vertical;}
+.bkt-modal-copy{margin-top:10px;width:100%;background:linear-gradient(135deg,#6c5ce7,#ec4899);border:none;color:#fff;font-family:inherit;font-size:13px;font-weight:700;padding:11px;border-radius:10px;cursor:pointer;}
+.bkt-modal-copy:hover{opacity:.92;}
+</style>
+
+<div class="bkt-wrap">
+    <div class="bkt-hero">
+        <span class="bkt-badge"><span class="dot">●</span> Tarifs</span>
+        <h1 class="bkt-h1">Soutenez BOKONZI,<br><span class="g">débloquez plus.</span></h1>
+        <p class="bkt-lead">L'offre gratuite permet de découvrir 1 fiche athlète par jour. Les abonnements donnent l'accès illimité, sans minuteur, et les outils d'analyse — résiliables à tout moment.</p>
+
+        <?php if ($tarifSummary['active']): ?>
+        <div class="bkt-current">
+            <span class="ic">✅</span>
+            <span class="tx">Vous êtes abonné <b>BOKONZI <?= htmlspecialchars($tarifSummary['plan_name']) ?></b><?php
+                if (!empty($tarifSummary['period_end'])) echo ' — prochaine échéance le ' . date('d/m/Y', strtotime($tarifSummary['period_end']));
+                if (!empty($tarifSummary['cancel_at_period_end'])) echo ' (résiliation programmée)';
+            ?>.</span>
+            <button type="button" onclick="bktManage()">Gérer mon abonnement</button>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($tarifUser && !$tarifSummary['active']): ?>
+        <p style="max-width:680px;margin:14px auto 0;color:#8b949e;font-size:13px;">
+            Déjà payé sur Stripe&nbsp;?
+            <button type="button" onclick="bktVerify(this)" style="background:#1f6feb;border:none;color:#fff;font-family:inherit;font-size:12px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;margin-left:6px;">Vérifier mon paiement</button>
+        </p>
+        <?php endif; ?>
+
+        <?php if (!$stripeReady): ?>
+        <div class="bkt-notice">⚙️ Le paiement en ligne sera activé très bientôt. Les offres ci-dessous sont à titre indicatif.</div>
+        <?php endif; ?>
+    </div>
+
+    <div class="bkt-grid">
+        <!-- GRATUIT -->
+        <div class="bkt-card">
+            <div class="bkt-bar" style="background:#3e4b68;"></div>
+            <h3 class="bkt-pname">Gratuit</h3>
+            <p class="bkt-ptag">Pour découvrir BOKONZI</p>
+            <div class="bkt-price"><span class="bkt-amt">0</span><span class="bkt-cur">€</span></div>
+            <div class="bkt-permo">pour toujours</div>
+            <ul class="bkt-feats">
+                <li><span class="ck">✓</span>1 fiche athlète par jour</li>
+                <li><span class="ck">✓</span>Aperçu de 2 minutes par fiche</li>
+                <li><span class="ck">✓</span>Clubs, épreuves &amp; villes en consultation</li>
+            </ul>
+            <button type="button" class="bkt-more" onclick="bktDetail('gratuit')">+ Détail complet</button>
+            <?php if ($tarifUser && !$tarifCurPlan): ?>
+                <span class="bkt-cta current">Votre formule actuelle</span>
+            <?php else: ?>
+                <a class="bkt-cta" href="<?= BK_BASE ?>/athletes">Accès libre</a>
+            <?php endif; ?>
+        </div>
+
+        <?php
+        $prevName = 'Gratuit';
+        foreach ($BK_PLANS as $pk => $p):
+            $rank = (int)$p['rank'];
+            $isCurrent  = ($tarifCurPlan === $pk);
+            $isIncluded = ($tarifCurRank > $rank);
+            $featured   = ($pk === 'argent');
+        ?>
+        <div class="bkt-card<?= $featured ? ' featured' : '' ?><?= $isCurrent ? ' is-current' : '' ?>">
+            <?php if ($isCurrent): ?><span class="bkt-curbadge">Votre offre</span>
+            <?php elseif ($featured): ?><span class="bkt-pop">Le plus choisi</span><?php endif; ?>
+            <img class="bkt-medal" src="<?= BK_BASE ?>/public/assets/img/plan-<?= $pk ?>.svg" alt="Médaille <?= htmlspecialchars($p['name']) ?>" width="62" height="75" loading="lazy">
+            <h3 class="bkt-pname"><?= htmlspecialchars($p['name']) ?></h3>
+            <p class="bkt-ptag"><?= htmlspecialchars($p['tagline']) ?></p>
+            <div class="bkt-price">
+                <span class="bkt-amt" data-m="<?= $fmtP($p['price_month']) ?>" data-y="<?= $fmtP($p['price_year']) ?>"><?= $fmtP($p['price_month']) ?></span>
+                <span class="bkt-cur">€</span>
+                <span class="bkt-per" data-m="/ mois" data-y="/ an">/ mois</span>
+            </div>
+            <div class="bkt-permo" data-m="" data-y="soit <?= $fmtP((int)round($p['price_year'] / 12)) ?>&nbsp;€ / mois">&nbsp;</div>
+            <ul class="bkt-feats">
+                <li class="head">Tout <?= htmlspecialchars($prevName) ?>, plus :</li>
+                <?php foreach ($p['features'] as $f): ?>
+                <li><span class="ck">✓</span><?= htmlspecialchars($f) ?></li>
+                <?php endforeach; ?>
+            </ul>
+            <button type="button" class="bkt-more" onclick="bktDetail('<?= $pk ?>')">+ Détail complet</button>
+            <?php if ($isCurrent): ?>
+                <span class="bkt-cta current">✓ Formule actuelle</span>
+            <?php elseif ($isIncluded): ?>
+                <span class="bkt-cta muted">Inclus dans votre offre</span>
+            <?php else:
+                // Lien de paiement Stripe + rattachement au compte (client_reference_id)
+                $_plUrl = $p['payment_link'] ?? '';
+                if ($tarifUser && $_plUrl !== '') {
+                    $_plUrl .= (strpos($_plUrl, '?') !== false ? '&' : '?')
+                             . 'client_reference_id=' . (int)$tarifUser['id_user']
+                             . '&prefilled_email=' . rawurlencode($tarifUser['email']);
+                }
+            ?>
+                <a class="bkt-cta cta-<?= $pk ?>" href="<?= htmlspecialchars($_plUrl) ?>">
+                    <?= $tarifCurRank > 0 ? 'Passer à ' . htmlspecialchars($p['name']) : 'S\'abonner' ?>
+                </a>
+            <?php endif; ?>
+        </div>
+        <?php
+            $prevName = $p['name'];
+        endforeach;
+        ?>
+    </div>
+
+    <div class="bkt-reassure">
+        <span>🔒 Paiement sécurisé par Stripe</span>
+        <span>🟢 Google Pay &amp; carte bancaire</span>
+        <span>↩️ Résiliable à tout moment</span>
+    </div>
+
+    <div class="bkt-faq">
+        <h3>Questions fréquentes</h3>
+        <details>
+            <summary>Le site reste-t-il gratuit ?</summary>
+            <p>Oui, on peut découvrir BOKONZI gratuitement : <b>1 fiche athlète par jour</b> (consultable 2 minutes), plus les clubs, épreuves et villes en consultation. Les abonnements lèvent ces limites et ajoutent les outils d'analyse.</p>
+        </details>
+        <details>
+            <summary>Comment payer ? Google Pay est-il accepté ?</summary>
+            <p>Le paiement se fait via Stripe. Selon votre appareil, Google Pay, Apple Pay ou la carte bancaire s'affichent automatiquement sur la page de paiement.</p>
+        </details>
+        <details>
+            <summary>Puis-je changer ou annuler mon offre ?</summary>
+            <p>Oui, à tout moment depuis « Gérer mon abonnement ». Le changement prend effet immédiatement, l'annulation à la fin de la période déjà payée.</p>
+        </details>
+        <details>
+            <summary>Quelle différence entre les offres ?</summary>
+            <p>Chaque palier inclut le précédent : Bronze lève le quota de recherche et le suivi, Argent débloque les recherches illimitées et le comparateur avancé, Or ajoute l'export PDF, Platine les rapports de club.</p>
+        </details>
+    </div>
+</div>
+
+<!-- Modale : détail complet d'une offre (réutilisable comme description Stripe) -->
+<div class="bkt-modal" id="bktModal" onclick="if(event.target===this)bktCloseDetail()">
+  <div class="bkt-modal-box">
+    <div class="bkt-modal-accent" id="bktModalAccent"></div>
+    <button type="button" class="bkt-modal-x" onclick="bktCloseDetail()" aria-label="Fermer">&times;</button>
+    <h3 class="bkt-modal-title" id="bktModalTitle"></h3>
+    <p class="bkt-modal-tag" id="bktModalTag"></p>
+    <p class="bkt-modal-price" id="bktModalPrice"></p>
+    <div class="bkt-modal-sec">Inclus dans cette offre</div>
+    <ul class="bkt-modal-feats" id="bktModalFeats"></ul>
+    <div class="bkt-modal-sec">Description pour Stripe</div>
+    <textarea class="bkt-modal-desc" id="bktModalDesc" readonly onclick="this.select()"></textarea>
+    <button type="button" class="bkt-modal-copy" id="bktModalCopy" onclick="bktCopyStripe()">&#128203; Copier la description</button>
+  </div>
+</div>
+
+<script>
+(function(){
+    var BKT_DETAILS = <?= json_encode($BK_PLAN_DETAILS, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    window.bktManage = function(){
+        fetch('<?= BK_BASE ?>/api/billing_portal.php', { method:'POST', credentials:'same-origin' })
+        .then(function(r){ return r.json(); }).then(function(d){
+            if (d && d.success && d.url){ window.location.href = d.url; return; }
+            alert(d && d.error ? d.error : 'Impossible d\'ouvrir la gestion de l\'abonnement.');
+        }).catch(function(){ alert('Connexion impossible. Réessayez.'); });
+    };
+    window.bktDetail = function(plan){
+        var d = BKT_DETAILS[plan];
+        if (!d) return;
+        document.getElementById('bktModalAccent').style.background = d.color || '#6c5ce7';
+        document.getElementById('bktModalTitle').textContent = 'BOKONZI ' + d.name;
+        document.getElementById('bktModalTag').textContent = d.tagline;
+        document.getElementById('bktModalPrice').textContent = d.price;
+        document.getElementById('bktModalFeats').innerHTML = d.features.map(function(f){
+            return '<li><b>✓</b><span>' + f + '</span></li>';
+        }).join('');
+        document.getElementById('bktModalDesc').value = d.stripe;
+        document.getElementById('bktModalCopy').textContent = '📋 Copier la description';
+        document.getElementById('bktModal').classList.add('open');
+    };
+    window.bktCloseDetail = function(){
+        var m = document.getElementById('bktModal');
+        if (m) m.classList.remove('open');
+    };
+    window.bktCopyStripe = function(){
+        var ta = document.getElementById('bktModalDesc');
+        ta.select();
+        var done = false;
+        try { done = document.execCommand('copy'); } catch(e){}
+        if (navigator.clipboard) { navigator.clipboard.writeText(ta.value).then(function(){}, function(){}); done = true; }
+        document.getElementById('bktModalCopy').textContent = done ? '✓ Copié !' : 'Sélectionnez le texte puis Ctrl+C';
+    };
+    window.bktVerify = function(btn){
+        if (btn){ btn.disabled = true; btn.dataset.lbl = btn.textContent; btn.textContent = 'Vérification…'; }
+        fetch('<?= BK_BASE ?>/api/verify_payment.php', { method:'POST', credentials:'same-origin' })
+        .then(function(r){ return r.json(); }).then(function(d){
+            if (d && d.active){
+                alert('✅ ' + (d.message || 'Abonnement actif !'));
+                window.location.href = '<?= BK_BASE ?>/tarifs';
+            } else {
+                alert(d && d.message ? d.message : 'Aucun abonnement actif trouvé pour votre compte.');
+                if (btn){ btn.disabled = false; btn.textContent = btn.dataset.lbl; }
+            }
+        }).catch(function(){
+            alert('Connexion impossible. Réessayez.');
+            if (btn){ btn.disabled = false; btn.textContent = btn.dataset.lbl; }
+        });
+    };
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') window.bktCloseDetail(); });
+    // Retour depuis Stripe Checkout
+    var qp = new URLSearchParams(window.location.search);
+    if (qp.get('checkout') === 'success'){
+        var ok = document.createElement('div');
+        ok.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:99999;background:#1f6feb;color:#fff;padding:14px 22px;border-radius:12px;font-family:Inter,sans-serif;font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:90%;text-align:center;';
+        ok.textContent = '⏳ Vérification de votre paiement…';
+        document.body.appendChild(ok);
+        fetch('<?= BK_BASE ?>/api/verify_payment.php', { method:'POST', credentials:'same-origin' })
+        .then(function(r){ return r.json(); }).then(function(d){
+            if (d && d.active){
+                ok.style.background = '#10b981';
+                ok.textContent = '✅ ' + (d.message || 'Abonnement activé !');
+                setTimeout(function(){ window.location.href = '<?= BK_BASE ?>/tarifs'; }, 2500);
+            } else {
+                ok.style.background = '#161b22';
+                ok.textContent = '✅ Paiement reçu. L\'activation peut prendre 1 à 2 minutes — rechargez la page.';
+                setTimeout(function(){ window.location.href = '<?= BK_BASE ?>/tarifs'; }, 6000);
+            }
+        }).catch(function(){
+            ok.textContent = '✅ Paiement reçu. Rechargez la page dans un instant.';
+            setTimeout(function(){ window.location.href = '<?= BK_BASE ?>/tarifs'; }, 6000);
+        });
+    } else if (qp.get('checkout') === 'cancel'){
+        var ko = document.createElement('div');
+        ko.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:99999;background:#161b22;border:1px solid #1e2a3a;color:#c9d1d9;padding:12px 20px;border-radius:12px;font-family:Inter,sans-serif;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.4);';
+        ko.textContent = 'Paiement annulé — aucun montant n\'a été débité.';
+        document.body.appendChild(ko);
+        setTimeout(function(){ ko.remove(); }, 5000);
+    }
+})();
+</script>
+<?php if (false): // ===== ANCIENNE PAGE TARIFS — code mort (supprimable jusqu'au endif correspondant) ===== ?>
+
+<style>
+.bk-tarif-hero{padding:72px 0 40px 0;text-align:center;position:relative;}
+.bk-tarif-hero::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:80%;height:420px;background:radial-gradient(ellipse at center,rgba(108,92,231,0.15) 0%,transparent 60%);pointer-events:none;z-index:-1;}
+.bk-tarif-hero h1{font-size:clamp(34px,4.5vw,56px);font-weight:800;margin:20px 0;color:#fff;line-height:1.1;letter-spacing:-1.5px;}
+.bk-tarif-hero h1 .grad{background:linear-gradient(135deg,#a78bfa 0%,#ec4899 50%,#f59e0b 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.bk-tarif-lead{font-size:18px;color:#8b949e;max-width:620px;margin:0 auto 32px auto;line-height:1.65;}
+
+.bk-plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:56px;}
+.bk-plan{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:18px;padding:28px 22px;position:relative;transition:all .3s;display:flex;flex-direction:column;}
+.bk-plan:hover{transform:translateY(-4px);box-shadow:0 20px 50px rgba(108,92,231,0.15);}
+.bk-plan.featured{border-color:#6c5ce7;box-shadow:0 16px 42px rgba(108,92,231,0.22);}
+.bk-plan.featured::before{content:"Populaire";position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;padding:5px 14px;border-radius:100px;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;box-shadow:0 6px 16px rgba(108,92,231,0.4);}
+.bk-plan-name{color:#8b949e;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 10px 0;}
+.bk-plan-price{display:flex;align-items:baseline;gap:4px;margin-bottom:6px;}
+.bk-plan-price .amt{font-size:34px;font-weight:800;color:#fff;letter-spacing:-1.5px;line-height:1;}
+.bk-plan-price .per{color:#8b949e;font-size:13px;font-weight:600;}
+.bk-plan-sub{color:#5a6580;font-size:12px;margin:0 0 18px 0;line-height:1.5;min-height:36px;}
+.bk-plan-features{list-style:none;padding:0;margin:0 0 22px 0;flex:1;}
+.bk-plan-features li{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px dashed #1e2a3a;color:#c9d1d9;font-size:12px;line-height:1.5;}
+.bk-plan-features li:last-child{border-bottom:none;}
+.bk-plan-features li .ck{width:16px;height:16px;border-radius:50%;background:#10b98120;color:#34d399;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0;margin-top:1px;}
+.bk-plan-features li .cross{width:16px;height:16px;border-radius:50%;background:#1e2a3a;color:#5a6580;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;margin-top:1px;}
+.bk-plan-features li.disabled{color:#5a6580;}
+.bk-plan-cta{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;transition:all .2s;}
+.bk-plan-cta.free{background:transparent;border:1.5px solid #1e2a3a;color:#c9d1d9;}
+.bk-plan-cta.free:hover{border-color:#6c5ce7;color:#a78bfa;}
+.bk-plan-cta.starter{background:#06b6d418;border:1.5px solid #06b6d460;color:#22d3ee;}
+.bk-plan-cta.starter:hover{background:#06b6d430;border-color:#22d3ee;}
+.bk-plan-cta.pro{background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;box-shadow:0 8px 22px rgba(108,92,231,0.35);}
+.bk-plan-cta.pro:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(236,72,153,0.45);}
+.bk-plan-cta.club{background:transparent;border:1.5px solid #f59e0b60;color:#fbbf24;}
+.bk-plan-cta.club:hover{background:#f59e0b10;border-color:#f59e0b;}
+
+/* API band */
+.bk-api-band{background:linear-gradient(135deg,#0d1117 0%,#131a28 100%);border:1px dashed #6c5ce760;border-radius:18px;padding:32px;margin-bottom:56px;display:grid;grid-template-columns:1fr auto;gap:32px;align-items:center;}
+.bk-api-band h3{margin:0 0 6px 0;color:#fff;font-size:20px;font-weight:800;}
+.bk-api-band p{margin:0;color:#8b949e;font-size:14px;line-height:1.65;}
+
+/* FAQ reuse style */
+.bk-faq-tarif{max-width:760px;margin:0 auto;}
+
+@media(max-width:1020px){
+    .bk-plans{grid-template-columns:repeat(2,1fr);}
+}
+@media(max-width:640px){
+    .bk-plans{grid-template-columns:1fr;}
+    .bk-api-band{grid-template-columns:1fr;text-align:center;}
+}
+</style>
+
+    <!-- HERO -->
+    <section class="bk-tarif-hero">
+        <div class="bk-tag"><span class="dot"></span>Tarifs</div>
+        <h1>Commencez gratuitement,<br><span class="grad">debloquez quand vous voulez.</span></h1>
+        <p class="bk-tarif-lead">Quatre formules pour s'adapter a chaque usage : de la consultation libre au dashboard club multi-utilisateurs.</p>
+    </section>
+
+    <!-- 4 PLANS -->
+    <div class="bk-plans">
+
+        <!-- FREE -->
+        <div class="bk-plan">
+            <div class="bk-plan-name">Free</div>
+            <div class="bk-plan-price">
+                <span class="amt">0&euro;</span>
+                <span class="per">/ toujours</span>
+            </div>
+            <p class="bk-plan-sub">L'essentiel pour consulter la base.</p>
+            <ul class="bk-plan-features">
+                <li><span class="ck">&#10003;</span>Fiches athletes detaillees</li>
+                <li><span class="ck">&#10003;</span>Recherche simple (nom, club, ville)</li>
+                <li><span class="ck">&#10003;</span>Consultation clubs, villes, epreuves</li>
+                <li><span class="ck">&#10003;</span>Top 100 athletes</li>
+                <li><span class="ck">&#10003;</span>10 recherches / jour</li>
+                <li class="disabled"><span class="cross">&times;</span>Comparateur</li>
+                <li class="disabled"><span class="cross">&times;</span>Export PDF</li>
+            </ul>
+            <a href="<?= BK_BASE ?>/athletes" class="bk-plan-cta free">Commencer <span>&rarr;</span></a>
+        </div>
+
+        <!-- STARTER -->
+        <div class="bk-plan">
+            <div class="bk-plan-name" style="color:#22d3ee;">Starter</div>
+            <div class="bk-plan-price">
+                <span class="amt">3&euro;</span>
+                <span class="per">/ mois</span>
+            </div>
+            <p class="bk-plan-sub">Pour ceux qui veulent un peu plus.</p>
+            <ul class="bk-plan-features">
+                <li><span class="ck">&#10003;</span>Tout Free inclus</li>
+                <li><span class="ck">&#10003;</span>Recherche 5 filtres</li>
+                <li><span class="ck">&#10003;</span>Suivi jusqu'a 10 athletes</li>
+                <li><span class="ck">&#10003;</span>Comparateur basique (2 athletes)</li>
+                <li><span class="ck">&#10003;</span>100 recherches / jour</li>
+                <li class="disabled"><span class="cross">&times;</span>Export PDF</li>
+                <li class="disabled"><span class="cross">&times;</span>12 filtres avances</li>
+            </ul>
+            <a href="<?= BK_BASE ?>/contact" class="bk-plan-cta starter">Choisir Starter <span>&rarr;</span></a>
+        </div>
+
+        <!-- PRO -->
+        <div class="bk-plan featured">
+            <div class="bk-plan-name" style="color:#a78bfa;">Pro</div>
+            <div class="bk-plan-price">
+                <span class="amt">9&euro;</span>
+                <span class="per">/ mois</span>
+            </div>
+            <p class="bk-plan-sub">Pour les utilisateurs au quotidien.</p>
+            <ul class="bk-plan-features">
+                <li><span class="ck">&#10003;</span>Tout Starter inclus</li>
+                <li><span class="ck">&#10003;</span>Recherche 12 filtres complets</li>
+                <li><span class="ck">&#10003;</span>Comparateur illimite</li>
+                <li><span class="ck">&#10003;</span>Export PDF des fiches</li>
+                <li><span class="ck">&#10003;</span>Suivi illimite d'athletes</li>
+                <li><span class="ck">&#10003;</span>Niveaux precis (IA-IE)</li>
+                <li><span class="ck">&#10003;</span>Recherches illimitees</li>
+            </ul>
+            <a href="<?= BK_BASE ?>/contact" class="bk-plan-cta pro">Choisir Pro <span>&rarr;</span></a>
+        </div>
+
+        <!-- CLUB -->
+        <div class="bk-plan">
+            <div class="bk-plan-name" style="color:#fbbf24;">Club</div>
+            <div class="bk-plan-price">
+                <span class="amt">49&euro;</span>
+                <span class="per">/ mois</span>
+            </div>
+            <p class="bk-plan-sub">Pour clubs, federations, academies.</p>
+            <ul class="bk-plan-features">
+                <li><span class="ck">&#10003;</span>Tout Pro inclus</li>
+                <li><span class="ck">&#10003;</span>Dashboard club multi-onglets</li>
+                <li><span class="ck">&#10003;</span>Analytics avancees (5 vues)</li>
+                <li><span class="ck">&#10003;</span>Rapport PDF mensuel</li>
+                <li><span class="ck">&#10003;</span>Comptes multi-utilisateurs</li>
+                <li><span class="ck">&#10003;</span>Support prioritaire</li>
+                <li><span class="ck">&#10003;</span>Onboarding personnalise</li>
+            </ul>
+            <a href="<?= BK_BASE ?>/contact" class="bk-plan-cta club">Demander demo <span>&rarr;</span></a>
+        </div>
+
+    </div>
+
+    <!-- API -->
+    <div class="bk-api-band">
+        <div>
+            <h3>&#128228; API &amp; Data Export</h3>
+            <p>Acces programmatique a notre base de donnees pour applications tierces, medias, startups. Tarification sur volume, devis personnalise.</p>
+        </div>
+        <a href="<?= BK_BASE ?>/contact" class="bk-btn-primary">Nous contacter <span class="arr">&rarr;</span></a>
+    </div>
+
+    <!-- FAQ TARIFS -->
+    <section class="bk-sec">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Questions tarifs</div>
+            <h2>On vous repond.</h2>
+        </div>
+        <div class="bk-faq bk-faq-tarif">
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>La version gratuite est-elle vraiment complete ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Oui. Toutes les fiches athletes, la recherche de base, et la consultation des clubs, villes et epreuves sont accessibles librement. Les options Pro concernent uniquement les fonctionnalites avancees (comparateur, 12 filtres, export).</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Puis-je essayer Pro avant de payer ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Contactez-nous via la page <a href="<?= BK_BASE ?>/contact" style="color:#a78bfa;">/contact</a> pour obtenir un essai.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Comment fonctionne l'offre Club ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">L'offre Club inclut l'ensemble des fonctionnalites Pro plus un dashboard multi-onglets, des rapports PDF, plusieurs comptes utilisateurs et un support prioritaire. Demo sur demande.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Puis-je annuler a tout moment ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Oui. Les abonnements Pro et Club sont sans engagement, annulables a tout moment.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Avez-vous des tarifs pour etudiants / associations ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Oui, nous proposons des tarifs reduits pour les etudiants et les associations sportives. Contactez-nous avec votre justificatif.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA FINAL -->
+    <section class="bk-cta-final">
+        <h2>Commencez par la version gratuite.</h2>
+        <p>Aucune carte bancaire requise. Vous passerez a Pro quand vous en aurez besoin.</p>
+        <div class="bk-cta-ctas">
+            <a href="<?= BK_BASE ?>/athletes" class="bk-cta-btn-w">Commencer gratuitement <span>&rarr;</span></a>
+            <a href="<?= BK_BASE ?>/contact" class="bk-cta-btn-gh">Parler a un humain</a>
+        </div>
+    </section>
+
+</div>
+
+<?php endif; // fin ancienne page tarifs conservee ?>
+
+<?php
+// ================================================================
+//  PRODUITS (page statique marketing)
+// ================================================================
+elseif ($page === 'produits'):
+?>
+
+<div class="bk-land">
+
+    <style>
+    /* ============ STYLES PAGE PRODUITS ============ */
+    .bk-prod-hero{padding:72px 0 48px 0;text-align:center;position:relative;}
+    .bk-prod-hero::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:80%;height:400px;background:radial-gradient(ellipse at center,rgba(108,92,231,0.15) 0%,transparent 60%);pointer-events:none;z-index:-1;}
+    .bk-prod-hero h1{font-size:clamp(32px,4.5vw,54px);font-weight:800;margin:20px 0;color:#fff;line-height:1.1;letter-spacing:-1.5px;}
+    .bk-prod-hero h1 .grad{background:linear-gradient(135deg,#a78bfa 0%,#ec4899 50%,#f59e0b 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+    .bk-prod-lead{font-size:18px;color:#8b949e;max-width:620px;margin:0 auto 36px auto;line-height:1.65;}
+    .bk-prod-cta-group{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:20px;}
+
+    /* Bande modele */
+    .bk-model-bar{display:flex;justify-content:center;align-items:center;gap:32px;padding:24px 24px;margin:0 0 48px 0;background:linear-gradient(135deg,#10b98110,#34d39910);border:1px solid #10b98140;border-radius:16px;flex-wrap:wrap;}
+    .bk-model-item{display:flex;align-items:center;gap:10px;color:#c9d1d9;font-size:14px;font-weight:600;}
+    .bk-model-item .ico{width:36px;height:36px;border-radius:10px;background:#10b98120;color:#34d399;display:flex;align-items:center;justify-content:center;font-size:18px;border:1px solid #10b98140;}
+
+    /* Produit vedette */
+    .bk-prod-star{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:24px;padding:48px;margin-bottom:56px;position:relative;overflow:hidden;}
+    .bk-prod-star::before{content:"";position:absolute;top:-100px;right:-100px;width:400px;height:400px;background:radial-gradient(circle,rgba(108,92,231,0.15) 0%,transparent 60%);pointer-events:none;}
+    .bk-prod-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:48px;align-items:center;position:relative;}
+    .bk-prod-head{display:flex;align-items:center;gap:16px;margin-bottom:18px;flex-wrap:wrap;}
+    .bk-prod-star-ico{width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,#6c5ce7,#ec4899);display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 10px 28px rgba(108,92,231,0.35);}
+    .bk-prod-star h2{margin:0;font-size:32px;color:#fff;font-weight:800;letter-spacing:-0.6px;text-align:left;}
+    .bk-prod-star .sub{color:#8b949e;font-size:14px;font-weight:500;margin-top:4px;}
+    .bk-prod-star p.desc{color:#c9d1d9;font-size:16px;line-height:1.75;margin:0 0 24px 0;}
+    .bk-prod-checks{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:28px;}
+    .bk-prod-check{display:flex;align-items:center;gap:10px;color:#c9d1d9;font-size:14px;}
+    .bk-prod-check .chk{width:22px;height:22px;border-radius:50%;background:#10b98120;border:1px solid #10b98140;color:#34d399;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;}
+    .bk-plan-gratuit,.bk-plan-bronze,.bk-plan-argent,.bk-plan-or,.bk-plan-platine{font-size:10px;padding:2px 8px;border-radius:100px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;margin-left:auto;}
+    .bk-plan-gratuit{background:#8b949e18;color:#aab1bd;border:1px solid #8b949e40;}
+    .bk-plan-bronze{background:#cd7f3218;color:#e0a45e;border:1px solid #cd7f3240;}
+    .bk-plan-argent{background:#9ca3af1f;color:#d4d8de;border:1px solid #9ca3af55;}
+    .bk-plan-or{background:#f59e0b18;color:#fbbf24;border:1px solid #f59e0b40;}
+    .bk-plan-platine{background:#6c5ce720;color:#a78bfa;border:1px solid #6c5ce740;}
+    .bk-prod-ctas{display:flex;gap:12px;flex-wrap:wrap;}
+    .bk-prod-mock{background:#0a0e14;border:1px solid #1e2a3a;border-radius:16px;padding:20px;box-shadow:0 24px 60px rgba(108,92,231,0.2);}
+    .bk-prod-mock .md{display:flex;gap:6px;margin-bottom:16px;}
+    .bk-prod-mock .md span{width:8px;height:8px;border-radius:50%;background:#2a3550;}
+    .bk-prod-mock .md span:first-child{background:#ef4444;}
+    .bk-prod-mock .md span:nth-child(2){background:#f59e0b;}
+    .bk-prod-mock .md span:nth-child(3){background:#10b981;}
+    .bk-prod-mock-card{background:#131a28;border:1px solid #1e2a3a;border-radius:12px;padding:14px;margin-bottom:10px;}
+    .bk-prod-mock-row{display:flex;align-items:center;gap:12px;}
+    .bk-prod-mock-av{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#6c5ce7,#ec4899);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px;flex-shrink:0;}
+    .bk-prod-mock-inf{flex:1;}
+    .bk-prod-mock-name{color:#fff;font-size:13px;font-weight:700;}
+    .bk-prod-mock-meta{color:#8b949e;font-size:11px;margin-top:3px;}
+    .bk-prod-mock-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+    .bk-prod-mock-box{background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;padding:10px 6px;text-align:center;}
+    .bk-prod-mock-box .v{color:#fff;font-size:16px;font-weight:800;}
+    .bk-prod-mock-box .l{color:#5a6580;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-top:3px;font-weight:600;}
+    .bk-prod-mock-chart{display:flex;align-items:flex-end;gap:4px;height:56px;margin-top:10px;}
+    .bk-prod-mock-chart .b{flex:1;background:linear-gradient(180deg,#a78bfa,#6c5ce7);border-radius:3px 3px 0 0;}
+    .bk-prod-mock-chart .b:nth-child(1){height:40%;}
+    .bk-prod-mock-chart .b:nth-child(2){height:55%;}
+    .bk-prod-mock-chart .b:nth-child(3){height:30%;}
+    .bk-prod-mock-chart .b:nth-child(4){height:70%;}
+    .bk-prod-mock-chart .b:nth-child(5){height:85%;background:linear-gradient(180deg,#ec4899,#c026d3);}
+
+    /* Sous-modules */
+    .bk-submodules{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:32px;}
+    .bk-submod{display:flex;align-items:center;gap:14px;padding:18px 20px;background:#0d1117;border:1px solid #1e2a3a;border-radius:14px;text-decoration:none;transition:all .25s;}
+    .bk-submod:hover{border-color:#6c5ce760;transform:translateY(-2px);background:#131a28;}
+    .bk-submod-ico{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#6c5ce725,#ec489925);border:1px solid #6c5ce740;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+    .bk-submod-body{flex:1;min-width:0;}
+    .bk-submod h4{margin:0;color:#fff;font-size:14px;font-weight:700;}
+    .bk-submod p{margin:2px 0 0;color:#8b949e;font-size:12px;}
+    .bk-submod .arr{color:#a78bfa;font-size:16px;transition:transform .2s;}
+    .bk-submod:hover .arr{transform:translateX(3px);}
+
+    /* Roadmap */
+    .bk-roadmap{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+    .bk-road-col{background:#0d1117;border:1px solid #1e2a3a;border-radius:18px;padding:28px 24px;position:relative;overflow:hidden;}
+    .bk-road-col.done{border-color:#10b98140;background:linear-gradient(135deg,#10b98108,#0d1117);}
+    .bk-road-col.prog{border-color:#f59e0b40;background:linear-gradient(135deg,#f59e0b08,#0d1117);}
+    .bk-road-col.next{border-color:#6c5ce740;}
+    .bk-road-head{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #1e2a3a;}
+    .bk-road-tag{padding:5px 11px;border-radius:100px;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;display:inline-flex;align-items:center;gap:6px;}
+    .bk-road-tag .dot{width:6px;height:6px;border-radius:50%;animation:pulseDot 2s infinite;}
+    .done .bk-road-tag{background:#10b98118;color:#34d399;border:1px solid #10b98140;}
+    .done .bk-road-tag .dot{background:#10b981;box-shadow:0 0 8px #10b981;}
+    .prog .bk-road-tag{background:#f59e0b18;color:#fbbf24;border:1px solid #f59e0b40;}
+    .prog .bk-road-tag .dot{background:#f59e0b;box-shadow:0 0 8px #f59e0b;}
+    .next .bk-road-tag{background:#6c5ce718;color:#a78bfa;border:1px solid #6c5ce740;}
+    .next .bk-road-tag .dot{background:#6c5ce7;box-shadow:0 0 8px #6c5ce7;}
+    .bk-road-col h3{margin:0;font-size:16px;color:#fff;font-weight:700;}
+    .bk-sport-line{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px dashed #1e2a3a;}
+    .bk-sport-line:last-child{border-bottom:none;}
+    .bk-sport-ico{width:34px;height:34px;border-radius:10px;background:#131a28;border:1px solid #1e2a3a;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+    .bk-sport-name{color:#c9d1d9;font-size:14px;font-weight:600;flex:1;}
+    .bk-sport-status{font-size:11px;color:#5a6580;font-weight:600;}
+    .done .bk-sport-status{color:#34d399;}
+    .prog .bk-sport-status{color:#fbbf24;}
+
+    /* FAQ */
+    .bk-faq{max-width:760px;margin:0 auto;}
+    .bk-faq-item{background:#0d1117;border:1px solid #1e2a3a;border-radius:14px;margin-bottom:12px;overflow:hidden;transition:border-color .2s;}
+    .bk-faq-item:hover{border-color:#6c5ce740;}
+    .bk-faq-q{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;cursor:pointer;user-select:none;}
+    .bk-faq-q h4{margin:0;color:#fff;font-size:15px;font-weight:700;}
+    .bk-faq-q .pm{color:#a78bfa;font-size:20px;font-weight:300;transition:transform .3s;}
+    .bk-faq-item.open .bk-faq-q .pm{transform:rotate(45deg);}
+    .bk-faq-a{max-height:0;overflow:hidden;transition:max-height .35s ease,padding .3s ease;padding:0 24px;color:#8b949e;font-size:14px;line-height:1.7;}
+    .bk-faq-item.open .bk-faq-a{max-height:400px;padding:0 24px 20px 24px;}
+
+    @media(max-width:860px){
+        .bk-prod-grid{grid-template-columns:1fr;gap:32px;}
+        .bk-prod-star{padding:32px 24px;}
+        .bk-prod-star h2{font-size:24px;}
+        .bk-prod-checks{grid-template-columns:1fr;}
+        .bk-submodules{grid-template-columns:1fr;}
+        .bk-roadmap{grid-template-columns:1fr;}
+        .bk-model-bar{flex-direction:column;gap:14px;}
+    }
+    </style>
+
+    <!-- ============ HERO ============ -->
+    <section class="bk-prod-hero">
+        <div class="bk-tag"><span class="dot"></span>Produits</div>
+        <h1>Un service disponible.<br><span class="grad">D'autres en chemin.</span></h1>
+        <p class="bk-prod-lead">Notre premier service couvre l'athletisme francais. Decouverte gratuite pour le grand public, et quatre abonnements &mdash; de Bronze a Platine &mdash; pour les usages avances.</p>
+        <div class="bk-prod-cta-group">
+            <a href="<?= BK_BASE ?>/athletes" class="bk-btn-primary">Commencer gratuitement <span class="arr">&rarr;</span></a>
+            <a href="#roadmap" class="bk-btn-secondary">Voir la roadmap</a>
+        </div>
+    </section>
+
+    <!-- ============ BANDE MODELE (tarifs masques) ============ -->
+    <div class="bk-model-bar">
+        <div class="bk-model-item"><div class="ico">&#128275;</div><span>Sans inscription obligatoire</span></div>
+        <div class="bk-model-item"><div class="ico">&#128200;</div><span>Donnees publiques et ouvertes</span></div>
+        <div class="bk-model-item"><div class="ico">&#9889;</div><span>Acces libre aux fonctionnalites</span></div>
+    </div>
+
+    <!-- ============ PRODUIT VEDETTE : ATHLETISME ============ -->
+    <section class="bk-prod-star">
+        <div class="bk-prod-grid">
+            <div>
+                <div class="bk-prod-head">
+                    <div class="bk-prod-star-ico">&#127939;</div>
+                    <div>
+                        <h2>Athletisme francais</h2>
+                        <div class="sub">Service principal &middot; Actif</div>
+                    </div>
+                    <span class="bk-live" style="margin-left:auto;"><span class="dot"></span>Disponible</span>
+                </div>
+                <p class="desc">Une base de donnees complete de l'athletisme francais. Tous les outils pour explorer, analyser et comparer les performances, reunis dans une seule interface claire.</p>
+                <div class="bk-prod-checks">
+                    <div class="bk-prod-check"><span class="chk">&#10003;</span>1 fiche athlete par jour <span class="bk-plan-gratuit">Gratuit</span></div>
+                    <div class="bk-prod-check"><span class="chk">&#10003;</span>Clubs, epreuves &amp; villes <span class="bk-plan-gratuit">Gratuit</span></div>
+                    <div class="bk-prod-check"><span class="chk">&#10003;</span>Recherches etendues + suivi illimite <span class="bk-plan-bronze">Bronze</span></div>
+                    <div class="bk-prod-check"><span class="chk">&#10003;</span>Alertes nouvelles performances <span class="bk-plan-bronze">Bronze</span></div>
+                    <div class="bk-prod-check"><span class="chk">&#10003;</span>Recherches illimitees + comparateur avance <span class="bk-plan-argent">Argent</span></div>
+                    <div class="bk-prod-check"><span class="chk">&#10003;</span>Export PDF des fiches &amp; bilans <span class="bk-plan-or">Or</span></div>
+                    <div class="bk-prod-check"><span class="chk">&#10003;</span>Rapports de club + multi-athletes <span class="bk-plan-platine">Platine</span></div>
+                </div>
+                <div class="bk-prod-ctas">
+                    <a href="<?= BK_BASE ?>/athletes" class="bk-btn-primary">Explorer <span class="arr">&rarr;</span></a>
+                    <a href="<?= BK_BASE ?>/tuto" class="bk-btn-secondary">Voir le tuto</a>
+                </div>
+            </div>
+            <div class="bk-prod-mock">
+                <div class="md"><span></span><span></span><span></span></div>
+                <div class="bk-prod-mock-card">
+                    <div class="bk-prod-mock-row">
+                        <div class="bk-prod-mock-av">BK</div>
+                        <div class="bk-prod-mock-inf">
+                            <div class="bk-prod-mock-name">Apercu du service</div>
+                            <div class="bk-prod-mock-meta">Exemple &middot; Demo</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bk-prod-mock-card">
+                    <div class="bk-prod-mock-grid">
+                        <div class="bk-prod-mock-box"><div class="v">&mdash;&mdash;</div><div class="l">Records</div></div>
+                        <div class="bk-prod-mock-box"><div class="v">&mdash;&mdash;</div><div class="l">Medailles</div></div>
+                        <div class="bk-prod-mock-box"><div class="v">&mdash;&mdash;</div><div class="l">Podiums</div></div>
+                    </div>
+                    <div class="bk-prod-mock-chart">
+                        <div class="b"></div><div class="b"></div><div class="b"></div><div class="b"></div><div class="b"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sous-modules -->
+        <div class="bk-submodules">
+            <a href="<?= BK_BASE ?>/athletes" class="bk-submod">
+                <div class="bk-submod-ico">&#128100;</div>
+                <div class="bk-submod-body"><h4>Fiches athletes</h4><p>Top 100, recherche live</p></div>
+                <span class="arr">&rarr;</span>
+            </a>
+            <a href="<?= BK_BASE ?>/recherche" class="bk-submod">
+                <div class="bk-submod-ico">&#128269;</div>
+                <div class="bk-submod-body"><h4>Recherche avancee</h4><p>12 filtres combinables</p></div>
+                <span class="arr">&rarr;</span>
+            </a>
+            <a href="<?= BK_BASE ?>/comparer" class="bk-submod">
+                <div class="bk-submod-ico">&#9878;&#65039;</div>
+                <div class="bk-submod-body"><h4>Comparateur</h4><p>Athletes ou clubs</p></div>
+                <span class="arr">&rarr;</span>
+            </a>
+            <a href="<?= BK_BASE ?>/clubs" class="bk-submod">
+                <div class="bk-submod-ico">&#127963;</div>
+                <div class="bk-submod-body"><h4>Panneaux club</h4><p>5 onglets detailles</p></div>
+                <span class="arr">&rarr;</span>
+            </a>
+            <a href="<?= BK_BASE ?>/villes" class="bk-submod">
+                <div class="bk-submod-ico">&#127961;</div>
+                <div class="bk-submod-body"><h4>Stats par ville</h4><p>Filtres niveaux / annees</p></div>
+                <span class="arr">&rarr;</span>
+            </a>
+            <a href="<?= BK_BASE ?>/epreuves" class="bk-submod">
+                <div class="bk-submod-ico">&#127894;</div>
+                <div class="bk-submod-body"><h4>Records par epreuve</h4><p>Classement temps reel</p></div>
+                <span class="arr">&rarr;</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- ============ TARIFS CONDENSES (masques temporairement) ============ -->
+    <?php if (false): // Retirer "false" pour reactiver ?>
+    <section class="bk-sec">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Tarifs</div>
+            <h2>Gratuit pour commencer,<br>Pro pour aller plus loin.</h2>
+            <p class="bk-sec-lead">Trois formules adaptees aux usages : grand public, individuel avance, club professionnel.</p>
+        </div>
+        <style>
+        .bk-prix{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:1080px;margin:0 auto;}
+        .bk-prix-card{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:14px;padding:22px 18px;transition:all .25s;display:flex;flex-direction:column;position:relative;}
+        .bk-prix-card:hover{transform:translateY(-3px);border-color:#6c5ce760;}
+        .bk-prix-card.pop{border-color:#6c5ce7;box-shadow:0 10px 30px rgba(108,92,231,0.2);}
+        .bk-prix-card.pop::before{content:"Populaire";position:absolute;top:-10px;right:14px;background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;padding:3px 10px;border-radius:100px;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;box-shadow:0 5px 12px rgba(108,92,231,0.4);}
+        .bk-prix-name{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#8b949e;margin-bottom:6px;}
+        .bk-prix-card.pop .bk-prix-name{color:#a78bfa;}
+        .bk-prix-card.starter .bk-prix-name{color:#22d3ee;}
+        .bk-prix-card.club .bk-prix-name{color:#fbbf24;}
+        .bk-prix-amount{display:flex;align-items:baseline;gap:3px;margin-bottom:6px;}
+        .bk-prix-amount .n{font-size:28px;font-weight:800;color:#fff;letter-spacing:-1.2px;}
+        .bk-prix-amount .p{color:#8b949e;font-size:11px;font-weight:600;}
+        .bk-prix-sub{color:#5a6580;font-size:11px;margin:0 0 12px 0;line-height:1.45;min-height:32px;}
+        .bk-prix-list{list-style:none;padding:0;margin:0 0 16px 0;flex:1;}
+        .bk-prix-list li{font-size:11px;color:#c9d1d9;padding:4px 0;display:flex;align-items:center;gap:6px;line-height:1.35;}
+        .bk-prix-list li::before{content:"\2713";color:#34d399;font-weight:800;flex-shrink:0;}
+        .bk-prix-cta{padding:9px;text-align:center;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none;transition:all .2s;}
+        .bk-prix-cta.free{background:transparent;border:1px solid #1e2a3a;color:#c9d1d9;}
+        .bk-prix-cta.free:hover{border-color:#6c5ce7;color:#a78bfa;}
+        .bk-prix-cta.starter{background:#06b6d418;border:1px solid #06b6d460;color:#22d3ee;}
+        .bk-prix-cta.starter:hover{background:#06b6d430;border-color:#22d3ee;}
+        .bk-prix-cta.pro{background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;}
+        .bk-prix-cta.pro:hover{transform:translateY(-1px);}
+        .bk-prix-cta.club{background:transparent;border:1px solid #f59e0b60;color:#fbbf24;}
+        .bk-prix-cta.club:hover{background:#f59e0b10;border-color:#fbbf24;}
+        .bk-prix-more{text-align:center;margin-top:28px;}
+        .bk-prix-more a{color:#a78bfa;font-size:14px;font-weight:700;text-decoration:none;}
+        .bk-prix-more a:hover{text-decoration:underline;}
+        @media(max-width:1020px){.bk-prix{grid-template-columns:repeat(2,1fr);}}
+        @media(max-width:560px){.bk-prix{grid-template-columns:1fr;}}
+        </style>
+        <div class="bk-prix">
+            <div class="bk-prix-card">
+                <div class="bk-prix-name">Free</div>
+                <div class="bk-prix-amount"><span class="n">0&euro;</span><span class="p">/ toujours</span></div>
+                <p class="bk-prix-sub">L'essentiel pour consulter.</p>
+                <ul class="bk-prix-list">
+                    <li>Fiches athletes</li>
+                    <li>Recherche simple</li>
+                    <li>Consultation clubs</li>
+                    <li>5 recherches/jour</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/athletes" class="bk-prix-cta free">Commencer</a>
+            </div>
+            <div class="bk-prix-card starter">
+                <div class="bk-prix-name">Starter</div>
+                <div class="bk-prix-amount"><span class="n">3&euro;</span><span class="p">/ mois</span></div>
+                <p class="bk-prix-sub">Un peu plus que Free.</p>
+                <ul class="bk-prix-list">
+                    <li>5 filtres de recherche</li>
+                    <li>Suivi 10 athletes</li>
+                    <li>Comparateur basique</li>
+                    <li>100 recherches/jour</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/tarifs" class="bk-prix-cta starter">Choisir Starter</a>
+            </div>
+            <div class="bk-prix-card pop">
+                <div class="bk-prix-name">Pro</div>
+                <div class="bk-prix-amount"><span class="n">9&euro;</span><span class="p">/ mois</span></div>
+                <p class="bk-prix-sub">Utilisateurs avances.</p>
+                <ul class="bk-prix-list">
+                    <li>12 filtres complets</li>
+                    <li>Comparateur illimite</li>
+                    <li>Export PDF</li>
+                    <li>Suivi illimite</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/tarifs" class="bk-prix-cta pro">Choisir Pro</a>
+            </div>
+            <div class="bk-prix-card club">
+                <div class="bk-prix-name">Club</div>
+                <div class="bk-prix-amount"><span class="n">49&euro;</span><span class="p">/ mois</span></div>
+                <p class="bk-prix-sub">Clubs &amp; federations.</p>
+                <ul class="bk-prix-list">
+                    <li>Tout Pro inclus</li>
+                    <li>Dashboard club</li>
+                    <li>Rapports PDF</li>
+                    <li>Multi-utilisateurs</li>
+                </ul>
+                <a href="<?= BK_BASE ?>/contact" class="bk-prix-cta club">Demander demo</a>
+            </div>
+        </div>
+        <div class="bk-prix-more">
+            <a href="<?= BK_BASE ?>/tarifs">Comparer en detail &middot; Voir toutes les options &rarr;</a>
+        </div>
+    </section>
+    <?php endif; // fin section tarifs /produits masquee ?>
+
+    <!-- ============ ROADMAP ============ -->
+    <section class="bk-sec" id="roadmap">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Roadmap</div>
+            <h2>Ce qui arrive, par ordre<br>de priorite.</h2>
+            <p class="bk-sec-lead">Notre methode est reproductible : meme architecture, meme niveau de detail pour chaque discipline.</p>
+        </div>
+        <div class="bk-roadmap">
+            <div class="bk-road-col done">
+                <div class="bk-road-head">
+                    <span class="bk-road-tag"><span class="dot"></span>Disponible</span>
+                </div>
+                <div class="bk-sport-line">
+                    <div class="bk-sport-ico">&#127939;</div>
+                    <div class="bk-sport-name">Athletisme</div>
+                    <div class="bk-sport-status">Actif</div>
+                </div>
+            </div>
+            <div class="bk-road-col prog">
+                <div class="bk-road-head">
+                    <span class="bk-road-tag"><span class="dot"></span>En developpement</span>
+                </div>
+                <div class="bk-sport-line">
+                    <div class="bk-sport-ico">&#9917;</div>
+                    <div class="bk-sport-name">Football</div>
+                    <div class="bk-sport-status">En cours</div>
+                </div>
+                <div class="bk-sport-line">
+                    <div class="bk-sport-ico">&#127936;</div>
+                    <div class="bk-sport-name">Basketball</div>
+                    <div class="bk-sport-status">En cours</div>
+                </div>
+            </div>
+            <div class="bk-road-col next">
+                <div class="bk-road-head">
+                    <span class="bk-road-tag"><span class="dot"></span>A venir</span>
+                </div>
+                <div class="bk-sport-line">
+                    <div class="bk-sport-ico">&#127934;</div>
+                    <div class="bk-sport-name">Tennis</div>
+                    <div class="bk-sport-status">Planifie</div>
+                </div>
+                <div class="bk-sport-line">
+                    <div class="bk-sport-ico">&#127946;</div>
+                    <div class="bk-sport-name">Natation</div>
+                    <div class="bk-sport-status">Planifie</div>
+                </div>
+                <div class="bk-sport-line">
+                    <div class="bk-sport-ico">&#127945;</div>
+                    <div class="bk-sport-name">Rugby</div>
+                    <div class="bk-sport-status">Planifie</div>
+                </div>
+                <div class="bk-sport-line">
+                    <div class="bk-sport-ico">&#127955;</div>
+                    <div class="bk-sport-name">Cyclisme</div>
+                    <div class="bk-sport-status">Planifie</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="bk-sec">
+        <div class="bk-sec-head">
+            <div class="bk-eyebrow">Questions frequentes</div>
+            <h2>Ce que les gens<br>nous demandent souvent.</h2>
+        </div>
+        <div class="bk-faq">
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Bokonzi est-il vraiment gratuit ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">La version gratuite donne acces aux fiches athletes, a la recherche de base et a la consultation des clubs, villes et epreuves. Les fonctionnalites avancees (recherche multi-criteres, comparateur, export PDF, suivi illimite) sont incluses dans l'offre Pro a partir de 9&euro;/mois.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Faut-il creer un compte ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Non. La consultation est libre. Un compte Google optionnel permet uniquement de suivre des athletes ou clubs favoris et de synchroniser cette liste entre appareils.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>D'ou proviennent les donnees ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Les donnees sont collectees a partir de sources publiques, agregees puis structurees. Le site n'est affilie a aucune federation sportive.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Comment demander le retrait d'un profil ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Chaque fiche dispose d'un bouton de signalement. Un retrait self-service par email est propose (effectif apres validation d'un lien). Sinon, le traitement manuel prend 1 a 30 jours.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Quand les autres sports seront-ils disponibles ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Le developpement est progressif. Football et basketball sont prioritaires. Aucune date precise n'est communiquee pour eviter les attentes irrealistes.</div>
+            </div>
+            <div class="bk-faq-item" onclick="this.classList.toggle('open')">
+                <div class="bk-faq-q"><h4>Comment proposer une amelioration ?</h4><span class="pm">+</span></div>
+                <div class="bk-faq-a">Via la page <a href="<?= BK_BASE ?>/contact" style="color:#a78bfa;">/contact</a>. Toutes les suggestions sont lues.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CTA FINAL ============ -->
+    <section class="bk-cta-final">
+        <h2>Commencez par l'athletisme.</h2>
+        <p>Le service disponible aujourd'hui couvre deja l'ensemble de l'athletisme francais. Un clic pour y entrer.</p>
+        <div class="bk-cta-ctas">
+            <a href="<?= BK_BASE ?>/athletes" class="bk-cta-btn-w">Commencer gratuitement <span>&rarr;</span></a>
+            <a href="<?= BK_BASE ?>/concept" class="bk-cta-btn-gh">Lire notre concept</a>
+        </div>
+    </section>
+
+</div>
+
+<?php
+// ================================================================
+//  CONCEPT (vision, mission)
+// ================================================================
+elseif ($page === 'concept'):
+?>
+
+<div class="bk-land" style="font-family:'Inter','Segoe UI',system-ui,sans-serif;">
+    <section class="bk-hero" style="padding:72px 16px 48px 16px;">
+        <div class="bk-brand-tag"><span class="dot"></span>Concept</div>
+        <h1>Rendre la data sportive<br><span class="grad">accessible a tous.</span></h1>
+        <p class="bk-hero-lead">Notre vision, notre mission, et ce qui nous differencie des autres acteurs de la data sportive.</p>
+    </section>
+
+    <!-- Vision -->
+    <section class="bk-sec">
+        <div class="bk-eyebrow">Notre vision</div>
+        <h2>La data sportive doit etre<br>lisible par tous.</h2>
+        <p class="bk-sec-lead">Aujourd'hui, les donnees sportives sont soit inaccessibles (payantes, fermees), soit brutes et inexploitables. Nous pensons qu'elles devraient etre libres, structurees et immediatement utilisables par le grand public.</p>
+    </section>
+
+    <!-- 3 piliers -->
+    <section class="bk-sec bk-sec-dark">
+        <div class="bk-eyebrow">Nos piliers</div>
+        <h2>Trois principes non-negociables.</h2>
+        <div class="bk-feats" style="margin-top:40px;">
+            <div class="bk-feat">
+                <div class="bk-feat-ico">&#128275;</div>
+                <h3>Ouvert</h3>
+                <p>Donnees issues de sources publiques. Consultation libre. Pas de paywall, pas d'inscription forcee.</p>
+            </div>
+            <div class="bk-feat">
+                <div class="bk-feat-ico">&#9889;</div>
+                <h3>Simple</h3>
+                <p>Interface pensee pour le grand public. Pas de jargon, pas de fonctions cachees derriere 10 clics.</p>
+            </div>
+            <div class="bk-feat">
+                <div class="bk-feat-ico">&#128200;</div>
+                <h3>Visuel</h3>
+                <p>Graphiques, comparateurs, fiches synthetiques. La data devient comprehensible en un coup d'oeil.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Mission -->
+    <section class="bk-sec">
+        <div class="bk-eyebrow">Mission</div>
+        <h2>Pourquoi nous existons.</h2>
+        <p class="bk-sec-lead">Parce qu'un athlete, un parent, un journaliste ou un simple curieux devrait pouvoir consulter les chiffres du sport sans friction. Parce que la transparence de la donnee publique est un bien commun. Parce qu'aucun outil ne le fait avec le meme niveau de soin.</p>
+    </section>
+
+    <!-- Differenciation -->
+    <section class="bk-sec bk-sec-dark">
+        <div class="bk-eyebrow">Ce qui nous differencie</div>
+        <h2>Ni encyclopedie, ni outil pro.<br>Quelque chose entre les deux.</h2>
+        <div class="bk-bens" style="margin-top:40px;">
+            <div class="bk-ben">
+                <div class="bk-ben-ico">&#127919;</div>
+                <div>
+                    <h3>Focus grand public</h3>
+                    <p>La plupart des outils data sport ciblent les professionnels. Nous ciblons tout le monde.</p>
+                </div>
+            </div>
+            <div class="bk-ben">
+                <div class="bk-ben-ico">&#128293;</div>
+                <div>
+                    <h3>Modele freemium</h3>
+                    <p>Decouverte gratuite pour le grand public. Quatre abonnements, de Bronze a Platine, pour les usages avances.</p>
+                </div>
+            </div>
+            <div class="bk-ben">
+                <div class="bk-ben-ico">&#129504;</div>
+                <div>
+                    <h3>Structure intelligente</h3>
+                    <p>Chaque entite (athlete, club, ville) est reliee. Vous naviguez sans perdre le contexte.</p>
+                </div>
+            </div>
+            <div class="bk-ben">
+                <div class="bk-ben-ico">&#127757;</div>
+                <div>
+                    <h3>Ambition multi-sport</h3>
+                    <p>L'athletisme est une preuve de concept. La methode s'etend a d'autres disciplines.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="bk-cta-final" style="margin-top:20px;">
+        <h2>Decouvrez le premier service.</h2>
+        <p>La meilleure facon de comprendre notre approche, c'est de l'utiliser.</p>
+        <a href="<?= BK_BASE ?>/athletes" class="bk-cta-btn">Commencer <span>&rarr;</span></a>
+    </section>
+</div>
+
+<?php
+// ================================================================
+//  SOLUTIONS (par profil : athletes, clubs, recruteurs)
+// ================================================================
+elseif ($page === 'solutions'):
+?>
+
+<div class="bk-land">
+
+<style>
+.bk-sol-hero{padding:80px 0 48px 0;text-align:center;position:relative;}
+.bk-sol-hero::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:80%;height:420px;background:radial-gradient(ellipse at center,rgba(108,92,231,0.15) 0%,transparent 60%);pointer-events:none;z-index:-1;}
+.bk-sol-hero h1{font-size:clamp(34px,4.5vw,56px);font-weight:800;margin:20px 0;color:#fff;line-height:1.1;letter-spacing:-1.5px;}
+.bk-sol-hero h1 .grad{background:linear-gradient(135deg,#a78bfa 0%,#ec4899 50%,#f59e0b 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.bk-sol-lead{font-size:18px;color:#8b949e;max-width:620px;margin:0 auto 32px auto;line-height:1.65;}
+
+.bk-sol-block{display:grid;grid-template-columns:1fr 1.2fr;gap:56px;align-items:center;padding:72px 0;border-top:1px solid #1e2a3a;}
+.bk-sol-block:first-of-type{border-top:none;}
+.bk-sol-block.reverse{grid-template-columns:1.2fr 1fr;}
+.bk-sol-block.reverse .bk-sol-visual{order:1;}
+.bk-sol-block.reverse .bk-sol-content{order:2;}
+.bk-sol-profile{display:inline-flex;align-items:center;gap:12px;padding:10px 20px;background:linear-gradient(135deg,#6c5ce715,#ec489915);border:1px solid #6c5ce740;border-radius:100px;margin-bottom:20px;}
+.bk-sol-profile .ico{font-size:20px;}
+.bk-sol-profile .lbl{color:#a78bfa;font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;}
+.bk-sol-content h2{font-size:clamp(24px,3vw,36px);font-weight:800;color:#fff;margin:0 0 16px 0;line-height:1.2;letter-spacing:-0.6px;}
+.bk-sol-content .desc{font-size:16px;color:#c9d1d9;line-height:1.75;margin:0 0 24px 0;}
+.bk-sol-benefits{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px;}
+.bk-sol-ben{background:#0d1117;border:1px solid #1e2a3a;border-radius:12px;padding:16px;}
+.bk-sol-ben .num{font-size:28px;font-weight:800;background:linear-gradient(135deg,#a78bfa,#ec4899);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;line-height:1;}
+.bk-sol-ben .txt{color:#8b949e;font-size:13px;margin-top:6px;line-height:1.5;font-weight:500;}
+.bk-sol-ctas{display:flex;gap:12px;flex-wrap:wrap;}
+
+.bk-sol-visual{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #1e2a3a;border-radius:18px;padding:28px;box-shadow:0 24px 60px rgba(108,92,231,0.2);}
+.bk-sol-visual-head{display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #1e2a3a;}
+.bk-sol-visual-dot{width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;}
+.bk-sol-visual-title{color:#8b949e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;}
+
+.bk-sol-list{display:flex;flex-direction:column;gap:10px;}
+.bk-sol-item{display:flex;align-items:center;gap:12px;padding:12px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;}
+.bk-sol-item .av{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6c5ce7,#ec4899);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex-shrink:0;}
+.bk-sol-item .av.green{background:linear-gradient(135deg,#10b981,#34d399);}
+.bk-sol-item .av.orange{background:linear-gradient(135deg,#f59e0b,#ec4899);}
+.bk-sol-item .body{flex:1;min-width:0;}
+.bk-sol-item .nm{color:#fff;font-size:13px;font-weight:700;}
+.bk-sol-item .mt{color:#5a6580;font-size:11px;margin-top:2px;}
+.bk-sol-item .val{color:#34d399;font-size:14px;font-weight:800;}
+
+/* Club visual */
+.bk-sol-club-head{display:flex;align-items:center;gap:14px;margin-bottom:16px;}
+.bk-sol-club-ico{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#10b981,#34d399);display:flex;align-items:center;justify-content:center;font-size:22px;}
+.bk-sol-club-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.bk-sol-club-stat{background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;padding:12px 8px;text-align:center;}
+.bk-sol-club-stat .v{color:#fff;font-size:18px;font-weight:800;}
+.bk-sol-club-stat .l{color:#5a6580;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-weight:600;}
+.bk-sol-club-chart{display:flex;align-items:flex-end;gap:5px;height:70px;padding:0 4px;}
+.bk-sol-club-chart .cb{flex:1;border-radius:3px 3px 0 0;}
+.bk-sol-club-chart .cb:nth-child(1){height:40%;background:linear-gradient(180deg,#a78bfa,#6c5ce7);}
+.bk-sol-club-chart .cb:nth-child(2){height:55%;background:linear-gradient(180deg,#a78bfa,#6c5ce7);}
+.bk-sol-club-chart .cb:nth-child(3){height:70%;background:linear-gradient(180deg,#a78bfa,#6c5ce7);}
+.bk-sol-club-chart .cb:nth-child(4){height:85%;background:linear-gradient(180deg,#ec4899,#c026d3);}
+
+/* Recruteur : shortlist */
+.bk-sol-shortlist{display:flex;flex-direction:column;gap:8px;}
+.bk-sol-short-item{display:flex;align-items:center;gap:12px;padding:10px 12px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;}
+.bk-sol-short-rank{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#f59e0b,#ec4899);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.bk-sol-short-name{flex:1;color:#c9d1d9;font-size:12px;font-weight:600;}
+.bk-sol-short-score{background:#6c5ce720;color:#a78bfa;font-size:11px;font-weight:800;padding:3px 9px;border-radius:100px;border:1px solid #6c5ce740;}
+
+/* Section démo CTA */
+.bk-sol-demo{background:linear-gradient(135deg,#131a28 0%,#0d1117 100%);border:1px solid #6c5ce740;border-radius:24px;padding:48px 32px;text-align:center;margin:40px 0;}
+.bk-sol-demo h2{font-size:clamp(24px,3vw,34px);font-weight:800;color:#fff;margin:0 0 14px 0;letter-spacing:-0.5px;}
+.bk-sol-demo p{color:#8b949e;font-size:16px;max-width:540px;margin:0 auto 28px auto;line-height:1.65;}
+.bk-sol-demo-ctas{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;}
+
+@media(max-width:860px){
+    .bk-sol-block{grid-template-columns:1fr;gap:32px;padding:48px 0;}
+    .bk-sol-block.reverse{grid-template-columns:1fr;}
+    .bk-sol-block.reverse .bk-sol-visual{order:2;}
+    .bk-sol-block.reverse .bk-sol-content{order:1;}
+    .bk-sol-benefits{grid-template-columns:1fr;}
+}
+</style>
+
+    <!-- HERO -->
+    <section class="bk-sol-hero">
+        <div class="bk-tag"><span class="dot"></span>Solutions</div>
+        <h1>Un outil adapte a<br><span class="grad">chaque profil.</span></h1>
+        <p class="bk-sol-lead">Athlete, club, recruteur : decouvrez comment Bokonzi repond a vos besoins specifiques et faites-nous part de vos usages.</p>
+    </section>
+
+    <!-- ============ ATHLETE ============ -->
+    <section class="bk-sol-block">
+        <div class="bk-sol-content">
+            <div class="bk-sol-profile">
+                <span class="ico">&#127939;</span>
+                <span class="lbl">Pour les athletes</span>
+            </div>
+            <h2>Suivez votre progression,<br>mesurez-vous aux meilleurs.</h2>
+            <p class="desc">Votre fiche personnelle centralisee. Progressions annuelles, records battus, comparaisons avec d'autres athletes de votre niveau. Tout est accessible en quelques secondes, gratuitement.</p>
+            <div class="bk-sol-benefits">
+                <div class="bk-sol-ben">
+                    <div class="num">Gratuit</div>
+                    <div class="txt">1 fiche athlete par jour pour decouvrir</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">&#60;&nbsp;3s</div>
+                    <div class="txt">Pour retrouver une performance</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">12</div>
+                    <div class="txt">Filtres combinables de recherche</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">&infin;</div>
+                    <div class="txt">Athletes suivis en favoris</div>
+                </div>
+            </div>
+            <div class="bk-sol-ctas">
+                <a href="<?= BK_BASE ?>/athletes" class="bk-btn-primary">Explorer les fiches <span class="arr">&rarr;</span></a>
+                <a href="<?= BK_BASE ?>/contact" class="bk-btn-secondary">Demander une demo</a>
+            </div>
+        </div>
+        <div class="bk-sol-visual">
+            <div class="bk-sol-visual-head">
+                <span class="bk-sol-visual-dot"></span>
+                <span class="bk-sol-visual-title">Apercu &middot; Fiche athlete</span>
+            </div>
+            <div class="bk-sol-list">
+                <div class="bk-sol-item">
+                    <div class="av">BK</div>
+                    <div class="body">
+                        <div class="nm">Apercu du service</div>
+                        <div class="mt">Profil exemple &middot; Demo</div>
+                    </div>
+                    <div class="val">&mdash;&mdash;</div>
+                </div>
+                <div class="bk-sol-item">
+                    <div class="av green">BK</div>
+                    <div class="body">
+                        <div class="nm">Records personnels</div>
+                        <div class="mt">Toutes epreuves</div>
+                    </div>
+                    <div class="val">&mdash;&mdash;</div>
+                </div>
+                <div class="bk-sol-item">
+                    <div class="av orange">BK</div>
+                    <div class="body">
+                        <div class="nm">Progression 2025</div>
+                        <div class="mt">+ &mdash;&mdash; pts</div>
+                    </div>
+                    <div class="val">&#8599;</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CLUB ============ -->
+    <section class="bk-sol-block reverse">
+        <div class="bk-sol-visual">
+            <div class="bk-sol-visual-head">
+                <span class="bk-sol-visual-dot"></span>
+                <span class="bk-sol-visual-title">Apercu &middot; Dashboard club</span>
+            </div>
+            <div class="bk-sol-club-head">
+                <div class="bk-sol-club-ico">&#127963;</div>
+                <div>
+                    <div style="color:#fff;font-size:14px;font-weight:800;">Club Apercu</div>
+                    <div style="color:#8b949e;font-size:11px;margin-top:2px;">&mdash;&mdash; athletes actifs</div>
+                </div>
+            </div>
+            <div class="bk-sol-club-stats">
+                <div class="bk-sol-club-stat"><div class="v">&mdash;&mdash;</div><div class="l">Records</div></div>
+                <div class="bk-sol-club-stat"><div class="v">&mdash;&mdash;</div><div class="l">Medailles</div></div>
+                <div class="bk-sol-club-stat"><div class="v">&mdash;&mdash;</div><div class="l">Podiums</div></div>
+            </div>
+            <div class="bk-sol-club-chart">
+                <div class="cb"></div><div class="cb"></div><div class="cb"></div><div class="cb"></div>
+            </div>
+        </div>
+        <div class="bk-sol-content">
+            <div class="bk-sol-profile">
+                <span class="ico">&#127963;</span>
+                <span class="lbl">Pour les clubs</span>
+            </div>
+            <h2>Analysez vos effectifs,<br>valorisez vos resultats.</h2>
+            <p class="desc">Un tableau de bord complet pour votre club : nationalites, records, medailles, evolution annuelle. Identifiez les talents qui progressent, mettez en avant vos meilleures performances.</p>
+            <div class="bk-sol-benefits">
+                <div class="bk-sol-ben">
+                    <div class="num">5</div>
+                    <div class="txt">Onglets d'analyse par club</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">&#215;3</div>
+                    <div class="txt">Moins de temps passe sur le reporting</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">30+</div>
+                    <div class="txt">Metriques suivies automatiquement</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">Live</div>
+                    <div class="txt">Donnees a jour en permanence</div>
+                </div>
+            </div>
+            <div class="bk-sol-ctas">
+                <a href="<?= BK_BASE ?>/clubs" class="bk-btn-primary">Explorer les clubs <span class="arr">&rarr;</span></a>
+                <a href="<?= BK_BASE ?>/contact" class="bk-btn-secondary">Demander une demo</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ RECRUTEUR ============ -->
+    <section class="bk-sol-block">
+        <div class="bk-sol-content">
+            <div class="bk-sol-profile">
+                <span class="ico">&#128269;</span>
+                <span class="lbl">Pour les recruteurs</span>
+            </div>
+            <h2>Identifiez les talents,<br>gagnez du temps.</h2>
+            <p class="desc">Filtres par niveau, age, performance, ville ou club. Comparez plusieurs athletes cote a cote. Construisez vos shortlists sans passer des heures a croiser des sources dispersees.</p>
+            <div class="bk-sol-benefits">
+                <div class="bk-sol-ben">
+                    <div class="num">-70%</div>
+                    <div class="txt">De temps passe en scouting</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">1 clic</div>
+                    <div class="txt">Pour generer une comparaison</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">IA-IE</div>
+                    <div class="txt">Filtres par niveau precis (IA a D8)</div>
+                </div>
+                <div class="bk-sol-ben">
+                    <div class="num">PDF</div>
+                    <div class="txt">Export fiche athlete en 1 clic</div>
+                </div>
+            </div>
+            <div class="bk-sol-ctas">
+                <a href="<?= BK_BASE ?>/recherche" class="bk-btn-primary">Tester la recherche <span class="arr">&rarr;</span></a>
+                <a href="<?= BK_BASE ?>/contact" class="bk-btn-secondary">Demander une demo</a>
+            </div>
+        </div>
+        <div class="bk-sol-visual">
+            <div class="bk-sol-visual-head">
+                <span class="bk-sol-visual-dot"></span>
+                <span class="bk-sol-visual-title">Apercu &middot; Shortlist scouting</span>
+            </div>
+            <div class="bk-sol-shortlist">
+                <div class="bk-sol-short-item"><div class="bk-sol-short-rank">1</div><div class="bk-sol-short-name">Apercu athlete #1</div><div class="bk-sol-short-score">&mdash;&mdash;</div></div>
+                <div class="bk-sol-short-item"><div class="bk-sol-short-rank">2</div><div class="bk-sol-short-name">Apercu athlete #2</div><div class="bk-sol-short-score">&mdash;&mdash;</div></div>
+                <div class="bk-sol-short-item"><div class="bk-sol-short-rank">3</div><div class="bk-sol-short-name">Apercu athlete #3</div><div class="bk-sol-short-score">&mdash;&mdash;</div></div>
+                <div class="bk-sol-short-item"><div class="bk-sol-short-rank">4</div><div class="bk-sol-short-name">Apercu athlete #4</div><div class="bk-sol-short-score">&mdash;&mdash;</div></div>
+                <div class="bk-sol-short-item"><div class="bk-sol-short-rank">5</div><div class="bk-sol-short-name">Apercu athlete #5</div><div class="bk-sol-short-score">&mdash;&mdash;</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ CTA DEMO ============ -->
+    <section class="bk-sol-demo">
+        <h2>Un cas d'usage particulier ?</h2>
+        <p>Federation, media, academie, startup : contactez-nous pour etudier un deploiement adapte a votre besoin specifique.</p>
+        <div class="bk-sol-demo-ctas">
+            <a href="<?= BK_BASE ?>/contact" class="bk-btn-primary">Demander une demo <span class="arr">&rarr;</span></a>
+            <a href="<?= BK_BASE ?>/athletes" class="bk-btn-secondary">Explorer le produit</a>
+        </div>
+    </section>
+
+</div>
+
+<?php
+// ================================================================
+//  CONTACT (formulaire + infos)
+// ================================================================
+elseif ($page === 'contact'):
+?>
+
+<div class="bk-land" style="font-family:'Inter','Segoe UI',system-ui,sans-serif;">
+    <section class="bk-hero" style="padding:72px 16px 40px 16px;">
+        <div class="bk-brand-tag"><span class="dot"></span>Contact</div>
+        <h1>Une question ?<br><span class="grad">Ecrivez-nous.</span></h1>
+        <p class="bk-hero-lead">Suggestions, remarques, demandes de retrait de profil, propositions de partenariat. Nous lisons tout.</p>
+    </section>
+
+    <section class="bk-sec" style="padding:32px 0 64px 0;">
+        <div style="max-width:640px;margin:0 auto 24px;background:#dc262615;border:3px solid #dc2626;border-radius:20px;padding:28px;">
+            <p style="color:#fca5a5;font-size:22px;font-weight:900;margin:0 0 14px;text-transform:uppercase;letter-spacing:0.8px;line-height:1.2;text-align:center;">&#9888; Vous voulez retirer votre profil ?</p>
+            <p style="color:#fca5a5;font-size:15px;font-weight:700;margin:0 0 16px;line-height:1.5;text-align:center;">N'utilisez PAS ce formulaire de contact.<br>Allez directement sur votre profil et cliquez sur <b style="color:#f85149;">&#9888; Signaler ce profil</b>.</p>
+            <div style="background:#0d1117;border:1px solid #dc2626;border-radius:12px;padding:16px 20px;">
+                <p style="color:#fca5a5;font-size:14px;font-weight:800;margin:0 0 10px;text-transform:uppercase;letter-spacing:0.4px;">Marche a suivre :</p>
+                <ol style="color:#fca5a5;font-size:14px;line-height:1.8;margin:0;padding-left:22px;font-weight:600;">
+                    <li>Ouvrez votre profil d'athlete (recherche par nom)</li>
+                    <li>Cliquez sur le bouton <b style="color:#f85149;">&#9888; Signaler ce profil</b></li>
+                    <li>Choisissez le motif <b>&laquo; Je souhaite retirer mon profil &raquo;</b></li>
+                    <li>Indiquez votre adresse email</li>
+                    <li style="color:#86efac;">&#10003; Votre profil est masque <b>immediatement</b></li>
+                </ol>
+            </div>
+        </div>
+        <div style="max-width:640px;margin:0 auto;background:#131a28;border:1px solid #1e2a3a;border-radius:20px;padding:40px 32px;">
+            <form id="contactPageForm" onsubmit="return _submitContactPage(event);">
+                <div style="margin-bottom:18px;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#c9d1d9;margin-bottom:8px;">Nom (optionnel)</label>
+                    <input type="text" id="cpNom" maxlength="100" style="width:100%;padding:12px 14px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;color:#fff;font-size:14px;font-family:inherit;">
+                </div>
+                <div style="margin-bottom:18px;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#c9d1d9;margin-bottom:8px;">Email <span style="color:#ef4444;">*</span></label>
+                    <input type="email" id="cpEmail" required maxlength="200" style="width:100%;padding:12px 14px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;color:#fff;font-size:14px;font-family:inherit;">
+                </div>
+                <div style="margin-bottom:18px;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#c9d1d9;margin-bottom:8px;">Message <span style="color:#ef4444;">*</span></label>
+                    <textarea id="cpMsg" required maxlength="2000" rows="6" style="width:100%;padding:12px 14px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;color:#fff;font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+                </div>
+                <div style="background:#f59e0b10;border:1px solid #f59e0b40;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:12px;color:#fbbf24;line-height:1.6;">
+                    <strong>Confirmation requise :</strong> un email de validation vous sera envoye. Votre message ne sera transmis qu'apres validation du lien recu.
+                </div>
+                <button type="submit" id="cpBtn" style="width:100%;padding:14px;background:linear-gradient(135deg,#6c5ce7,#ec4899);border:none;border-radius:12px;color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;transition:transform .2s;">Envoyer le message</button>
+                <div id="cpResult" style="margin-top:14px;font-size:13px;text-align:center;"></div>
+            </form>
+        </div>
+    </section>
+</div>
+
+<script>
+function _submitContactPage(e) {
+    e.preventDefault();
+    var nom = document.getElementById('cpNom').value.trim();
+    var email = document.getElementById('cpEmail').value.trim();
+    var msg = document.getElementById('cpMsg').value.trim();
+    var btn = document.getElementById('cpBtn');
+    var res = document.getElementById('cpResult');
+    if (!email || !msg) { res.innerHTML = '<span style="color:#ef4444;">Email et message requis.</span>'; return false; }
+    btn.disabled = true; btn.textContent = 'Envoi...';
+    fetch('/api/contact.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ nom: nom, email: email, message: msg })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) {
+            res.innerHTML = '<span style="color:#10b981;font-weight:700;">&#10003; Email de confirmation envoye. Verifiez votre boite mail pour finaliser l\'envoi.</span>';
+            document.getElementById('contactPageForm').reset();
+            btn.disabled = true; btn.textContent = 'Envoye';
+        } else {
+            res.innerHTML = '<span style="color:#ef4444;">' + (d.error || 'Erreur') + '</span>';
+            btn.disabled = false; btn.textContent = 'Envoyer le message';
+        }
+    }).catch(function() {
+        res.innerHTML = '<span style="color:#ef4444;">Erreur de connexion.</span>';
+        btn.disabled = false; btn.textContent = 'Envoyer le message';
+    });
+    return false;
 }
 </script>
 
@@ -5828,7 +16661,22 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <script>
-const BASE_API = "https://bokonzi.com/api";
+const BASE_API = <?= json_encode($BASE_API_JS) ?>;
+<?php if (BK_IS_LOCAL): ?>
+// MODE LOCAL : auto-injection de bk_key (URL param uniquement, pas de header pour eviter CORS preflight)
+(function(){
+  const _origFetch = window.fetch;
+  const KEY = 'bk_s3cr3t_2026_xK9mP';
+  window.fetch = function(url, opts) {
+    try {
+      if (typeof url === 'string' && url.indexOf('bokonzi.com') !== -1 && url.indexOf('bk_key=') === -1) {
+        url += (url.indexOf('?') === -1 ? '?' : '&') + 'bk_key=' + KEY;
+      }
+    } catch(e) {}
+    return _origFetch(url, opts);
+  };
+})();
+<?php endif; ?>
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -5836,29 +16684,190 @@ function escapeHtml(str) {
     d.textContent = str;
     return d.innerHTML;
 }
-function _buildLimitMsg(data) {
-    var sub = data.logged
-        ? 'Vous avez atteint votre limite de <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches</b>.<br><span style="color:#8b949e;font-size:16px;">Votre adresse IP a ete enregistree.</span>'
-        : 'Vous avez utilise vos <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches gratuites</b>.<br><a href="login.php" style="color:#6c5ce7;text-decoration:underline;font-size:18px;font-weight:700;">Connectez-vous</a> pour obtenir <b style="color:#55efc4;font-size:22px;">30 recherches</b> !';
-    return '<div style="text-align:center;padding:50px 30px;color:#c9d1d9;background:#0d1117;border:2px solid #ff7675;border-radius:16px;margin:20px 0;">'
-        + '<div style="font-size:70px;margin-bottom:16px;">&#9203;</div>'
-        + '<div style="font-size:28px;font-weight:800;color:#ff7675;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;">Limite de recherches atteinte</div>'
-        + '<div style="font-size:18px;line-height:2;">' + sub + '</div>'
-        + '<div style="margin-top:20px;"><a href="#" onclick="event.preventDefault();var w=document.getElementById(\'footerContactForm\');var b=document.getElementById(\'footerContactBtn\');if(w){w.style.display=\'block\';if(b)b.style.display=\'none\';w.scrollIntoView({behavior:\'smooth\'});}return false;" style="color:#8b949e;font-size:13px;text-decoration:none;">&#9993; Nous contacter</a> <span style="color:#30363d;margin:0 6px;">|</span> <a href="#" onclick="event.preventDefault();var d=document.getElementById(\'limitSignalInfo\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';return false;" style="color:#f59e0b;font-size:13px;text-decoration:none;">&#9888; Signaler un profil</a></div>'
-        + '<div id="limitSignalInfo" style="display:none;margin:12px auto 0;max-width:400px;text-align:left;background:#f59e0b10;border:1px solid #f59e0b30;border-radius:8px;padding:12px 14px;"><p style="color:#c9d1d9;font-size:12px;line-height:1.6;margin:0;"><strong style="color:#f59e0b;">Comment signaler un profil ?</strong><br>1. Rendez-vous sur le profil de l\'athlete concerne<br>2. Cliquez sur le bouton <span style="color:#f59e0b;">&#9888; Signaler</span> en haut du profil<br>3. Choisissez un motif et envoyez votre demande</p></div>'
-        + '</div>';
+// ═══════════ QUOTA RECHERCHES : 5/jour + 30 min entre 2 recherches ═══════════
+var _bkCooldownTimer = null;
+
+function _bkFmtTime(s) {
+    s = Math.max(0, Math.round(s));
+    var m = Math.floor(s / 60), ss = s % 60;
+    return m + ':' + (ss < 10 ? '0' : '') + ss;
 }
-function _updateSearchQuota(data) {
+
+// Affiche le compteur classique "u/l" sur le badge de la nav
+function _bkShowQuota(u, l) {
     var el = document.getElementById('searchQuota');
-    if (!el || !data.search_limit) return;
-    var u = data.search_used || 0, l = data.search_limit;
+    if (!el) return;
+    u = u || 0; l = l || 50;
     el.textContent = u + '/' + l;
+    el.title = u + ' recherches sur ' + l + " aujourd'hui";
+    el.dataset.used = u; el.dataset.limit = l;
     if (u > l * 0.8) {
         el.style.background = '#ef444430'; el.style.color = '#ff7675'; el.style.borderColor = '#ef4444'; el.style.animation = 'bkGoldBlink 0.8s ease-in-out infinite';
     } else {
         el.style.background = '#ffd70025'; el.style.color = '#ffd700'; el.style.borderColor = '#ffd70060'; el.style.animation = 'bkGoldBlink 1.5s ease-in-out infinite';
     }
 }
+
+// Lance le decompte du cooldown sur le badge nav + (option) un gros compteur bigBoxId
+function _bkStartCooldown(seconds, used, limit, bigBoxId) {
+    var el = document.getElementById('searchQuota');
+    if (_bkCooldownTimer) { clearInterval(_bkCooldownTimer); _bkCooldownTimer = null; }
+    var remaining = Math.round(seconds || 0);
+    if (remaining <= 0) { _bkShowQuota(used, limit); return; }
+    function paint() {
+        if (el) {
+            el.textContent = '⏳ ' + _bkFmtTime(remaining);
+            el.title = 'Prochaine recherche dans ' + _bkFmtTime(remaining);
+            el.style.background = '#ef444430'; el.style.color = '#ff7675';
+            el.style.borderColor = '#ef4444'; el.style.animation = 'bkGoldBlink 0.8s ease-in-out infinite';
+        }
+        if (bigBoxId) { var b = document.getElementById(bigBoxId); if (b) b.textContent = _bkFmtTime(remaining); }
+    }
+    paint();
+    _bkCooldownTimer = setInterval(function() {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(_bkCooldownTimer); _bkCooldownTimer = null;
+            _bkShowQuota(used, limit);
+            if (bigBoxId) {
+                var b = document.getElementById(bigBoxId);
+                if (b) { b.textContent = "C'est bon, relancez votre recherche !"; b.style.color = '#34d399'; b.style.fontSize = '24px'; }
+            }
+        } else {
+            paint();
+        }
+    }, 1000);
+}
+
+// Decompte de la decouverte gratuite anonyme : 60 s de recherche libre, puis cadenas "Connexion"
+function _bkStartTrial(seconds) {
+    var el = document.getElementById('searchQuota');
+    if (!el) return;
+    if (_bkCooldownTimer) { clearInterval(_bkCooldownTimer); _bkCooldownTimer = null; }
+    var remaining = Math.round(seconds || 0);
+    function lock() {
+        el.innerHTML = '&#128274; Connexion';
+        el.title = 'Decouverte gratuite terminee — connectez-vous pour rechercher';
+        el.style.background = '#ef444430'; el.style.color = '#ff7675';
+        el.style.borderColor = '#ef4444'; el.style.animation = 'bkGoldBlink 0.9s ease-in-out infinite';
+    }
+    if (remaining <= 0) { lock(); return; }
+    function paint() {
+        el.textContent = '⏳ ' + _bkFmtTime(remaining);
+        el.title = 'Decouverte gratuite : ' + _bkFmtTime(remaining) + ' de recherche libre, puis connexion requise';
+        el.style.background = '#ef444430'; el.style.color = '#ff7675';
+        el.style.borderColor = '#ef4444'; el.style.animation = 'bkGoldBlink 0.9s ease-in-out infinite';
+    }
+    paint();
+    _bkCooldownTimer = setInterval(function() {
+        remaining--;
+        if (remaining <= 0) { clearInterval(_bkCooldownTimer); _bkCooldownTimer = null; lock(); }
+        else paint();
+    }, 1000);
+}
+
+function _buildLimitMsg(data) {
+    // ── Variante DECOUVERTE TERMINEE : visiteur anonyme, les 60 s sont ecoulees ──
+    if (data.reason === 'trial') {
+        return '<div style="text-align:center;padding:48px 30px;color:#c9d1d9;background:#0d1117;border:2px solid #6c5ce7;border-radius:16px;margin:20px 0;">'
+            + '<div style="font-size:64px;margin-bottom:10px;">&#128274;</div>'
+            + '<div style="font-size:26px;font-weight:800;color:#a29bfe;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">Decouverte gratuite terminee</div>'
+            + '<div style="font-size:16px;line-height:1.9;">Vous avez profite de <b style="color:#a29bfe;">60 secondes</b> de recherche libre.<br>Pour continuer a explorer la base, connectez-vous — c\'est gratuit.</div>'
+            + '<div style="margin-top:22px;"><a href="login.php" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;font-weight:800;border-radius:10px;text-decoration:none;font-size:16px;box-shadow:0 4px 16px rgba(108,92,231,0.4);">&#128274; Se connecter / s\'inscrire</a></div>'
+            + '<div style="margin-top:16px;font-size:13px;color:#5a6580;line-height:1.7;">Connecte : <b style="color:#8b949e;">5 recherches/jour</b>.<br>Abonne : recherches <b style="color:#8b949e;">illimitees et sans delai</b> — <a href="<?= $_canonBase ?>/tarifs" style="color:#fbbf24;text-decoration:underline;">voir les abonnements</a>.</div>'
+            + '</div>';
+    }
+    // ── Variante COOLDOWN : delai entre 2 recherches (connecte sans abo : 30 min) ──
+    if (data.reason === 'cooldown') {
+        var secs  = data.cooldown_remaining || 0;
+        var cdTot = data.cooldown_total || 1800;
+        var cdDur = cdTot >= 60 ? (Math.round(cdTot / 60) + ' minute' + (cdTot >= 120 ? 's' : '')) : (cdTot + ' secondes');
+        var cdId  = 'bkCdBox' + Math.random().toString(36).slice(2, 8);
+        setTimeout(function() { _bkStartCooldown(secs, data.search_used || 0, data.limit || 5, cdId); }, 30);
+        var cdCta = data.logged
+            ? '<a href="<?= $_canonBase ?>/tarifs" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#ffd700,#fbbf24);color:#000;font-weight:800;border-radius:10px;text-decoration:none;font-size:15px;box-shadow:0 4px 14px rgba(255,215,0,0.35);">&#128081; Passer a l\'illimite — voir les abonnements</a>'
+              + '<div style="margin-top:14px;font-size:12px;color:#5a6580;">Avec un abonnement : recherches sans delai et sans limite.</div>'
+            : '<a href="login.php" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;font-weight:800;border-radius:10px;text-decoration:none;font-size:15px;box-shadow:0 4px 14px rgba(108,92,231,0.35);">&#128274; Connectez-vous pour continuer</a>'
+              + '<div style="margin-top:14px;font-size:12px;color:#5a6580;">Connecte : 5 recherches/jour. Abonne : recherches sans delai ni limite.</div>';
+        return '<div style="text-align:center;padding:48px 30px;color:#c9d1d9;background:#0d1117;border:2px solid #f59e0b;border-radius:16px;margin:20px 0;">'
+            + '<div style="font-size:64px;margin-bottom:10px;">&#9203;</div>'
+            + '<div style="font-size:26px;font-weight:800;color:#f59e0b;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">Recherche en attente</div>'
+            + '<div style="font-size:16px;line-height:1.9;">Pour proteger nos donnees, un delai de <b style="color:#fbbf24;">' + cdDur + '</b> separe deux recherches.<br>Prochaine recherche possible dans :</div>'
+            + '<div id="' + cdId + '" style="font-size:46px;font-weight:900;color:#fbbf24;margin:16px 0;letter-spacing:2px;">' + _bkFmtTime(secs) + '</div>'
+            + '<div style="font-size:14px;color:#8b949e;margin-bottom:20px;">Vous avez utilise <b style="color:#a29bfe;">' + (data.search_used || 0) + '/' + (data.limit || 5) + '</b> recherches aujourd\'hui.</div>'
+            + cdCta
+            + '</div>';
+    }
+    // ── Variante LIMITE JOURNALIERE atteinte (5/jour) ──
+    var sub = data.logged
+        ? 'Vous avez atteint votre limite de <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches</b> pour aujourd\'hui.<br><span style="color:#8b949e;font-size:15px;">Le compteur se remet a zero demain.</span>'
+        : 'Vous avez utilise vos <b style="color:#a29bfe;font-size:22px;">' + data.limit + ' recherches</b> du jour.<br><a href="login.php" style="color:#6c5ce7;text-decoration:underline;font-size:17px;font-weight:700;">Connectez-vous</a> ou abonnez-vous pour continuer.';
+    return '<div style="text-align:center;padding:50px 30px;color:#c9d1d9;background:#0d1117;border:2px solid #ff7675;border-radius:16px;margin:20px 0;">'
+        + '<div style="font-size:70px;margin-bottom:16px;">&#9203;</div>'
+        + '<div style="font-size:28px;font-weight:800;color:#ff7675;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;">Limite de recherches atteinte</div>'
+        + '<div style="font-size:18px;line-height:2;">' + sub + '</div>'
+        + '<div style="margin-top:18px;"><a href="<?= $_canonBase ?>/tarifs" style="display:inline-block;padding:12px 26px;background:linear-gradient(135deg,#ffd700,#fbbf24);color:#000;font-weight:800;border-radius:10px;text-decoration:none;font-size:15px;">&#128081; Recherches illimitees — voir les abonnements</a></div>'
+        + '<div style="margin-top:20px;"><a href="#" onclick="event.preventDefault();var w=document.getElementById(\'footerContactForm\');var b=document.getElementById(\'footerContactBtn\');if(w){w.style.display=\'block\';if(b)b.style.display=\'none\';w.scrollIntoView({behavior:\'smooth\'});}return false;" style="color:#8b949e;font-size:13px;text-decoration:none;">&#9993; Nous contacter</a> <span style="color:#30363d;margin:0 6px;">|</span> <a href="#" onclick="event.preventDefault();var d=document.getElementById(\'limitSignalInfo\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';return false;" style="color:#f59e0b;font-size:13px;text-decoration:none;">&#9888; Signaler un profil</a></div>'
+        + '<div id="limitSignalInfo" style="display:none;margin:12px auto 0;max-width:400px;text-align:left;background:#f59e0b10;border:1px solid #f59e0b30;border-radius:8px;padding:12px 14px;"><p style="color:#c9d1d9;font-size:12px;line-height:1.6;margin:0;"><strong style="color:#f59e0b;">Comment signaler un profil ?</strong><br>1. Rendez-vous sur le profil de l\'athlete concerne<br>2. Cliquez sur le bouton <span style="color:#f59e0b;">&#9888; Signaler</span> en haut du profil<br>3. Choisissez un motif et envoyez votre demande</p></div>'
+        + '</div>';
+}
+
+function _updateSearchQuota(data) {
+    var el = document.getElementById('searchQuota');
+    if (!el) return;
+    <?php if (BK_IS_LOCAL): ?>
+    // En local : toujours illimite, ne pas mettre a jour avec les valeurs prod
+    el.innerHTML = '&infin;';
+    el.title = 'Mode local : recherches illimitees';
+    el.style.background = '#10b98125'; el.style.color = '#34d399'; el.style.borderColor = '#10b98160'; el.style.animation = 'none';
+    return;
+    <?php endif; ?>
+    if (data.unlimited || data.is_sa) {
+        el.innerHTML = '&infin;';
+        el.title = 'Recherches illimitees';
+        el.style.background = '#10b98125'; el.style.color = '#34d399'; el.style.borderColor = '#10b98160'; el.style.animation = 'none';
+        return;
+    }
+    // Visiteur anonyme : mode "decouverte 60 s" (minuteur depuis l'arrivee sur le site)
+    if (data.anon_trial) {
+        _bkStartTrial(data.trial_remaining || 0);
+        return;
+    }
+    if (!data.search_limit) return;
+    var u = data.search_used || 0, l = data.search_limit;
+    el.dataset.used = u; el.dataset.limit = l;
+    // Cooldown en cours (delai entre 2 recherches) : on lance le decompte sur le badge.
+    // Sauf si la limite JOURNALIERE est atteinte : attendre 30 min n'y changera rien.
+    if (data.cooldown_remaining && data.cooldown_remaining > 0 && data.reason !== 'daily') {
+        _bkStartCooldown(data.cooldown_remaining, u, l);
+    } else {
+        if (_bkCooldownTimer) { clearInterval(_bkCooldownTimer); _bkCooldownTimer = null; }
+        _bkShowQuota(u, l);
+    }
+}
+
+// Refresh badge via quota.php (utilise apres une recherche Clubs/Villes qui ne retourne pas tout)
+function _refreshSearchQuota() {
+    fetch('/api/quota.php', { credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d && d.success) _updateSearchQuota(d); })
+        .catch(function(){});
+}
+
+// Au chargement : relancer le decompte visuel du badge (decouverte anonyme ou cooldown)
+document.addEventListener('DOMContentLoaded', function() {
+    var el = document.getElementById('searchQuota');
+    if (!el) return;
+    var tr = el.getAttribute('data-trial');
+    if (tr !== null) {              // badge en mode "decouverte anonyme 60 s"
+        _bkStartTrial(parseInt(tr || '0', 10));
+        return;
+    }
+    var cd = parseInt(el.getAttribute('data-cooldown') || '0', 10);
+    if (cd > 0) {                   // badge en mode cooldown (connecte)
+        _bkStartCooldown(cd, parseInt(el.getAttribute('data-used') || '0', 10), parseInt(el.getAttribute('data-limit') || '50', 10));
+    }
+});
 function dateFR(d) {
     if (!d || d === '-') return '-';
     if (d.indexOf('0000') === 0) return '-';
@@ -6293,7 +17302,7 @@ function _nivBadge(code) {
     else if (nc === 'I') { bg = '#c026d320'; bc = '#c026d3'; tc = '#e879f9'; }
     else if (nc === 'R') { bg = '#0891b220'; bc = '#0891b2'; tc = '#22d3ee'; }
     else { bg = '#f9731620'; bc = '#f97316'; tc = '#fb923c'; }
-    return '<span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;margin:1px;background:' + bg + ';border:1px solid ' + bc + '40;color:' + tc + ';">' + escapeHtml(code) + '</span>';
+    return '<span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;margin:1px;background:' + bg + ';border:1px solid ' + bc + '40;color:' + tc + ';text-shadow:0 1px 2px rgba(0,0,0,0.7),0 0 4px rgba(0,0,0,0.4);">' + escapeHtml(code) + '</span>';
 }
 function _nivBadges(arr) {
     if (!arr || !arr.length) return '-';
@@ -6316,6 +17325,14 @@ function _renderClubTab(tab, suffix) {
     var d = window['_clubDetailData' + s];
     if (!content || !d) return;
     var html = '';
+    // Bandeau periode : donnees limitees a l'annee en cours + precedente
+    var _bkYN = new Date().getFullYear();
+    var _bkYP = _bkYN - 1;
+    html += '<div style="margin-bottom:16px;padding:12px 18px;background:linear-gradient(135deg,#f59e0b25,#ec489925);border:2px solid #f59e0b;border-radius:12px;display:flex;align-items:center;gap:12px;font-weight:700;">'
+         + '<span style="font-size:22px;">&#128197;</span>'
+         + '<span style="color:#fbbf24;font-size:15px;letter-spacing:0.3px;">Donnees affichees : <b style="color:#fff;font-size:17px;">' + _bkYP + ' + ' + _bkYN + '</b> uniquement</span>'
+         + '<span style="margin-left:auto;font-size:11px;color:#fbbf24;background:#f59e0b20;padding:4px 10px;border-radius:100px;border:1px solid #f59e0b50;">Gratuit</span>'
+         + '</div>';
     if (tab === 'epreuves') {
         var ep = d.epreuves || [];
         var totalEp = d.total_epreuves || ep.length;
@@ -6736,10 +17753,34 @@ function _renderClubTab(tab, suffix) {
         var totalMed = (med.or || 0) + (med.argent || 0) + (med.bronze || 0);
         var sel = d.selections || {};
 
-        // Row 1: Sexe + Categories
-        html += '<div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">';
-        html += '<div style="flex:1;min-width:200px;max-width:300px;"><h4 style="color:#8b949e;font-size:13px;margin:0 0 8px;">Répartition par sexe</h4><canvas id="clubSexeChart' + s + '"></canvas></div>';
-        html += '<div style="flex:2;min-width:300px;"><h4 style="color:#8b949e;font-size:13px;margin:0 0 8px;">Catégories</h4><canvas id="clubCatChart' + s + '"></canvas></div>';
+        // Row 1: Sexe + Categories (tableaux simples, pas de graph)
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">';
+        // Sexe
+        var _sexTot = (sexe.M || 0) + (sexe.F || 0);
+        html += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+        html += '<h4 style="color:#8b949e;font-size:12px;margin:0 0 12px;text-transform:uppercase;letter-spacing:1.2px;">Repartition par sexe</h4>';
+        if (_sexTot > 0) {
+            var _mPct = Math.round(((sexe.M || 0) / _sexTot) * 100);
+            var _fPct = 100 - _mPct;
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;"><span style="color:#60a5fa;font-weight:700;">Hommes</span><span style="color:#c9d1d9;">' + (sexe.M || 0) + ' (' + _mPct + '%)</span></div>';
+            html += '<div style="height:6px;background:#1e2a3a;border-radius:3px;overflow:hidden;margin-bottom:12px;"><div style="height:100%;width:' + _mPct + '%;background:#3b82f6;"></div></div>';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;"><span style="color:#f472b6;font-weight:700;">Femmes</span><span style="color:#c9d1d9;">' + (sexe.F || 0) + ' (' + _fPct + '%)</span></div>';
+            html += '<div style="height:6px;background:#1e2a3a;border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + _fPct + '%;background:#ec4899;"></div></div>';
+        } else html += '<div style="color:#5a6580;font-size:12px;">Aucune donnee</div>';
+        html += '</div>';
+        // Categories
+        html += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
+        html += '<h4 style="color:#8b949e;font-size:12px;margin:0 0 12px;text-transform:uppercase;letter-spacing:1.2px;">Top 5 categories</h4>';
+        var _catK = Object.keys(cats).sort(function(a,b){return (cats[b]||0)-(cats[a]||0);}).slice(0,5);
+        if (_catK.length > 0) {
+            var _catMax = cats[_catK[0]] || 1;
+            _catK.forEach(function(k){
+                var _pct = Math.round((cats[k]/_catMax)*100);
+                html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="color:#c9d1d9;font-weight:600;">' + escapeHtml(k) + '</span><span style="color:#8b949e;">' + cats[k] + '</span></div>';
+                html += '<div style="height:4px;background:#1e2a3a;border-radius:2px;overflow:hidden;margin-bottom:10px;"><div style="height:100%;width:' + _pct + '%;background:#10b981;"></div></div>';
+            });
+        } else html += '<div style="color:#5a6580;font-size:12px;">Aucune donnee</div>';
+        html += '</div>';
         html += '</div>';
 
         // Row 2: Medailles + Podiums cards
@@ -6765,10 +17806,18 @@ function _renderClubTab(tab, suffix) {
             html += '</div>';
         }
 
-        // Row 3: Evolution par annee
+        // Row 3: Evolution par annee (tableau simple)
         if (rpa.length > 1) {
-            html += '<h4 style="color:#8b949e;font-size:13px;margin:16px 0 8px;">Évolution par année</h4>';
-            html += '<canvas id="clubEvoChart' + s + '" style="max-height:250px;"></canvas>';
+            var _rpaSorted = rpa.slice().sort(function(a,b){return (b.annee||0)-(a.annee||0);});
+            html += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:20px;">';
+            html += '<h4 style="color:#8b949e;font-size:12px;margin:0 0 12px;text-transform:uppercase;letter-spacing:1.2px;">Evolution par annee</h4>';
+            var _rpaTh = '<tr><th>Annee</th><th>Athletes</th><th>Resultats</th></tr>';
+            html += '<div class="table-wrap"><table class="bk-table">' + _rpaTh + '</table><table class="bk-table">';
+            _rpaSorted.forEach(function(r){
+                html += '<tr><td style="font-weight:700;color:#c9d1d9;">' + r.annee + '</td><td>' + (r.nb_athletes || 0) + '</td><td>' + (r.nb_resultats || 0) + '</td></tr>';
+            });
+            html += '</table><table class="bk-table">' + _rpaTh + '</table></div>';
+            html += '</div>';
         }
 
         // Top villes
@@ -6783,7 +17832,7 @@ function _renderClubTab(tab, suffix) {
             html += '</table><table class="bk-table">' + _tvTh + '</table></div>';
         }
 
-        // Courbes niveaux de compétition (déplacées depuis épreuves)
+        // Distribution niveaux (tableau simple, pas de graph)
         var nivCounts = {};
         var nivOrd = {IE:100,IR:99};
         ['N','R','D'].forEach(function(p){var b={N:90,R:80,D:70}[p];for(var i=1;i<=8;i++) nivOrd[p+i]=b-i;});
@@ -6791,18 +17840,32 @@ function _renderClubTab(tab, suffix) {
         epForNiv.forEach(function(e) {
             (e.niveaux || []).forEach(function(n) { if (n && nivOrd[n]) nivCounts[n] = (nivCounts[n]||0) + 1; });
         });
-        var nivChartKeys = Object.keys(nivCounts).sort(function(a,b){ return (nivOrd[a]||0) - (nivOrd[b]||0); });
+        var nivChartKeys = Object.keys(nivCounts).sort(function(a,b){ return (nivOrd[b]||0) - (nivOrd[a]||0); });
         var nivParAnnee = d.niveaux_par_annee || [];
-        if (nivChartKeys.length > 2) {
-            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
-            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">Distribution des niveaux de compétition</h4>';
-            html += '<canvas id="clubNivChart' + s + '" height="200"></canvas>';
+        if (nivChartKeys.length > 0) {
+            var _nivMax = Math.max.apply(null, nivChartKeys.map(function(k){return nivCounts[k];}));
+            html += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
+            html += '<h4 style="margin:0 0 12px;color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;">Niveaux de competition</h4>';
+            nivChartKeys.forEach(function(k){
+                var _c = k.charAt(0);
+                var _col = _c==='I'?'#e879f9':_c==='N'?'#fb7185':_c==='R'?'#22d3ee':'#fb923c';
+                var _pct = Math.round((nivCounts[k]/_nivMax)*100);
+                html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="color:' + _col + ';font-weight:700;">' + k + '</span><span style="color:#8b949e;">' + nivCounts[k] + ' epreuve' + (nivCounts[k]>1?'s':'') + '</span></div>';
+                html += '<div style="height:4px;background:#1e2a3a;border-radius:2px;overflow:hidden;margin-bottom:10px;"><div style="height:100%;width:' + _pct + '%;background:' + _col + ';"></div></div>';
+            });
             html += '</div>';
         }
+        // Niveaux par annee (tableau simple)
         if (nivParAnnee.length > 1) {
-            html += '<div style="margin-bottom:16px;background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;">';
-            html += '<h4 style="margin:0 0 8px;color:#c9d1d9;font-size:13px;">\u00c9volution des niveaux par ann\u00e9e</h4>';
-            html += '<canvas id="clubNivYearChart' + s + '" height="200"></canvas>';
+            var _npaSorted = nivParAnnee.slice().sort(function(a,b){return (b.annee||0)-(a.annee||0);});
+            html += '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:10px;padding:16px;margin-bottom:16px;">';
+            html += '<h4 style="margin:0 0 12px;color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;">Niveaux par annee</h4>';
+            var _npaTh = '<tr><th>Annee</th><th style="color:#fb923c;">D</th><th style="color:#22d3ee;">R</th><th style="color:#fb7185;">N</th><th style="color:#e879f9;">I</th></tr>';
+            html += '<div class="table-wrap"><table class="bk-table">' + _npaTh + '</table><table class="bk-table">';
+            _npaSorted.forEach(function(r){
+                html += '<tr><td style="font-weight:700;color:#c9d1d9;">' + r.annee + '</td><td>' + (r.D||0) + '</td><td>' + (r.R||0) + '</td><td>' + (r.N||0) + '</td><td>' + (r.I||0) + '</td></tr>';
+            });
+            html += '</table><table class="bk-table">' + _npaTh + '</table></div>';
             html += '</div>';
         }
 
@@ -7529,7 +18592,7 @@ function _buildResumeText(d, annee) {
     if (nivData.length > 0) {
         var totalNivAth = 0;
         nivData.forEach(function(n) { totalNivAth += n.nb_athletes; });
-        var pNiv = 'En termes de niveau de performance (classement FFA), ' + _n(totalNivAth) + ' athl\u00e8te' + _pl(totalNivAth, '') + ' ' + (totalNivAth > 1 ? 'sont class\u00e9s' : 'est class\u00e9') + ' sur ' + nivData.length + ' niveau' + _pl(nivData.length, 'x', 'x');
+        var pNiv = 'En termes de niveau de performance, ' + _n(totalNivAth) + ' athl\u00e8te' + _pl(totalNivAth, '') + ' ' + (totalNivAth > 1 ? 'sont class\u00e9s' : 'est class\u00e9') + ' sur ' + nivData.length + ' niveau' + _pl(nivData.length, 'x', 'x');
         var topNivs = nivData.slice(0, 5).map(function(n) { return (nivMap[n.code_niveau] || n.code_niveau) + ' (' + _n(n.nb_athletes) + ' athl\u00e8te' + _pl(n.nb_athletes, '') + (n.max_points ? ', max ' + _n(n.max_points) + ' pts' : '') + ')'; });
         pNiv += ' : ' + topNivs.join(', ');
         if (nivData.length > 5) pNiv += ', etc';
@@ -8917,7 +19980,8 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                     return;
                 }
 
-                const items = data[config.key];
+                const _key = typeof config.key === 'function' ? config.key() : config.key;
+                const items = data[_key];
                 const total = data.total || 0;
 
                 status.innerHTML = '<span style="color:#34d399;">&#10003;</span> ' + total + ' résultat' + (total > 1 ? 's' : '') + (total > 50 ? ' (50 affichés)' : '');
@@ -8933,7 +19997,8 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                     // Track search with 0 results after 2s settled
                     clearTimeout(_trackTimer);
                     _trackTimer = setTimeout(function() {
-                        _trackSearch({ q: q, type: config.trackType || 'general', source: 'live_search', results: 0, pg: config.trackPage || '' });
+                        var _tt = typeof config.trackType === 'function' ? config.trackType() : (config.trackType || 'general');
+                        _trackSearch({ q: q, type: _tt, source: 'live_search', results: 0, pg: config.trackPage || '' });
                     }, 2000);
                     return;
                 }
@@ -8944,7 +20009,8 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                 // Track search after 2s settled (debounce: only the final query)
                 clearTimeout(_trackTimer);
                 _trackTimer = setTimeout(function() {
-                    _trackSearch({ q: q, type: config.trackType || 'general', source: 'live_search', results: total, pg: config.trackPage || '' });
+                    var _tt2 = typeof config.trackType === 'function' ? config.trackType() : (config.trackType || 'general');
+                    _trackSearch({ q: q, type: _tt2, source: 'live_search', results: total, pg: config.trackPage || '' });
                 }, 2000);
 
             } catch (e) {
@@ -8967,46 +20033,96 @@ function highlight(text, query) {
 
 // --- ATHLETES : live search retire (page redesignee avec cards) ---
 
-// --- RECHERCHE ---
+// --- RECHERCHE (mode unique Athletes / Clubs / Villes) ---
 var _rchExtraParams = <?php
     $rchExtra = [];
-    foreach (["club","sexe","categorie","nationalite","epreuve"] as $_k) {
+    foreach (["club","multi_clubs","multi_disciplines","ep_type"] as $_k) {
         if (!empty($_GET[$_k])) $rchExtra[] = $_k . "=" . urlencode($_GET[$_k]);
     }
     echo json_encode(implode("&", $rchExtra));
 ?>;
+window._rchMode = 'athletes';
+
+function _rchRenderAthletes(items, q) {
+    var thAth2 = '<tr><th>#</th><th>Nom complet</th><th>Cat</th><th>Sexe</th><th>NAT</th></tr>';
+    var html = '<div class="table-wrap"><table class="bk-table">' + thAth2 + '</table><table class="bk-table">';
+    var n = 0;
+    items.forEach(function(a){
+        n++;
+        html += '<tr>'
+            + '<td>' + n + '</td>'
+            + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + highlight(a.nom_complet, q) + '</a></b></td>'
+            + '<td><span class="badge badge-cat">' + escapeHtml(a.categorie) + '</span></td>'
+            + '<td><span class="badge badge-' + (a.sexe||'').toLowerCase() + '">' + escapeHtml(a.sexe) + '</span></td>'
+            + '<td>' + escapeHtml(a.nationalite) + '</td>'
+            + '</tr>';
+    });
+    html += '</table><table class="bk-table">' + thAth2 + '</table></div>';
+    return html;
+}
+function _rchRenderClubs(items, q) {
+    var th = '<tr><th>#</th><th>Club</th><th>Athletes</th><th></th></tr>';
+    var html = '<div class="table-wrap"><table class="bk-table">' + th + '</table><table class="bk-table">';
+    var n = 0;
+    items.forEach(function(c){
+        n++;
+        html += '<tr>'
+            + '<td>' + n + '</td>'
+            + '<td><b><a href="#" onclick="openClubDetail(' + c.id_club + ');return false;">' + highlight(c.nom_club, q) + '</a></b></td>'
+            + '<td>' + c.nb_athletes + '</td>'
+            + '<td><a href="?page=recherche&club=' + encodeURIComponent(c.nom_club) + '">Voir athletes</a></td>'
+            + '</tr>';
+    });
+    html += '</table><table class="bk-table">' + th + '</table></div>';
+    return html;
+}
+function _rchRenderVilles(items, q) {
+    var th = '<tr><th>#</th><th>Ville</th><th>Athletes</th><th></th></tr>';
+    var html = '<div class="table-wrap"><table class="bk-table">' + th + '</table><table class="bk-table">';
+    var n = 0;
+    items.forEach(function(v){
+        n++;
+        html += '<tr>'
+            + '<td>' + n + '</td>'
+            + '<td><b>' + highlight(v.nom_ville, q) + '</b></td>'
+            + '<td>' + (v.nb_athletes || 0) + '</td>'
+            + '<td><a href="?page=villes&open=' + encodeURIComponent(v.nom_ville) + '">Voir details</a></td>'
+            + '</tr>';
+    });
+    html += '</table><table class="bk-table">' + th + '</table></div>';
+    return html;
+}
+
+window._rchSwitch = function(mode) {
+    window._rchMode = mode;
+    // Style toggle buttons
+    ['athletes','clubs','villes'].forEach(function(m){
+        var b = document.getElementById('rchTab' + m.charAt(0).toUpperCase() + m.slice(1));
+        if (!b) return;
+        if (m === mode) { b.style.background = 'linear-gradient(135deg,#6c5ce7,#ec4899)'; b.style.color = '#fff'; }
+        else { b.style.background = 'transparent'; b.style.color = '#8b949e'; }
+    });
+    var input = document.getElementById('lsRecherche');
+    if (input) {
+        input.placeholder = mode === 'clubs' ? 'Rechercher un club...' : (mode === 'villes' ? 'Rechercher une ville...' : 'Rechercher un athlete...');
+        if (input.value.trim().length > 0) input.dispatchEvent(new Event('input'));
+    }
+};
+
 liveSearch('lsRecherche', 'lsRechercheStatus', 'lsRechercheResults', 'recherchePaginated', {
-    url: q => BASE_API + '/search.php?nom=' + encodeURIComponent(q) + '&limit=50' + (_rchExtraParams ? '&' + _rchExtraParams : ''),
+    url: function(q) {
+        if (window._rchMode === 'clubs') return BASE_API + '/clubs.php?has_athletes=1&max_athletes=5000&nom=' + encodeURIComponent(q) + '&limit=50';
+        if (window._rchMode === 'villes') return BASE_API + '/villes.php?has_athletes=1&nom=' + encodeURIComponent(q) + '&limit=50';
+        return BASE_API + '/search.php?nom=' + encodeURIComponent(q) + '&limit=50' + (_rchExtraParams ? '&' + _rchExtraParams : '');
+    },
     minLength: _rchExtraParams ? 1 : 2,
-    key: 'athletes',
-    trackType: 'athlete',
+    key: function(){ return window._rchMode === 'clubs' ? 'clubs' : (window._rchMode === 'villes' ? 'villes' : 'athletes'); },
+    trackType: function(){ return window._rchMode === 'clubs' ? 'club' : (window._rchMode === 'villes' ? 'ville' : 'athlete'); },
     trackPage: 'recherche',
-    render: (items, q) => {
-        var thAth2 = '<tr><th>#</th><th>Nom complet</th><th>Cat</th><th>Sexe</th><th>NAT</th><th>Niveaux</th><th>Records</th><th></th><th></th></tr>';
-        let html = '<div class="table-wrap">';
-        html += '<table class="bk-table">' + thAth2 + '</table>';
-        html += '<table class="bk-table">';
-        var _num = 0;
-        items.forEach(a => {
-            _num++;
-            var inBasket = isAthleteInBasket(a.athlete_id);
-            var nbRec = a.nb_records || 0;
-            html += '<tr>'
-                + '<td>' + _num + '</td>'
-                + '<td><b><a href="?page=profil&id=' + a.athlete_id + '">' + highlight(a.nom_complet, q) + '</a></b></td>'
-                + '<td><span class="badge badge-cat">' + escapeHtml(a.categorie) + '</span></td>'
-                + '<td><span class="badge badge-' + (a.sexe||'').toLowerCase() + '">' + escapeHtml(a.sexe) + '</span></td>'
-                + '<td>' + escapeHtml(a.nationalite) + '</td>'
-                + '<td>' + _nivBadge(_highestNiveau(a.niveaux || [])) + '</td>'
-                + '<td>' + (nbRec > 0 ? '<span class="badge badge-perf">' + nbRec + '</span>' : '-') + '</td>'
-                + '<td><a href="?page=profil&id=' + a.athlete_id + '&s=records">Profil</a></td>'
-                + '<td><button class="btn-cmp-add' + (inBasket ? ' added' : '') + '" data-cmp-ath="' + a.athlete_id + '" data-name="' + escapeHtml(a.nom_complet) + '" onclick="toggleAthleteBasket(this,parseInt(this.dataset.cmpAth),this.dataset.name)">' + (inBasket ? '\u2713' : '+') + '</button></td>'
-                + '</tr>';
-        });
-        html += '</table>';
-        html += '<table class="bk-table">' + thAth2 + '</table>';
-        html += '</div>';
-        return html;
+    render: function(items, q) {
+        if (window._rchMode === 'clubs') return _rchRenderClubs(items, q);
+        if (window._rchMode === 'villes') return _rchRenderVilles(items, q);
+        return _rchRenderAthletes(items, q);
     }
 });
 
@@ -10446,11 +21562,11 @@ function copyCmpLink() {
         <button class="btn-close" onclick="closeReportModal()" style="position:absolute;top:12px;right:12px;background:none;border:none;color:#8b949e;font-size:24px;cursor:pointer;">&times;</button>
         <h3>&#9888; Signaler ce profil</h3>
         <p id="reportAthleteName" style="color:#c9d1d9;font-weight:600;margin-bottom:4px;"></p>
-        <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0 0 16px;line-height:1.5;">&#9993; Indiquez votre adresse email : nous vous enverrons un lien de confirmation qui vous permettra de retirer votre profil instantanement. Sans confirmation par email, votre demande sera traitee manuellement sous 1 a 30 jours selon notre disponibilite.</p>
+        <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0 0 16px;line-height:1.5;">&#9993; Votre adresse email est <u>obligatoire</u> pour valider votre signalement. Pour un retrait, nous vous enverrons un lien de confirmation pour retirer votre profil instantanement. Sans email valide, votre demande ne sera pas enregistree.</p>
         <input type="hidden" id="reportAthleteId" value="">
         <input type="hidden" id="reportAthleteNameVal" value="">
         <label for="reportReason">Motif du signalement</label>
-        <select id="reportReason" onchange="(function(v){var h=document.getElementById('reportRetraitHint');var l=document.getElementById('reportEmailLabel');if(v==='retrait'){h.style.display='block';l.innerHTML='Email de contact <span style=&quot;color:#ef4444&quot;>*</span>';}else{h.style.display='none';l.innerHTML='Email de contact';}})(this.value)">
+        <select id="reportReason" onchange="(function(v){var h=document.getElementById('reportRetraitHint');if(v==='retrait'){h.style.display='block';}else{h.style.display='none';}})(this.value)">
             <option value="">-- Choisir un motif --</option>
             <option value="retrait">Je souhaite retirer mon profil</option>
             <option value="donnees_incorrectes">Donnees incorrectes</option>
@@ -10463,8 +21579,8 @@ function copyCmpLink() {
         </div>
         <label for="reportMessage">Details (facultatif)</label>
         <textarea id="reportMessage" placeholder="Precisez votre demande..." maxlength="2000"></textarea>
-        <label for="reportEmail" id="reportEmailLabel">Email de contact</label>
-        <input type="email" id="reportEmail" placeholder="votre@email.com">
+        <label for="reportEmail" id="reportEmailLabel">Email de contact <span style="color:#ef4444">*</span></label>
+        <input type="email" id="reportEmail" placeholder="votre@email.com" required>
         <button class="btn-submit-report" id="btnSubmitReport" onclick="submitReport()">Envoyer le signalement</button>
         <div id="reportFeedback"></div>
     </div>
@@ -10500,7 +21616,8 @@ window.submitReport = function() {
     var fb = document.getElementById('reportFeedback');
     var btn = document.getElementById('btnSubmitReport');
     if (!reason) { fb.innerHTML = '<div class="report-error">Veuillez choisir un motif.</div>'; return; }
-    if (reason === 'retrait' && !email) { fb.innerHTML = '<div class="report-error">Veuillez indiquer votre email pour recevoir le lien de confirmation.</div>'; return; }
+    if (!email) { fb.innerHTML = '<div class="report-error">&#9993; Adresse email obligatoire pour valider votre signalement.</div>'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fb.innerHTML = '<div class="report-error">&#9888; Adresse email invalide. Veuillez verifier votre saisie.</div>'; return; }
     btn.disabled = true;
     btn.textContent = 'Envoi en cours...';
     fetch(BASE_API + '/report.php', {
@@ -10882,24 +21999,24 @@ window.submitReport = function() {
         <strong style="color:#8b949e;">Explorer</strong>
         <nav style="display:flex;flex-direction:column;gap:6px;margin-top:8px;" aria-label="Footer navigation">
             <a href="<?= $_canonBase ?>/" style="color:#5a6580;text-decoration:none;">Accueil</a>
-            <a href="<?= $_canonBase ?>/index.php?page=athletes" style="color:#5a6580;text-decoration:none;">Tous les athlètes</a>
-            <a href="<?= $_canonBase ?>/index.php?page=recherche" style="color:#5a6580;text-decoration:none;">Recherche avancée</a>
-            <a href="<?= $_canonBase ?>/index.php?page=clubs" style="color:#5a6580;text-decoration:none;">Clubs</a>
+            <a href="<?= $_canonBase ?>/athletes" style="color:#5a6580;text-decoration:none;">Tous les athlètes</a>
+            <a href="<?= $_canonBase ?>/recherche" style="color:#5a6580;text-decoration:none;">Recherche (athlètes, clubs, villes)</a>
+            <a href="<?= $_canonBase ?>/comparer" style="color:#5a6580;text-decoration:none;">Comparateur</a>
         </nav>
     </div>
     <div>
         <strong style="color:#8b949e;">Données</strong>
         <nav style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
-            <a href="<?= $_canonBase ?>/index.php?page=epreuves" style="color:#5a6580;text-decoration:none;">Épreuves</a>
-            <a href="<?= $_canonBase ?>/index.php?page=villes" style="color:#5a6580;text-decoration:none;">Villes</a>
+            <a href="<?= $_canonBase ?>/epreuves" style="color:#5a6580;text-decoration:none;">Épreuves</a>
             <a href="<?= $_canonBase ?>/pages/classement.php" style="color:#5a6580;text-decoration:none;">Classement</a>
+            <a href="<?= $_canonBase ?>/tuto" style="color:#5a6580;text-decoration:none;">Tutoriel</a>
         </nav>
     </div>
     <div>
         <strong style="color:#8b949e;">Contact</strong>
         <div style="margin-top:8px;">
             <button id="footerContactBtn" onclick="document.getElementById('footerContactForm').style.display='block';this.style.display='none';" style="background:#1e2a3a;border:1px solid #2d3a4a;color:#c9d1d9;font-size:13px;padding:8px 18px;border-radius:8px;cursor:pointer;">Nous contacter</button>
-            <div id="footerContactForm" style="display:none;max-width:260px;">
+            <div id="footerContactForm" style="display:none;max-width:320px;">
                 <p style="color:#ef4444;font-size:11px;line-height:1.4;margin:0 0 8px;">&#9993; Un email de confirmation vous sera envoye. Votre message ne nous parviendra qu'apres validation du lien.</p>
                 <input type="text" id="fcNom" maxlength="100" placeholder="Nom (optionnel)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:6px;">
                 <input type="email" id="fcEmail" maxlength="200" placeholder="Email *" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #1e2a3a;background:#0d1117;color:#c9d1d9;font-size:13px;margin-bottom:6px;" required>
@@ -10908,9 +22025,16 @@ window.submitReport = function() {
                 <div id="fcStatus" style="font-size:12px;margin-top:6px;"></div>
             </div>
         </div>
-        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #1e2a3a;">
-            <strong style="color:#f59e0b;font-size:12px;">Signaler un profil</strong>
-            <p style="color:#5a6580;font-size:11px;line-height:1.5;margin:6px 0 0;">Rendez-vous sur le profil de l'athlete, puis cliquez sur le bouton <span style="color:#8b949e;">&#9888; Signaler</span>. Vous pourrez choisir un motif (retrait, donnees incorrectes, usurpation, vie privee) et nous envoyer votre demande.</p>
+        <div style="margin-top:14px;padding:14px;background:#dc262618;border:2px solid #dc2626;border-radius:10px;">
+            <strong style="color:#fca5a5;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:10px;">&#9888; Retirer son profil</strong>
+            <p style="color:#fca5a5;font-size:13px;font-weight:700;line-height:1.5;margin:0 0 8px;">Pour retirer un profil, ne passez PAS par le formulaire de contact. Allez directement sur le profil et cliquez sur <b style="color:#f85149;">&#9888; Signaler</b>.</p>
+            <ol style="color:#fca5a5;font-size:12px;line-height:1.7;margin:0;padding-left:18px;font-weight:600;">
+                <li>Ouvrez votre profil d'athlete</li>
+                <li>Cliquez sur <b>&#9888; Signaler ce profil</b></li>
+                <li>Motif : <b>Je souhaite retirer mon profil</b></li>
+                <li>Indiquez votre email + cliquez sur le lien recu</li>
+                <li style="color:#86efac;">&#10003; Profil masque <b>immediatement</b></li>
+            </ol>
         </div>
     </div>
 </div>
@@ -10927,7 +22051,18 @@ window.submitReport = function() {
             <p style="margin:0;">En cas de signalement ou de contestation, l'editeur se reserve le droit de modifier, completer ou supprimer sans delai tout contenu concerne, a titre conservatoire ou definitif.</p>
         </div>
     </div>
-    <p>&copy; <?= date('Y') ?> Bokonzi — Base de données athlétisme français</p>
+    <div style="margin:16px 0 8px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12px;">
+        <a href="<?= $_canonBase ?>/produits" style="color:#5a6580;text-decoration:none;">Produits</a>
+        <a href="<?= $_canonBase ?>/solutions" style="color:#5a6580;text-decoration:none;">Solutions</a>
+        <?php /* Tarifs masques temporairement
+        <a href="<?= $_canonBase ?>/tarifs" style="color:#5a6580;text-decoration:none;">Tarifs</a>
+        */ ?>
+        <a href="<?= $_canonBase ?>/concept" style="color:#5a6580;text-decoration:none;">Concept</a>
+        <a href="<?= $_canonBase ?>/contact" style="color:#5a6580;text-decoration:none;">Contact</a>
+        <a href="<?= $_canonBase ?>/mentions-legales" style="color:#5a6580;text-decoration:none;">Mentions légales</a>
+        <a href="<?= $_canonBase ?>/confidentialite" style="color:#5a6580;text-decoration:none;">Confidentialité</a>
+    </div>
+    <p>&copy; <?= date('Y') ?> Bokonzi — La data sportive, simple et accessible</p>
 </div>
 </footer>
 <script>
@@ -11085,6 +22220,16 @@ function _sendVerifFromWelcome() {
             <span style="color:#30363d;margin:0 6px;">|</span>
             <a href="#" onclick="event.preventDefault();document.getElementById('ovContactWrap').style.display=document.getElementById('ovContactWrap').style.display==='none'?'block':'none';" style="display:inline-block;margin-top:10px;color:#8b949e;font-size:12px;text-decoration:none;">&#9993; Nous contacter</a>
             <div id="ovContactWrap" style="display:none;margin-top:10px;text-align:left;">
+                <div style="background:#dc262618;border:2px solid #dc2626;border-radius:10px;padding:14px;margin:0 0 10px;">
+                    <p style="color:#fca5a5;font-size:15px;font-weight:800;margin:0 0 10px;text-transform:uppercase;letter-spacing:0.5px;line-height:1.3;">&#9888; Retirer son profil soi-meme</p>
+                    <ol style="color:#fca5a5;font-size:13px;line-height:1.7;margin:0;padding-left:20px;font-weight:600;">
+                        <li>Allez sur votre profil d'athlete</li>
+                        <li>Cliquez sur le bouton <b>&#9888; Signaler ce profil</b></li>
+                        <li>Choisissez le motif <b>&laquo; Je souhaite retirer mon profil &raquo;</b></li>
+                        <li>Indiquez votre adresse email</li>
+                        <li style="color:#86efac;">&#10003; Votre profil est masque <b>immediatement</b></li>
+                    </ol>
+                </div>
                 <p style="color:#ef4444;font-size:11px;line-height:1.4;margin:0 0 6px;">&#9993; Un email de confirmation vous sera envoye. Sans validation, votre message ne sera pas transmis.</p>
                 <input type="text" id="ovNom" maxlength="100" placeholder="Nom (optionnel)" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;margin-bottom:6px;box-sizing:border-box;">
                 <input type="email" id="ovEmail" maxlength="200" placeholder="Email *" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;font-size:12px;margin-bottom:6px;box-sizing:border-box;" required>
@@ -11097,6 +22242,7 @@ function _sendVerifFromWelcome() {
 </div>
 <style>
 @keyframes bkOverlayPop { from { opacity:0; transform:scale(.9); } to { opacity:1; transform:scale(1); } }
+@keyframes bkBannerSlide { from { transform:translateY(-100%); opacity:0; } to { transform:translateY(0); opacity:1; } }
 </style>
 <script>
 function _bkLockPage(){
@@ -11113,12 +22259,24 @@ function _bkLockPage(){
     // Bloquer le scroll
     document.body.style.overflow = 'hidden';
 }
+function _bkShowAuthBanner(){
+    // Meme overlay bloquant que la 1ere fois
+    var ov = document.getElementById('bkAuthOverlay');
+    if (!ov) return;
+    ov.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
 (function(){
-    // Blocage apres 1 heure pour les non-connectes
-    setTimeout(function(){
-        try { localStorage.setItem('bk_auth_wall', '1'); } catch(e) {}
-        _bkLockPage();
-    }, 3600000);
+    if (window._bkWallSeen) {
+        // Deja vu une fois : bandeau non-bloquant
+        document.addEventListener('DOMContentLoaded', _bkShowAuthBanner);
+    } else {
+        // 1ere visite : blocage apres 30 secondes
+        setTimeout(function(){
+            try { localStorage.setItem('bk_auth_wall', '1'); } catch(e) {}
+            _bkLockPage();
+        }, 30000);
+    }
 })();
 function _ovContact(){
     var email=document.getElementById('ovEmail').value.trim();

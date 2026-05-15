@@ -241,25 +241,54 @@ function insertAthleteData($scraper, $conn, &$cache)
     echo "<p>Selections : " . count($scraper->selections) . "</p>";
 
     // =============================================
-    // 5. PROGRESSIONS (batch INSERT)
+    // 5. PROGRESSIONS — store fichier si active, sinon BDD
     // =============================================
 
+    require_once __DIR__ . '/progressions_store.php';
+    $_progFile = progStoreEnabled();
+
     if (!empty($scraper->progressions)) {
-        $vals = [];
-        foreach ($scraper->progressions as $p) {
-            $id_ep = cachedGetOrInsertId($cache, $conn, 'epreuves', 'id_epreuve', 'nom_epreuve', $p['epreuve']);
-            $id_vi = cachedGetOrInsertId($cache, $conn, 'villes', 'id_ville', 'nom_ville', $p['lieu']);
-            $id_ca = cachedGetCategorieId($cache, $p['categorie'] ?? null);
-            $id_cl = cachedGetOrInsertId($cache, $conn, 'clubs', 'id_club', 'nom_club', $p['club'] ?? '');
-            $vals[] = "('$id_athlete', " . fk($id_ep) . ", " . fk($id_ca) . ", " . fk($id_cl)
-                . ", '" . $esc($p['annee']) . "', " . fk($p['performance'])
-                . ", '" . $esc($p['performance_brut'] ?? '') . "', '" . $esc($p['vent'])
-                . "', '" . $esc($p['date']) . "', '" . $esc($p['ligue_dept'] ?? '')
-                . "', " . fk($id_vi) . ")";
+        if ($_progFile) {
+            // Mode fichier : append dans archives/athlete_progressions_live.jsonl
+            // avec marker delete-and-replace pour eviter les doublons
+            $rows = [];
+            foreach ($scraper->progressions as $p) {
+                $id_ep = cachedGetOrInsertId($cache, $conn, 'epreuves', 'id_epreuve', 'nom_epreuve', $p['epreuve']);
+                $id_vi = cachedGetOrInsertId($cache, $conn, 'villes', 'id_ville', 'nom_ville', $p['lieu']);
+                $id_ca = cachedGetCategorieId($cache, $p['categorie'] ?? null);
+                $id_cl = cachedGetOrInsertId($cache, $conn, 'clubs', 'id_club', 'nom_club', $p['club'] ?? '');
+                $rows[] = [
+                    'id_epreuve'                   => $id_ep ?: null,
+                    'id_categorie'                 => $id_ca ?: null,
+                    'id_club'                      => $id_cl ?: null,
+                    'id_ville'                     => $id_vi ?: null,
+                    'annee_progression'            => (int)($p['annee'] ?? 0),
+                    'performance_progression'      => $p['performance'] ? (int)$p['performance'] : null,
+                    'performance_brut_progression' => $p['performance_brut'] ?? null,
+                    'vent_progression'             => $p['vent'] ?? null,
+                    'date_progression'             => $p['date'] ?? null,
+                    'ligue_dept_progression'       => $p['ligue_dept'] ?? null,
+                ];
+            }
+            progStoreAppendBatch((int)$id_athlete, $rows);
+        } else {
+            // Mode BDD (legacy)
+            $vals = [];
+            foreach ($scraper->progressions as $p) {
+                $id_ep = cachedGetOrInsertId($cache, $conn, 'epreuves', 'id_epreuve', 'nom_epreuve', $p['epreuve']);
+                $id_vi = cachedGetOrInsertId($cache, $conn, 'villes', 'id_ville', 'nom_ville', $p['lieu']);
+                $id_ca = cachedGetCategorieId($cache, $p['categorie'] ?? null);
+                $id_cl = cachedGetOrInsertId($cache, $conn, 'clubs', 'id_club', 'nom_club', $p['club'] ?? '');
+                $vals[] = "('$id_athlete', " . fk($id_ep) . ", " . fk($id_ca) . ", " . fk($id_cl)
+                    . ", '" . $esc($p['annee']) . "', " . fk($p['performance'])
+                    . ", '" . $esc($p['performance_brut'] ?? '') . "', '" . $esc($p['vent'])
+                    . "', '" . $esc($p['date']) . "', '" . $esc($p['ligue_dept'] ?? '')
+                    . "', " . fk($id_vi) . ")";
+            }
+            $conn->query("INSERT INTO `athlete_progressions` (`id_athlete`, `id_epreuve`, `id_categorie`, `id_club`, `annee_progression`, `performance_progression`, `performance_brut_progression`, `vent_progression`, `date_progression`, `ligue_dept_progression`, `id_ville`) VALUES " . implode(",", $vals));
         }
-        $conn->query("INSERT INTO `athlete_progressions` (`id_athlete`, `id_epreuve`, `id_categorie`, `id_club`, `annee_progression`, `performance_progression`, `performance_brut_progression`, `vent_progression`, `date_progression`, `ligue_dept_progression`, `id_ville`) VALUES " . implode(",", $vals));
     }
-    echo "<p>Progressions : " . count($scraper->progressions) . "</p>";
+    echo "<p>Progressions : " . count($scraper->progressions) . " " . ($_progFile ? '(fichier)' : '(BDD)') . "</p>";
 
     // =============================================
     // 6. RECORDS (batch INSERT)

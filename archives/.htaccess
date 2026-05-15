@@ -1,0 +1,3 @@
+# Bloque tout acces web direct aux archives
+Order deny,allow
+Deny from all

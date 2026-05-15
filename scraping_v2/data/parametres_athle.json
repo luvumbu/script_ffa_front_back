@@ -1,0 +1,103 @@
+{
+    "_doc": "Reference des parametres URL de bases.athle.fr/asp.net/liste.aspx",
+    "_source": "Observation des URLs presentes dans les tables u489596434_bokonzi_on_*",
+    "parametres": {
+        "frmpostback": {
+            "role": "Indique un postback ASP.NET",
+            "valeur_typique": "true",
+            "important": false
+        },
+        "frmbase": {
+            "role": "Type de classement consulte",
+            "valeurs": {
+                "bilans": "Classement annuel par epreuve",
+                "records": "Records",
+                "selections": "Selections en equipe nationale"
+            },
+            "important": true
+        },
+        "frmmode": {
+            "role": "Mode d'affichage (interne ASP.NET)",
+            "valeur_typique": "1",
+            "important": false
+        },
+        "frmespace": {
+            "role": "Espace de consultation",
+            "valeur_typique": "0",
+            "important": false
+        },
+        "frmannee": {
+            "role": "Annee du bilan (cle pour le filtre 2024+)",
+            "valeurs": "Entier 4 chiffres : 2004, 2005, ..., 2024, 2025, 2026",
+            "important": true
+        },
+        "frmepreuve": {
+            "role": "Code numerique de l'epreuve (codes FFA)",
+            "exemples": {
+                "208": "800m (a confirmer dynamiquement)",
+                "_note": "Le mapping reel est construit dynamiquement par EpreuveMapper en croisant frmepreuve + colonne epreuve de la table source"
+            },
+            "important": true
+        },
+        "frmsexe": {
+            "role": "Genre",
+            "valeurs": {
+                "F": "Femme",
+                "M": "Homme",
+                "H": "Homme (variante)"
+            },
+            "important": true
+        },
+        "frmcategorie": {
+            "role": "Categorie d'age FFA",
+            "valeurs": {
+                "": "Toutes categories",
+                "TC": "Toutes categories",
+                "SE": "Senior",
+                "ES": "Espoir",
+                "JU": "Junior",
+                "CA": "Cadet",
+                "MI": "Minime",
+                "BE": "Benjamin",
+                "PO": "Poussin",
+                "EA": "Eveil athletique",
+                "V1": "Veteran 1",
+                "V2": "Veteran 2",
+                "V3": "Veteran 3",
+                "V4": "Veteran 4"
+            },
+            "important": true
+        },
+        "frmdepartement": {
+            "role": "Code departement (75, 13, 92, ...)",
+            "valeur_vide": "Toute la France",
+            "important": false
+        },
+        "frmligue": {
+            "role": "Code ligue regionale",
+            "valeur_vide": "Toutes les ligues",
+            "important": false
+        },
+        "frmnationalite": {
+            "role": "Code nationalite (FRA, MAR, ALG, ...)",
+            "valeur_vide": "Toutes nationalites",
+            "important": false
+        },
+        "frmvent": {
+            "role": "Filtre vent (epreuves de sprint/saut)",
+            "valeur_vide": "Pas de filtre",
+            "important": false
+        },
+        "frmamaxi": {
+            "role": "Aide a la performance maximale autorisee",
+            "valeur_vide": "Pas de limite",
+            "important": false
+        },
+        "frmposition": {
+            "role": "Pagination : position du premier resultat",
+            "valeur_typique": "0",
+            "calcul": "page_n = position / 50 + 1",
+            "important": true
+        }
+    }
+}

@@ -8,8 +8,8 @@
  *   ?bk_key=...&action=columns&table=X → colonnes d'une table
  *   ?bk_key=...&action=count            → compteurs toutes tables
  *   ?bk_key=...&action=search_limit     → status limites recherche (toutes IPs)
- *   ?bk_key=...&action=search_fill&ip=X → mettre IP a 49/50
- *   ?bk_key=...&action=search_max&ip=X  → mettre IP a 50/50 (bloque)
+ *   ?bk_key=...&action=search_fill&ip=X → mettre IP a 1 recherche sous la limite
+ *   ?bk_key=...&action=search_max&ip=X  → mettre IP a la limite (bloque)
  *   ?bk_key=...&action=search_reset&ip=X→ remettre IP a 0
  *   ?bk_key=...&action=query&q=SELECT...→ requete SQL en lecture seule (SELECT)
  *   ?bk_key=...&action=logs&limit=20    → derniers logs
@@ -25,6 +25,7 @@ if ($key !== 'bk_s3cr3t_2026_xK9mP') {
 }
 
 require_once __DIR__ . '/../core/db.php';
+require_once __DIR__ . '/../core/search_limit.php'; // BK_SEARCH_LIMIT_FREE (limite recherches/jour)
 
 header('Content-Type: application/json; charset=utf-8');
 $action = $_GET['action'] ?? 'ping';
@@ -114,14 +115,15 @@ switch ($action) {
             $limData = @json_decode(substr($raw, strpos($raw, "\n") + 1), true) ?: [];
         }
         if (($limData['_date'] ?? '') !== $today) $limData = ['_date' => $today];
-        if ($action === 'search_fill') $limData[$ip] = 49;
-        elseif ($action === 'search_max') $limData[$ip] = 50;
+        $max = BK_SEARCH_LIMIT_FREE;
+        if ($action === 'search_fill') $limData[$ip] = max(0, $max - 1);
+        elseif ($action === 'search_max') $limData[$ip] = $max;
         else unset($limData[$ip]);
         file_put_contents($limFile, "<?php die(); ?>\n" . json_encode($limData, JSON_UNESCAPED_UNICODE));
-        $val = $action === 'search_reset' ? 0 : ($action === 'search_fill' ? 49 : 50);
+        $val = $action === 'search_reset' ? 0 : ($action === 'search_fill' ? max(0, $max - 1) : $max);
         $out['ip'] = $ip;
         $out['count'] = $val;
-        $out['message'] = $action === 'search_reset' ? 'Reset OK' : "Compteur mis a $val/50";
+        $out['message'] = $action === 'search_reset' ? 'Reset OK' : "Compteur mis a $val/$max";
         break;
 
     case 'create_test_user':
@@ -177,18 +179,19 @@ switch ($action) {
         }
         if (($limData['_date'] ?? '') !== $today) $limData = ['_date' => $today];
         $cnt = (int)($limData[$ip] ?? 0);
+        $max = BK_SEARCH_LIMIT_FREE;
         $out['ip'] = $ip;
         $out['count_before'] = $cnt;
-        $out['limit'] = 50;
-        $out['blocked'] = $cnt >= 50;
-        if ($cnt >= 50) {
-            $out['message'] = 'BLOQUE — limite atteinte (' . $cnt . '/50)';
+        $out['limit'] = $max;
+        $out['blocked'] = $cnt >= $max;
+        if ($cnt >= $max) {
+            $out['message'] = 'BLOQUE — limite atteinte (' . $cnt . '/' . $max . ')';
         } else {
             $limData[$ip] = $cnt + 1;
             file_put_contents($limFile, "<?php die(); ?>\n" . json_encode($limData, JSON_UNESCAPED_UNICODE));
             $out['count_after'] = $cnt + 1;
-            $out['remaining'] = 50 - ($cnt + 1);
-            $out['message'] = 'Recherche OK (' . ($cnt + 1) . '/50)';
+            $out['remaining'] = $max - ($cnt + 1);
+            $out['message'] = 'Recherche OK (' . ($cnt + 1) . '/' . $max . ')';
         }
         break;
 

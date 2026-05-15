@@ -306,6 +306,16 @@ function showRateLimitPage($ip, $count, $permanent = false) {
                 <p style="font-size:13px;color:#8b949e;margin-bottom:4px;">Un probleme ou une question ?</p>
                 <button class="btn btn-secondary" style="font-size:13px;padding:8px 20px;" onclick="document.getElementById('contactForm').style.display='block';this.style.display='none';">Nous contacter</button>
                 <div id="contactForm" class="contact-form" style="display:none;">
+                    <div style="background:#dc262618;border:2px solid #dc2626;border-radius:10px;padding:14px;margin:14px 0;">
+                        <p style="color:#fca5a5;font-size:15px;font-weight:800;margin:0 0 10px;text-transform:uppercase;letter-spacing:0.5px;line-height:1.3;">&#9888; Retirer son profil soi-meme</p>
+                        <ol style="color:#fca5a5;font-size:13px;line-height:1.7;margin:0;padding-left:20px;font-weight:600;">
+                            <li>Allez sur votre profil d'athlete (recherche par nom)</li>
+                            <li>Cliquez sur le bouton <b>&#9888; Signaler ce profil</b></li>
+                            <li>Choisissez le motif <b>&laquo; Je souhaite retirer mon profil &raquo;</b></li>
+                            <li>Indiquez votre adresse email</li>
+                            <li style="color:#86efac;">&#10003; Profil masque <b>immediatement</b></li>
+                        </ol>
+                    </div>
                     <label for="cNom">Nom (optionnel)</label>
                     <input type="text" id="cNom" maxlength="100" placeholder="Votre nom">
                     <label for="cEmail">Email (optionnel)</label>

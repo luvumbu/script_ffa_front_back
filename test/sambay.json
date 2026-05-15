@@ -1,0 +1,2239 @@
+{
+    "success": true,
+    "visible": true,
+    "identite": {
+        "athlete_id": 1800949,
+        "id_athlete": 209565,
+        "nom_complet": "Cyrena SAMBA-MAYELA",
+        "nom_1": "SAMBA-MAYELA",
+        "nom_2": "Cyrena",
+        "nom_3": "",
+        "nom_4": "",
+        "date_naissance": "2000-10-31",
+        "annee_naissance": 2000,
+        "lieu_naissance": "Champigny-Sur-MarneClub : Lille Metropole Athletisme* - S\/l Asptt Lille MetropoleEntraîneur(s) : Tonja BUFORD-BAILEYDernière sélection : Jeux Olympiqu",
+        "categorie": "SE",
+        "sexe": "F",
+        "nationalite": "FRA",
+        "taille_cm": 166,
+        "poids_kg": 57,
+        "licence": null,
+        "meilleur_niveau": "IA",
+        "age": 25
+    },
+    "clubs": [
+        {
+            "nom_club": "NL la veille de la compétition",
+            "annee_debut": 2025,
+            "annee_fin": 2025
+        },
+        {
+            "nom_club": "Lille Metropole Athletisme",
+            "annee_debut": 2020,
+            "annee_fin": 2024
+        },
+        {
+            "nom_club": "Adidas Runners Paris",
+            "annee_debut": 2019,
+            "annee_fin": 2020
+        },
+        {
+            "nom_club": "Sco Ste-Marguerite Marseille",
+            "annee_debut": 2018,
+            "annee_fin": 2018
+        },
+        {
+            "nom_club": "Red Star Club Champigny",
+            "annee_debut": 2015,
+            "annee_fin": 2015
+        },
+        {
+            "nom_club": "Ac Paris-Joinville",
+            "annee_debut": 2015,
+            "annee_fin": 2017
+        }
+    ],
+    "medailles": [
+        {
+            "type": "argent",
+            "annee": 2024,
+            "epreuve": "100 m Haies",
+            "competition": "Championnats d'Europe Cadets",
+            "lieu": "Paris"
+        },
+        {
+            "type": "argent",
+            "annee": 2024,
+            "epreuve": "60 m Haies",
+            "competition": "Championnats d'Europe Cadets",
+            "lieu": "Glasgow"
+        },
+        {
+            "type": "or",
+            "annee": 2024,
+            "epreuve": "100 m Haies",
+            "competition": "Championnats d'Europe Cadets",
+            "lieu": "Rome"
+        },
+        {
+            "type": "or",
+            "annee": 2022,
+            "epreuve": "60 m Haies",
+            "competition": "Championnats d'Europe Cadets",
+            "lieu": "Belgrade"
+        },
+        {
+            "type": "argent",
+            "annee": 2021,
+            "epreuve": "100 m Haies",
+            "competition": "Championnats d'Europe Cadets",
+            "lieu": "Tallinn"
+        },
+        {
+            "type": "argent",
+            "annee": 2017,
+            "epreuve": "100 m Haies",
+            "competition": "Championnats d'Europe Cadets",
+            "lieu": "Nairobi"
+        },
+        {
+            "type": "or",
+            "annee": 2016,
+            "epreuve": "Medley Relais",
+            "competition": "Championnats d'Europe Cadets",
+            "lieu": "Tblissi"
+        }
+    ],
+    "selections": [
+        {
+            "type": "INT A",
+            "date": "2024-08-01",
+            "duree_jours": 11,
+            "age": 24,
+            "competition": "Saint denis (FRA) - Jeux Olympiques",
+            "epreuve": "100m Haies",
+            "classement": 2,
+            "performance": 1234,
+            "performance_brut": "12''34",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2024-06-07",
+            "duree_jours": 6,
+            "age": 24,
+            "competition": "Rome (ITA) - Championnats d'Europe",
+            "epreuve": "100m Haies",
+            "classement": 1,
+            "performance": 1231,
+            "performance_brut": "12''31",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2024-03-01",
+            "duree_jours": 3,
+            "age": 24,
+            "competition": "Glasgow (GBR) - Championnats du Monde en salle",
+            "epreuve": "60m haies",
+            "classement": 2,
+            "performance": 774,
+            "performance_brut": "7''74",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2023-08-19",
+            "duree_jours": 9,
+            "age": 23,
+            "competition": "Budapest (HUN) - Championnats du Monde",
+            "epreuve": "100m Haies",
+            "classement": 5,
+            "performance": 1295,
+            "performance_brut": "12''95",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2023-03-02",
+            "duree_jours": 4,
+            "age": 23,
+            "competition": "Istanbul (TUR) - Championnats d'Europe en salle",
+            "epreuve": "60m haies",
+            "classement": 5,
+            "performance": 800,
+            "performance_brut": "8''00",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2022-08-15",
+            "duree_jours": 7,
+            "age": 22,
+            "competition": "Munich (GER) - Championnats d'Europe",
+            "epreuve": "100m Haies",
+            "classement": 7,
+            "performance": 1305,
+            "performance_brut": "13''05",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2022-07-15",
+            "duree_jours": 10,
+            "age": 22,
+            "competition": "Eugene (USA) - Championnats du Monde",
+            "epreuve": "100m Haies",
+            "classement": 4,
+            "performance": 1315,
+            "performance_brut": "13''15",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2022-03-18",
+            "duree_jours": 3,
+            "age": 22,
+            "competition": "Belgrade (SRB) - Championnats du Monde en salle",
+            "epreuve": "60m haies",
+            "classement": 1,
+            "performance": 778,
+            "performance_brut": "7''78",
+            "niveaux": []
+        },
+        {
+            "type": "Jeune",
+            "date": "2021-07-08",
+            "duree_jours": 4,
+            "age": 21,
+            "competition": "Tallinn (EST) - Championnats d'Europe Espoirs",
+            "epreuve": "100m Haies",
+            "classement": 2,
+            "performance": 1280,
+            "performance_brut": "12''80",
+            "niveaux": []
+        },
+        {
+            "type": "INT A",
+            "date": "2021-03-04",
+            "duree_jours": 4,
+            "age": 21,
+            "competition": "Torun (POL) - Championnats d'Europe en salle",
+            "epreuve": "60m haies",
+            "classement": 5,
+            "performance": 822,
+            "performance_brut": "8''22",
+            "niveaux": []
+        },
+        {
+            "type": "Jeune",
+            "date": "2019-01-19",
+            "duree_jours": 1,
+            "age": 19,
+            "competition": "Miramas (FRA) - Championnats Méditerranée en salle moins de 23 ans",
+            "epreuve": "60m haies",
+            "classement": 5,
+            "performance": 859,
+            "performance_brut": "8''59",
+            "niveaux": []
+        },
+        {
+            "type": "Jeune",
+            "date": "2018-07-10",
+            "duree_jours": 6,
+            "age": 18,
+            "competition": "Tampere (FIN) - Championnats du Monde Juniors",
+            "epreuve": "100m Haies",
+            "classement": 8,
+            "performance": 1411,
+            "performance_brut": "14''11",
+            "niveaux": []
+        },
+        {
+            "type": "Jeune",
+            "date": "2017-07-12",
+            "duree_jours": 5,
+            "age": 17,
+            "competition": "Nairobi (KEN) - Championnats du Monde Cadets",
+            "epreuve": "100m Haies",
+            "classement": 2,
+            "performance": 1280,
+            "performance_brut": "12''80",
+            "niveaux": []
+        },
+        {
+            "type": "Jeune",
+            "date": "2017-02-25",
+            "duree_jours": 1,
+            "age": 17,
+            "competition": "Minsk (BLR) - Match -20 ans BLR-AZE-EST-FRA-LAT-LTU-TUR-UKR",
+            "epreuve": "Match Moins de 20 ans mixte",
+            "classement": 2,
+            "performance": null,
+            "performance_brut": "",
+            "niveaux": []
+        },
+        {
+            "type": "Jeune",
+            "date": "2016-07-14",
+            "duree_jours": 4,
+            "age": 16,
+            "competition": "Tbilissi (GEO) - Championnats d'Europe Cadets",
+            "epreuve": "100m Haies",
+            "classement": 5,
+            "performance": 1396,
+            "performance_brut": "13''96",
+            "niveaux": []
+        }
+    ],
+    "progressions": [
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2025,
+            "performance": 1240,
+            "performance_brut": "12''40",
+            "vent": "+0.8",
+            "date": "2024-09-05",
+            "lieu": "Zurich (SUI)",
+            "categorie": "SE",
+            "club": "NL la veille de la compétition",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2024,
+            "performance": 1231,
+            "performance_brut": "12''31",
+            "vent": "+0.8",
+            "date": "2024-06-08",
+            "lieu": "Rome (ITA)",
+            "categorie": "SE",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "annee": 2024,
+            "performance": 773,
+            "performance_brut": "7''73",
+            "vent": "",
+            "date": "2024-03-03",
+            "lieu": "Glasgow (GBR)",
+            "categorie": "SE",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2023,
+            "performance": 1268,
+            "performance_brut": "12''68",
+            "vent": "+0.5",
+            "date": "2023-07-30",
+            "lieu": "Albi",
+            "categorie": "SE",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2023,
+            "performance": 1153,
+            "performance_brut": "11''53",
+            "vent": "+1.2",
+            "date": "2023-05-31",
+            "lieu": "Montreuil",
+            "categorie": "SE",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "annee": 2023,
+            "performance": 784,
+            "performance_brut": "7''84",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Madrid (ESP)",
+            "categorie": "SE",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2022,
+            "performance": 1276,
+            "performance_brut": "12''76",
+            "vent": "-0.4",
+            "date": "2022-06-18",
+            "lieu": "Paris",
+            "categorie": "ES",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m - Salle",
+            "annee": 2022,
+            "performance": 734,
+            "performance_brut": "7''34",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Lyon",
+            "categorie": "ES",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": [
+                "IR2"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2022,
+            "performance": null,
+            "performance_brut": "12''72 (F)",
+            "vent": "+3.8",
+            "date": "2022-05-13",
+            "lieu": "Doha (QAT)",
+            "categorie": "ES",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "annee": 2022,
+            "performance": 778,
+            "performance_brut": "7''78",
+            "vent": "",
+            "date": "2022-03-19",
+            "lieu": "Belgrade (SRB)",
+            "categorie": "ES",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "annee": 2021,
+            "performance": 794,
+            "performance_brut": "7''94",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Miramas",
+            "categorie": "ES",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2021,
+            "performance": 1275,
+            "performance_brut": "12''75",
+            "vent": "+0.9",
+            "date": "2021-06-27",
+            "lieu": "Angers",
+            "categorie": "ES",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m - Salle",
+            "annee": 2020,
+            "performance": 730,
+            "performance_brut": "7''30",
+            "vent": "",
+            "date": "2020-01-25",
+            "lieu": "Eaubonne",
+            "categorie": "ES",
+            "club": "Adidas Runners Paris",
+            "ligue_dept": "I-F \/ 075",
+            "niveaux": [
+                "IR2"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2020,
+            "performance": 1273,
+            "performance_brut": "12''73",
+            "vent": "+1.5",
+            "date": "2020-09-12",
+            "lieu": "Albi",
+            "categorie": "ES",
+            "club": "Lille Metropole Athletisme*",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "annee": 2020,
+            "performance": 798,
+            "performance_brut": "7''98",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Saint-Brieuc",
+            "categorie": "ES",
+            "club": "Adidas Runners Paris",
+            "ligue_dept": "I-F \/ 075",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "annee": 2019,
+            "performance": 827,
+            "performance_brut": "8''27",
+            "vent": "",
+            "date": "2019-01-27",
+            "lieu": "Paris",
+            "categorie": "ES",
+            "club": "Adidas Runners Paris",
+            "ligue_dept": "I-F \/ 075",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2018,
+            "performance": 1300,
+            "performance_brut": "13''00",
+            "vent": "+1.9",
+            "date": "2018-05-20",
+            "lieu": "Grenoble",
+            "categorie": "ES",
+            "club": "Sco Ste-Marguerite Marseille*",
+            "ligue_dept": "PCA \/ 013",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "annee": 2017,
+            "performance": null,
+            "performance_brut": "12''80 (F)",
+            "vent": "+4.1",
+            "date": "2017-07-16",
+            "lieu": "Nairobi (KEN)",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "annee": 2017,
+            "performance": 810,
+            "performance_brut": "8''10",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Nantes",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Poids (3 kg)",
+            "annee": 2017,
+            "performance": 970,
+            "performance_brut": "9m70",
+            "vent": "",
+            "date": "2017-05-13",
+            "lieu": "Noisy Le Grand",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "annee": 2017,
+            "performance": 1298,
+            "performance_brut": "12''98",
+            "vent": "+1.2",
+            "date": "2017-07-15",
+            "lieu": "Nairobi (KEN)",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "annee": 2017,
+            "performance": 824,
+            "performance_brut": "8''24",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Minsk (BLR)",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "annee": 2017,
+            "performance": 1322,
+            "performance_brut": "13''22",
+            "vent": "+1.5",
+            "date": "2017-05-21",
+            "lieu": "Toulouse",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Hauteur",
+            "annee": 2017,
+            "performance": 160,
+            "performance_brut": "1m60",
+            "vent": "",
+            "date": "2017-04-23",
+            "lieu": "Maisons Alfort",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "D1"
+            ]
+        },
+        {
+            "epreuve": "200m",
+            "annee": 2017,
+            "performance": null,
+            "performance_brut": "23''96 (F)",
+            "vent": "+2.9",
+            "date": "2017-06-25",
+            "lieu": "Pontoise",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "200m Piste Courte",
+            "annee": 2017,
+            "performance": 2502,
+            "performance_brut": "25''02",
+            "vent": "",
+            "date": "2017-01-14",
+            "lieu": "Eaubonne",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R5"
+            ]
+        },
+        {
+            "epreuve": "60m - Salle",
+            "annee": 2017,
+            "performance": 748,
+            "performance_brut": "7''48",
+            "vent": "",
+            "date": "0000-00-00",
+            "lieu": "Bordeaux",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2017,
+            "performance": 1173,
+            "performance_brut": "11''73",
+            "vent": "+ 0.8",
+            "date": "2017-06-17",
+            "lieu": "Antony",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R1"
+            ]
+        },
+        {
+            "epreuve": "200m",
+            "annee": 2017,
+            "performance": 2399,
+            "performance_brut": "23''99",
+            "vent": "-0.5",
+            "date": "2017-07-02",
+            "lieu": "Dreux",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2016,
+            "performance": null,
+            "performance_brut": "5m09 (F)",
+            "vent": "+5.0",
+            "date": "2016-05-08",
+            "lieu": "Longjumeau",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Hauteur - Salle",
+            "annee": 2016,
+            "performance": 153,
+            "performance_brut": "1m53",
+            "vent": "",
+            "date": "2016-11-12",
+            "lieu": "Eaubonne",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m",
+            "annee": 2016,
+            "performance": 1204,
+            "performance_brut": "12''04",
+            "vent": "+1.6",
+            "date": "2016-06-04",
+            "lieu": "Creteil",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R3"
+            ]
+        },
+        {
+            "epreuve": "60m - Salle",
+            "annee": 2016,
+            "performance": 756,
+            "performance_brut": "7''56",
+            "vent": "",
+            "date": "2016-12-10",
+            "lieu": "Paris",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R1"
+            ]
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2016,
+            "performance": 482,
+            "performance_brut": "4m82",
+            "vent": "+2.0",
+            "date": "2016-05-08",
+            "lieu": "Longjumeau",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "D4"
+            ]
+        },
+        {
+            "epreuve": "Poids (3 kg) - Salle",
+            "annee": 2016,
+            "performance": 845,
+            "performance_brut": "8m45",
+            "vent": "",
+            "date": "2016-11-27",
+            "lieu": "Eaubonne",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "annee": 2016,
+            "performance": 1332,
+            "performance_brut": "13''32",
+            "vent": "+1.1",
+            "date": "2016-07-02",
+            "lieu": "Chateauroux",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "annee": 2016,
+            "performance": 833,
+            "performance_brut": "8''33",
+            "vent": "",
+            "date": "2016-11-27",
+            "lieu": "Eaubonne",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "200m Piste Courte",
+            "annee": 2016,
+            "performance": 2459,
+            "performance_brut": "24''59",
+            "vent": "",
+            "date": "2016-11-27",
+            "lieu": "Eaubonne",
+            "categorie": "JU",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R4"
+            ]
+        },
+        {
+            "epreuve": "Poids (3 kg) - Salle",
+            "annee": 2015,
+            "performance": 906,
+            "performance_brut": "9m06",
+            "vent": "",
+            "date": "2015-12-06",
+            "lieu": "Eaubonne",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Triathlon - Salle Table 2017",
+            "annee": 2015,
+            "performance": null,
+            "performance_brut": "98 pts",
+            "vent": "",
+            "date": "2015-01-24",
+            "lieu": "Paris",
+            "categorie": "CA",
+            "club": "Red Star Club Champigny",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "annee": 2015,
+            "performance": 505,
+            "performance_brut": "5m05",
+            "vent": "",
+            "date": "2015-01-24",
+            "lieu": "Paris",
+            "categorie": "CA",
+            "club": "Red Star Club Champigny",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Poids (3 kg)",
+            "annee": 2015,
+            "performance": 838,
+            "performance_brut": "8m38",
+            "vent": "",
+            "date": "2015-09-26",
+            "lieu": "Maisons Alfort",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2015,
+            "performance": 499,
+            "performance_brut": "4m99",
+            "vent": "",
+            "date": "2015-05-14",
+            "lieu": "Joinville Le Pont",
+            "categorie": "CA",
+            "club": "Red Star Club Champigny",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "D4"
+            ]
+        },
+        {
+            "epreuve": "Triathlon Table 2017",
+            "annee": 2015,
+            "performance": null,
+            "performance_brut": "106 pts",
+            "vent": "",
+            "date": "2015-05-14",
+            "lieu": "Joinville Le Pont",
+            "categorie": "CA",
+            "club": "Red Star Club Champigny",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Longueur",
+            "annee": 2015,
+            "performance": 485,
+            "performance_brut": "4m85",
+            "vent": "+0.0",
+            "date": "2015-06-28",
+            "lieu": "Savigny Le Temple",
+            "categorie": "CA",
+            "club": "Red Star Club Champigny",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "D4"
+            ]
+        },
+        {
+            "epreuve": "Hauteur - Salle",
+            "annee": 2015,
+            "performance": 150,
+            "performance_brut": "1m50",
+            "vent": "",
+            "date": "2015-11-21",
+            "lieu": "Eaubonne",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Hauteur",
+            "annee": 2015,
+            "performance": 147,
+            "performance_brut": "1m47",
+            "vent": "",
+            "date": "2015-05-14",
+            "lieu": "Joinville Le Pont",
+            "categorie": "CA",
+            "club": "Red Star Club Champigny",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "D4"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "annee": 2015,
+            "performance": 860,
+            "performance_brut": "8''60",
+            "vent": "",
+            "date": "2015-12-20",
+            "lieu": "Eaubonne",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m - Salle",
+            "annee": 2015,
+            "performance": 783,
+            "performance_brut": "7''83",
+            "vent": "",
+            "date": "2015-11-21",
+            "lieu": "Eaubonne",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R3"
+            ]
+        },
+        {
+            "epreuve": "80m Haies (76)",
+            "annee": 2015,
+            "performance": 1222,
+            "performance_brut": "12''22",
+            "vent": "-3.2",
+            "date": "2015-09-26",
+            "lieu": "Maisons Alfort",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "50m Haies (76)-Salle",
+            "annee": 2015,
+            "performance": 756,
+            "performance_brut": "7''56",
+            "vent": "",
+            "date": "2015-10-25",
+            "lieu": "Eaubonne",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "50m",
+            "annee": 2015,
+            "performance": 674,
+            "performance_brut": "6''74",
+            "vent": "-0.5",
+            "date": "2015-06-28",
+            "lieu": "Savigny Le Temple",
+            "categorie": "CA",
+            "club": "Red Star Club Champigny",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R4"
+            ]
+        },
+        {
+            "epreuve": "50m - Salle",
+            "annee": 2015,
+            "performance": 690,
+            "performance_brut": "6''90",
+            "vent": "",
+            "date": "2015-10-25",
+            "lieu": "Eaubonne",
+            "categorie": "CA",
+            "club": "Ac Paris-Joinville",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R6"
+            ]
+        }
+    ],
+    "records": [
+        {
+            "epreuve": "50m",
+            "performance": 674,
+            "performance_brut": "6''74",
+            "date": "2015-06-28",
+            "club": "Red Star Club Champigny",
+            "lieu": "Savigny Le Temple",
+            "categorie": "MI",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R4"
+            ]
+        },
+        {
+            "epreuve": "60m - Salle",
+            "performance": 730,
+            "performance_brut": "7''30",
+            "date": "2020-01-25",
+            "club": "Adidas Runners Paris",
+            "lieu": "Eaubonne",
+            "categorie": "ES",
+            "ligue_dept": "I-F \/ 075",
+            "niveaux": [
+                "IR2"
+            ]
+        },
+        {
+            "epreuve": "100m",
+            "performance": 1153,
+            "performance_brut": "11''53",
+            "date": "2023-05-31",
+            "club": "Lille Metropole Athletisme*",
+            "lieu": "Montreuil",
+            "categorie": "SE",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "200m",
+            "performance": 2399,
+            "performance_brut": "23''99",
+            "date": "2017-07-02",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Dreux",
+            "categorie": "CA",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R2"
+            ]
+        },
+        {
+            "epreuve": "200m Piste Courte",
+            "performance": 2459,
+            "performance_brut": "24''59",
+            "date": "2016-11-27",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Eaubonne",
+            "categorie": "CA",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "R4"
+            ]
+        },
+        {
+            "epreuve": "50m Haies (76)-Salle",
+            "performance": 756,
+            "performance_brut": "7''56",
+            "date": "2015-10-25",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Eaubonne",
+            "categorie": "MI",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 810,
+            "performance_brut": "8''10",
+            "date": "0000-00-00",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Nantes",
+            "categorie": "CA",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 773,
+            "performance_brut": "7''73",
+            "date": "2024-03-03",
+            "club": "Lille Metropole Athletisme*",
+            "lieu": "Glasgow (GBR)",
+            "categorie": "SE",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": []
+        },
+        {
+            "epreuve": "80m Haies (76)",
+            "performance": 1222,
+            "performance_brut": "12''22",
+            "date": "2015-09-26",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Maisons Alfort",
+            "categorie": "MI",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1231,
+            "performance_brut": "12''31",
+            "date": "2024-06-08",
+            "club": "Lille Metropole Athletisme*",
+            "lieu": "Rome (ITA)",
+            "categorie": "SE",
+            "ligue_dept": "H-F \/ 059",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "performance": 1298,
+            "performance_brut": "12''98",
+            "date": "2017-07-15",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Nairobi (KEN)",
+            "categorie": "CA",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Hauteur",
+            "performance": 160,
+            "performance_brut": "1m60",
+            "date": "2017-04-23",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Maisons Alfort",
+            "categorie": "CA",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": [
+                "D1"
+            ]
+        },
+        {
+            "epreuve": "Longueur - Salle",
+            "performance": 505,
+            "performance_brut": "5m05",
+            "date": "2015-01-24",
+            "club": "Red Star Club Champigny",
+            "lieu": "Paris",
+            "categorie": "MI",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Poids (3 kg)",
+            "performance": 970,
+            "performance_brut": "9m70",
+            "date": "2017-05-13",
+            "club": "Ac Paris-Joinville",
+            "lieu": "Noisy Le Grand",
+            "categorie": "CA",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "Triathlon - Salle Table 2017",
+            "performance": null,
+            "performance_brut": "98 pts",
+            "date": "2015-01-24",
+            "club": "Red Star Club Champigny",
+            "lieu": "Paris",
+            "categorie": "MI",
+            "ligue_dept": "I-F \/ 094",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 773,
+            "performance_brut": "7''73",
+            "date": "0000-00-00",
+            "club": "3 Mars 2024",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Glasgow",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1231,
+            "performance_brut": "12''31",
+            "date": "0000-00-00",
+            "club": "8 Juin 2024",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Rome",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 778,
+            "performance_brut": "7''78",
+            "date": "0000-00-00",
+            "club": "19 Mars 2022",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Belgrade",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1300,
+            "performance_brut": "13''00",
+            "date": "0000-00-00",
+            "club": "20 Mai 2018",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Grenoble",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 810,
+            "performance_brut": "8''10",
+            "date": "0000-00-00",
+            "club": "11 Fév. 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Nantes",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "performance": 1298,
+            "performance_brut": "12''98",
+            "date": "0000-00-00",
+            "club": "15 Juil 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Nairobi",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 798,
+            "performance_brut": "7''98",
+            "date": "0000-00-00",
+            "club": "8 Fév. 2020",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Saint-Brieuc",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 810,
+            "performance_brut": "8''10",
+            "date": "0000-00-00",
+            "club": "11 Fév. 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Nantes",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "performance": 1313,
+            "performance_brut": "13''13",
+            "date": "0000-00-00",
+            "club": "1 Juil 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Dreux",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 773,
+            "performance_brut": "7''73",
+            "date": "0000-00-00",
+            "club": "3 Mars 2024",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Glasgow",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1231,
+            "performance_brut": "12''31",
+            "date": "0000-00-00",
+            "club": "8 Juin 2024",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Rome",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 778,
+            "performance_brut": "7''78",
+            "date": "0000-00-00",
+            "club": "19 Mars 2022",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Belgrade",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1273,
+            "performance_brut": "12''73",
+            "date": "0000-00-00",
+            "club": "12 Sept. 2020",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Albi",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 798,
+            "performance_brut": "7''98",
+            "date": "0000-00-00",
+            "club": "8 Fév. 2020",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Saint-Brieuc",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 810,
+            "performance_brut": "8''10",
+            "date": "0000-00-00",
+            "club": "11 Fév. 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Nantes",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "performance": 1298,
+            "performance_brut": "12''98",
+            "date": "0000-00-00",
+            "club": "15 Juil 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Nairobi",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1300,
+            "performance_brut": "13''00",
+            "date": "0000-00-00",
+            "club": "20 Mai 2018",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Grenoble",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1300,
+            "performance_brut": "13''00",
+            "date": "0000-00-00",
+            "club": "20 Mai 2018",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Grenoble",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1300,
+            "performance_brut": "13''00",
+            "date": "0000-00-00",
+            "club": "20 Mai 2018",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Grenoble",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1300,
+            "performance_brut": "13''00",
+            "date": "0000-00-00",
+            "club": "20 Mai 2018",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Grenoble",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1231,
+            "performance_brut": "12''31",
+            "date": "0000-00-00",
+            "club": "8 Juin 2024",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Rome",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1273,
+            "performance_brut": "12''73",
+            "date": "0000-00-00",
+            "club": "12 Sept. 2020",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Albi",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 798,
+            "performance_brut": "7''98",
+            "date": "0000-00-00",
+            "club": "8 Fév. 2020",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Saint-Brieuc",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (84)",
+            "performance": 1287,
+            "performance_brut": "12''87",
+            "date": "0000-00-00",
+            "club": "25 Août 2020",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Chorzow",
+            "niveaux": [
+                "N1"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 827,
+            "performance_brut": "8''27",
+            "date": "0000-00-00",
+            "club": "27 Janv. 2019",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Paris",
+            "niveaux": []
+        },
+        {
+            "epreuve": "60m - Salle",
+            "performance": 748,
+            "performance_brut": "7''48",
+            "date": "0000-00-00",
+            "club": "18 Fév. 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Bordeaux",
+            "niveaux": [
+                "IR4"
+            ]
+        },
+        {
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 810,
+            "performance_brut": "8''10",
+            "date": "0000-00-00",
+            "club": "11 Fév. 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Nantes",
+            "niveaux": []
+        },
+        {
+            "epreuve": "100m Haies (76)",
+            "performance": 1298,
+            "performance_brut": "12''98",
+            "date": "0000-00-00",
+            "club": "15 Juil 2017",
+            "lieu": "",
+            "categorie": "",
+            "ligue_dept": "Nairobi",
+            "niveaux": []
+        }
+    ],
+    "podiums": [
+        {
+            "annee": 2024,
+            "niveau_competition": "Olympique",
+            "place": "Vice-championne Olympique F",
+            "rang": null,
+            "epreuve": "100m Haies (84)",
+            "performance": 1234,
+            "performance_brut": "12''34",
+            "vent": "-0.3",
+            "date": "2024-08-01",
+            "lieu": "Saint Denis"
+        },
+        {
+            "annee": 2024,
+            "niveau_competition": "Mondial",
+            "place": "Vice-championne Mondial TCF",
+            "rang": null,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 774,
+            "performance_brut": "7''74",
+            "vent": "",
+            "date": "2024-03-01",
+            "lieu": "Glasgow"
+        },
+        {
+            "annee": 2024,
+            "niveau_competition": "National",
+            "place": "Champion National TCF - Elite",
+            "rang": 1,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 787,
+            "performance_brut": "7''87",
+            "vent": "",
+            "date": null,
+            "lieu": "Miramas"
+        },
+        {
+            "annee": 2024,
+            "niveau_competition": "Européen",
+            "place": "Championne Europe TCF",
+            "rang": null,
+            "epreuve": "100m Haies (84)",
+            "performance": 1231,
+            "performance_brut": "12''31",
+            "vent": "+0.8",
+            "date": "2024-06-07",
+            "lieu": "Rome"
+        },
+        {
+            "annee": 2023,
+            "niveau_competition": "National",
+            "place": "Championne National TCF - Elite",
+            "rang": null,
+            "epreuve": "100m Haies (84)",
+            "performance": 1268,
+            "performance_brut": "12''68",
+            "vent": "+0.5",
+            "date": "2023-07-28",
+            "lieu": "Albi"
+        },
+        {
+            "annee": 2023,
+            "niveau_competition": "National",
+            "place": "Vice championne National TCF - Elite",
+            "rang": 2,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 798,
+            "performance_brut": "7''98",
+            "vent": "",
+            "date": null,
+            "lieu": "Aubiere"
+        },
+        {
+            "annee": 2022,
+            "niveau_competition": "Mondial",
+            "place": "Championne Mondial TCF",
+            "rang": null,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 778,
+            "performance_brut": "7''78",
+            "vent": "",
+            "date": "2022-03-18",
+            "lieu": "Belgrade"
+        },
+        {
+            "annee": 2022,
+            "niveau_competition": "National",
+            "place": "Vice championne National ESF",
+            "rang": 2,
+            "epreuve": "60m - Salle",
+            "performance": 735,
+            "performance_brut": "7''35",
+            "vent": "",
+            "date": null,
+            "lieu": "Lyon"
+        },
+        {
+            "annee": 2021,
+            "niveau_competition": "National",
+            "place": "Vice championne National ESF",
+            "rang": 2,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 794,
+            "performance_brut": "7''94",
+            "vent": "",
+            "date": null,
+            "lieu": "Miramas"
+        },
+        {
+            "annee": 2021,
+            "niveau_competition": "National",
+            "place": "Vice championne National TCF - Elite",
+            "rang": 2,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 794,
+            "performance_brut": "7''94",
+            "vent": "",
+            "date": null,
+            "lieu": "Miramas"
+        },
+        {
+            "annee": 2021,
+            "niveau_competition": "Européen",
+            "place": "Vice championne Européen ESF",
+            "rang": 2,
+            "epreuve": "100m Haies (84)",
+            "performance": 1280,
+            "performance_brut": "12''80",
+            "vent": "-0.9",
+            "date": "2021-07-08",
+            "lieu": "Tallinn"
+        },
+        {
+            "annee": 2021,
+            "niveau_competition": "National",
+            "place": "Championne National TCF - Elite",
+            "rang": null,
+            "epreuve": "100m Haies (84)",
+            "performance": 1280,
+            "performance_brut": "12''80",
+            "vent": "-0.7",
+            "date": "2021-06-25",
+            "lieu": "Angers"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "National",
+            "place": "Championne National TCF - Elite",
+            "rang": null,
+            "epreuve": "100m Haies (84)",
+            "performance": 1273,
+            "performance_brut": "12''73",
+            "vent": "+1.5",
+            "date": "2020-09-12",
+            "lieu": "Albi"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "Régional",
+            "place": "Championne ESF - I-F",
+            "rang": null,
+            "epreuve": "60m - Salle",
+            "performance": 730,
+            "performance_brut": "7''30",
+            "vent": "",
+            "date": "2020-01-25",
+            "lieu": "Eaubonne"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "National",
+            "place": "Championne National TCF - Elite",
+            "rang": null,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 806,
+            "performance_brut": "8''06",
+            "vent": "",
+            "date": null,
+            "lieu": "Liévin"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "National",
+            "place": "Championne National ESF",
+            "rang": null,
+            "epreuve": "60m - Salle",
+            "performance": 738,
+            "performance_brut": "7''38",
+            "vent": "",
+            "date": null,
+            "lieu": "Saint-Brieuc"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "National",
+            "place": "Championne National ESF",
+            "rang": null,
+            "epreuve": "100m Haies (84)",
+            "performance": 1273,
+            "performance_brut": "12''73",
+            "vent": "+1.5",
+            "date": "2020-09-12",
+            "lieu": "Albi"
+        },
+        {
+            "annee": 2020,
+            "niveau_competition": "National",
+            "place": "Championne National ESF",
+            "rang": null,
+            "epreuve": "60m Haies (84)-Salle",
+            "performance": 798,
+            "performance_brut": "7''98",
+            "vent": "",
+            "date": null,
+            "lieu": "Saint-Brieuc"
+        },
+        {
+            "annee": 2018,
+            "niveau_competition": "National",
+            "place": "3ème place National JUF",
+            "rang": null,
+            "epreuve": "100m Haies (84)",
+            "performance": 1359,
+            "performance_brut": "13''59",
+            "vent": "+1.2",
+            "date": "2018-07-20",
+            "lieu": "Bondoufle"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "National",
+            "place": "Championne National CAF",
+            "rang": null,
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 821,
+            "performance_brut": "8''21",
+            "vent": "",
+            "date": null,
+            "lieu": "Nantes"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "Régional",
+            "place": "Championne CAF - I-F",
+            "rang": null,
+            "epreuve": "100m",
+            "performance": 1173,
+            "performance_brut": "11''73",
+            "vent": "+ 0.8",
+            "date": "2017-06-17",
+            "lieu": "Antony"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "Régional",
+            "place": "Championne CAF - I-F",
+            "rang": null,
+            "epreuve": "100m Haies (76)",
+            "performance": 1325,
+            "performance_brut": "13''25",
+            "vent": "- 1.5",
+            "date": "2017-06-17",
+            "lieu": "Antony"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "Mondial",
+            "place": "Vice championne Mondial CAF",
+            "rang": 2,
+            "epreuve": "100m Haies (76)",
+            "performance": 1280,
+            "performance_brut": "12''80",
+            "vent": "+4.1",
+            "date": "2017-07-12",
+            "lieu": "Nairobi"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "National",
+            "place": "Championne National CAF",
+            "rang": null,
+            "epreuve": "200m",
+            "performance": 2399,
+            "performance_brut": "23''99",
+            "vent": "-0.5",
+            "date": "2017-06-30",
+            "lieu": "Dreux"
+        },
+        {
+            "annee": 2017,
+            "niveau_competition": "National",
+            "place": "Championne National CAF",
+            "rang": null,
+            "epreuve": "100m Haies (76)",
+            "performance": 1328,
+            "performance_brut": "13''28",
+            "vent": "+0.9",
+            "date": "2017-06-30",
+            "lieu": "Dreux"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Départemental",
+            "place": "Championne CAF - 094",
+            "rang": null,
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 836,
+            "performance_brut": "8''36",
+            "vent": "",
+            "date": "2016-11-27",
+            "lieu": "Eaubonne"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Régional",
+            "place": "Vice championne CAF - I-F",
+            "rang": 2,
+            "epreuve": "60m - Salle",
+            "performance": 787,
+            "performance_brut": "7''87",
+            "vent": "",
+            "date": "2016-01-30",
+            "lieu": "Eaubonne"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Régional",
+            "place": "Championne CAF - I-F",
+            "rang": null,
+            "epreuve": "100m Haies (76)",
+            "performance": 1364,
+            "performance_brut": "13''64",
+            "vent": "-1.2",
+            "date": "2016-06-18",
+            "lieu": "Montreuil"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Départemental",
+            "place": "Championne CAF - 094",
+            "rang": null,
+            "epreuve": "200m - salle",
+            "performance": 2459,
+            "performance_brut": "24''59",
+            "vent": "",
+            "date": "2016-11-27",
+            "lieu": "Eaubonne"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Régional",
+            "place": "Championne CAF - I-F",
+            "rang": null,
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 864,
+            "performance_brut": "8''64",
+            "vent": "",
+            "date": "2016-01-30",
+            "lieu": "Eaubonne"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "Régional",
+            "place": "Championne CAF - I-F",
+            "rang": null,
+            "epreuve": "100m",
+            "performance": 1221,
+            "performance_brut": "12''21",
+            "vent": "+1.2",
+            "date": "2016-06-18",
+            "lieu": "Montreuil"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "National",
+            "place": "Vice championne National CAF",
+            "rang": 2,
+            "epreuve": "60m Haies (76)-Salle",
+            "performance": 840,
+            "performance_brut": "8''40",
+            "vent": "",
+            "date": null,
+            "lieu": "Nantes"
+        },
+        {
+            "annee": 2016,
+            "niveau_competition": "National",
+            "place": "Championne National CAF",
+            "rang": null,
+            "epreuve": "100m Haies (76)",
+            "performance": 1332,
+            "performance_brut": "13''32",
+            "vent": "+1.1",
+            "date": "2016-07-01",
+            "lieu": "Chateauroux"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "Régional",
+            "place": "Vice championne MIF - I-F",
+            "rang": 2,
+            "epreuve": "50m",
+            "performance": 674,
+            "performance_brut": "6''74",
+            "vent": "-0.5",
+            "date": "2015-06-28",
+            "lieu": "Savigny Le Temple"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "Départemental",
+            "place": "Championne CAF - 094",
+            "rang": null,
+            "epreuve": "60m - Salle",
+            "performance": 788,
+            "performance_brut": "7''88",
+            "vent": "",
+            "date": "2015-11-21",
+            "lieu": "Eaubonne"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "Départemental",
+            "place": "Vice championne MIF - 094",
+            "rang": 2,
+            "epreuve": "50m",
+            "performance": 701,
+            "performance_brut": "7''01",
+            "vent": "+1.9",
+            "date": "2015-05-14",
+            "lieu": "Joinville Le Pont"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "Départemental",
+            "place": "Vice championne MIF - 094",
+            "rang": 2,
+            "epreuve": "Hauteur",
+            "performance": 147,
+            "performance_brut": "1m47",
+            "vent": "",
+            "date": "2015-05-14",
+            "lieu": "Joinville Le Pont"
+        },
+        {
+            "annee": 2015,
+            "niveau_competition": "Départemental",
+            "place": "Vice championne MIF - 094",
+            "rang": 2,
+            "epreuve": "Longueur",
+            "performance": 499,
+            "performance_brut": "4m99",
+            "vent": "",
+            "date": "2015-05-14",
+            "lieu": "Joinville Le Pont"
+        }
+    ],
+    "resultats": [
+        {
+            "annee": 2025,
+            "date": "2025-08-24",
+            "epreuve": "100m Haies (84)",
+            "performance": 1337,
+            "performance_brut": "13''37",
+            "vent": "-0.1",
+            "tour": "Final 1",
+            "place": 4,
+            "niveau": "N1",
+            "points": 1100,
+            "lieu": "Grangemouth"
+        },
+        {
+            "annee": 2025,
+            "date": "2025-08-24",
+            "epreuve": "100m Haies (84)",
+            "performance": 1330,
+            "performance_brut": "13''30",
+            "vent": "+2.7",
+            "tour": "Série 1",
+            "place": 1,
+            "niveau": "N1",
+            "points": 1109,
+            "lieu": "Grangemouth"
+        }
+    ],
+    "niveaux": [
+        {
+            "annee": 2025,
+            "code_niveau": "N1",
+            "points_niveau": 30,
+            "club": "Lille Metropole Athletisme",
+            "performances": [
+                {
+                    "epreuve": "100m Haies (84)",
+                    "performance": 1278,
+                    "performance_brut": "12''78",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "100m Haies (84)",
+                    "performance": 1330,
+                    "performance_brut": "13''30",
+                    "code_niveau": "N1"
+                }
+            ]
+        },
+        {
+            "annee": 2024,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Lille Metropole Athletisme",
+            "performances": [
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 773,
+                    "performance_brut": "7''73",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 774,
+                    "performance_brut": "7''74",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2023,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Lille Metropole Athletisme",
+            "performances": [
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 790,
+                    "performance_brut": "7''90",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 784,
+                    "performance_brut": "7''84",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2022,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Lille Metropole Athletisme",
+            "performances": [
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 778,
+                    "performance_brut": "7''78",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 784,
+                    "performance_brut": "7''84",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2021,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Lille Metropole Athletisme",
+            "performances": [
+                {
+                    "epreuve": "100m Haies (84)",
+                    "performance": 1275,
+                    "performance_brut": "12''75",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 794,
+                    "performance_brut": "7''94",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2020,
+            "code_niveau": "IA",
+            "points_niveau": 40,
+            "club": "Adidas Runners Paris",
+            "performances": [
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 799,
+                    "performance_brut": "7''99",
+                    "code_niveau": "IA"
+                },
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 798,
+                    "performance_brut": "7''98",
+                    "code_niveau": "IA"
+                }
+            ]
+        },
+        {
+            "annee": 2019,
+            "code_niveau": "N1",
+            "points_niveau": 30,
+            "club": "Adidas Runners Paris",
+            "performances": [
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 836,
+                    "performance_brut": "8''36",
+                    "code_niveau": "N1"
+                },
+                {
+                    "epreuve": "60m Haies (84)-Salle",
+                    "performance": 827,
+                    "performance_brut": "8''27",
+                    "code_niveau": "N1"
+                }
+            ]
+        },
+        {
+            "annee": 2018,
+            "code_niveau": "N1",
+            "points_niveau": 30,
+            "club": "Sco Ste-Marguerite Marseille",
+            "performances": [
+                {
+                    "epreuve": "100m Haies (84)",
+                    "performance": 1300,
+                    "performance_brut": "13''00",
+                    "code_niveau": "IB"
+                },
+                {
+                    "epreuve": "100m Haies (84)",
+                    "performance": 1337,
+                    "performance_brut": "13''37",
+                    "code_niveau": "N1"
+                }
+            ]
+        },
+        {
+            "annee": 2017,
+            "code_niveau": "IB",
+            "points_niveau": 35,
+            "club": "Ac Paris-Joinville",
+            "performances": [
+                {
+                    "epreuve": "100m Haies (84)",
+                    "performance": 1322,
+                    "performance_brut": "13''22",
+                    "code_niveau": "IB"
+                },
+                {
+                    "epreuve": "100m Haies (84)",
+                    "performance": 1324,
+                    "performance_brut": "13''24",
+                    "code_niveau": "IB"
+                }
+            ]
+        },
+        {
+            "annee": 2016,
+            "code_niveau": "N1",
+            "points_niveau": 30,
+            "club": "Ac Paris-Joinville",
+            "performances": [
+                {
+                    "epreuve": "60m Haies (76)-Salle",
+                    "performance": 833,
+                    "performance_brut": "8''33",
+                    "code_niveau": "N1"
+                },
+                {
+                    "epreuve": "60m Haies (76)-Salle",
+                    "performance": 836,
+                    "performance_brut": "8''36",
+                    "code_niveau": "N1"
+                }
+            ]
+        },
+        {
+            "annee": 2015,
+            "code_niveau": "N2",
+            "points_niveau": 28,
+            "club": "Ac Paris-Joinville",
+            "performances": [
+                {
+                    "epreuve": "60m Haies (76)-Salle",
+                    "performance": 860,
+                    "performance_brut": "8''60",
+                    "code_niveau": "N2"
+                },
+                {
+                    "epreuve": "60m Haies (76)-Salle",
+                    "performance": 864,
+                    "performance_brut": "8''64",
+                    "code_niveau": "N2"
+                }
+            ]
+        }
+    ]
+}

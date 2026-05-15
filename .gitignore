@@ -1,1 +1,49 @@
+# =====================================================
+# Credentials & config sensibles
+# =====================================================
 core/oauth_credentials.php
+core/credentials_local.php
+core/oauth_config_local.php
+
+# =====================================================
+# Archives (gigantesques : 2-3 GB le .jsonl progressions)
+# =====================================================
+archives/*.jsonl
+archives/*.jsonl.gz
+archives/.progress.json
+archives/.prog_idx/
+
+# =====================================================
+# Cache fichier (regenere a la demande)
+# =====================================================
+cache/*.json
+
+# =====================================================
+# Logs runtime (donnees journalieres / IP / rate limits)
+# =====================================================
+logs/ip_track_*.php
+logs/ip_daily_*.php
+logs/ip_banned.php
+logs/.*.php
+
+# =====================================================
+# Etat local (mode file/bdd, filtres admin, sessions)
+# =====================================================
+config/data_source.json
+
+# =====================================================
+# Donnees scraping (JSON par athlete)
+# =====================================================
+src/
+
+# =====================================================
+# OS / IDE
+# =====================================================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+*.bak
+*.tmp

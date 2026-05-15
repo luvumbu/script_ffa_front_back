@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 170" width="140" height="170" role="img" aria-label="Offre Platine">
+  <defs>
+    <radialGradient id="pt-m" cx="38%" cy="30%" r="82%">
+      <stop offset="0%" stop-color="#ddd6fe"/>
+      <stop offset="52%" stop-color="#8b7cf0"/>
+      <stop offset="100%" stop-color="#4c1d95"/>
+    </radialGradient>
+    <linearGradient id="pt-r" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+  </defs>
+  <path d="M48 6 L70 96 L52 88 L40 104 L40 6 Z" fill="url(#pt-r)"/>
+  <path d="M92 6 L70 96 L88 88 L100 104 L100 6 Z" fill="url(#pt-r)" opacity="0.82"/>
+  <circle cx="70" cy="110" r="50" fill="#4c1d95"/>
+  <circle cx="70" cy="110" r="47" fill="url(#pt-m)"/>
+  <circle cx="70" cy="110" r="38" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2.5"/>
+  <circle cx="70" cy="110" r="33" fill="rgba(0,0,0,0.10)"/>
+  <text x="70" y="116" text-anchor="middle" font-size="14" fill="#fff" opacity="0.98" font-family="Arial,Helvetica,sans-serif" letter-spacing="0.5">&#9733;&#9733;&#9733;&#9733;</text>
+  <ellipse cx="54" cy="90" rx="16" ry="10" fill="rgba(255,255,255,0.5)" transform="rotate(-32 54 90)"/>
+</svg>

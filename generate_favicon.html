@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head><title>Generate Favicon PNGs</title></head>
+<body style="background:#111;color:#fff;font-family:monospace;padding:20px;">
+<h2>Favicon Generator - Stickman Runner</h2>
+<p>Right-click each image and "Save image as..." to save the PNG files.</p>
+
+<h3>32x32</h3>
+<canvas id="c32" width="32" height="32" style="border:1px solid #444;image-rendering:pixelated;width:128px;height:128px;"></canvas>
+<br><br>
+<h3>16x16</h3>
+<canvas id="c16" width="16" height="16" style="border:1px solid #444;image-rendering:pixelated;width:128px;height:128px;"></canvas>
+
+<br><br>
+<a id="dl32" download="favicon-32x32.png" style="color:#6c5ce7;margin-right:20px;">Download 32x32</a>
+<a id="dl16" download="favicon-16x16.png" style="color:#6c5ce7;">Download 16x16</a>
+
+<script>
+function drawStickman(ctx, s) {
+    // s = scale factor (32 or 16 relative to 64)
+    var f = s / 64;
+
+    // Background circle
+    ctx.beginPath();
+    ctx.arc(s/2, s/2, s/2 - 1, 0, Math.PI*2);
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fill();
+
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.fillStyle = '#e0e0e0';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(34*f, 14*f, 5*f, 0, Math.PI*2);
+    ctx.fill();
+
+    // Body
+    ctx.lineWidth = Math.max(1, 2.5*f);
+    ctx.beginPath();
+    ctx.moveTo(32*f, 19*f);
+    ctx.lineTo(28*f, 35*f);
+    ctx.stroke();
+
+    // Left arm (back)
+    ctx.lineWidth = Math.max(1, 2*f);
+    ctx.beginPath();
+    ctx.moveTo(30*f, 24*f);
+    ctx.lineTo(22*f, 20*f);
+    ctx.lineTo(18*f, 26*f);
+    ctx.stroke();
+
+    // Right arm (front)
+    ctx.beginPath();
+    ctx.moveTo(30*f, 24*f);
+    ctx.lineTo(38*f, 30*f);
+    ctx.lineTo(42*f, 24*f);
+    ctx.stroke();
+
+    // Left leg (back)
+    ctx.lineWidth = Math.max(1, 2.5*f);
+    ctx.beginPath();
+    ctx.moveTo(28*f, 35*f);
+    ctx.lineTo(20*f, 44*f);
+    ctx.lineTo(14*f, 42*f);
+    ctx.stroke();
+
+    // Right leg (front)
+    ctx.beginPath();
+    ctx.moveTo(28*f, 35*f);
+    ctx.lineTo(36*f, 44*f);
+    ctx.lineTo(38*f, 53*f);
+    ctx.stroke();
+
+    // Speed lines
+    ctx.strokeStyle = '#6c5ce7';
+    ctx.lineWidth = Math.max(1, 1.5*f);
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.moveTo(8*f, 28*f); ctx.lineTo(16*f, 28*f); ctx.stroke();
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.moveTo(6*f, 34*f); ctx.lineTo(14*f, 34*f); ctx.stroke();
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath(); ctx.moveTo(10*f, 40*f); ctx.lineTo(16*f, 40*f); ctx.stroke();
+
+    // Ground
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath(); ctx.moveTo(10*f, 56*f); ctx.lineTo(54*f, 56*f); ctx.stroke();
+    ctx.globalAlpha = 1;
+}
+
+var c32 = document.getElementById('c32');
+var c16 = document.getElementById('c16');
+drawStickman(c32.getContext('2d'), 32);
+drawStickman(c16.getContext('2d'), 16);
+
+document.getElementById('dl32').href = c32.toDataURL('image/png');
+document.getElementById('dl16').href = c16.toDataURL('image/png');
+</script>
+</body>
+</html>

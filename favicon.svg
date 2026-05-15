@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="#1a1a2e"/>
+  <!-- Head -->
+  <circle cx="34" cy="14" r="6" fill="#e0e0e0" stroke="#ffffff" stroke-width="1"/>
+  <!-- Body -->
+  <line x1="32" y1="20" x2="28" y2="36" stroke="#e0e0e0" stroke-width="3" stroke-linecap="round"/>
+  <!-- Left arm (back, pumping) -->
+  <polyline points="30,24 22,20 18,26" fill="none" stroke="#e0e0e0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Right arm (front, pumping) -->
+  <polyline points="30,24 38,30 42,24" fill="none" stroke="#e0e0e0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Left leg (back, extended behind) -->
+  <polyline points="28,36 20,44 14,42" fill="none" stroke="#e0e0e0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Right leg (front, knee up) -->
+  <polyline points="28,36 36,44 38,54" fill="none" stroke="#e0e0e0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Speed lines -->
+  <line x1="8" y1="28" x2="16" y2="28" stroke="#6c5ce7" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+  <line x1="6" y1="34" x2="14" y2="34" stroke="#6c5ce7" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+  <line x1="10" y1="40" x2="16" y2="40" stroke="#6c5ce7" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+  <!-- Ground -->
+  <line x1="10" y1="56" x2="54" y2="56" stroke="#6c5ce7" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+</svg>

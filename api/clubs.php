@@ -16,6 +16,27 @@ $page         = max(1, (int)($_GET['page'] ?? 1));
 $limit        = min(100, max(1, (int)($_GET['limit'] ?? 50)));
 $offset       = ($page - 1) * $limit;
 
+// Rate limiting recherches (cf. core/search_limit.php) : applique uniquement sur recherche par nom.
+$_sl = null;
+if ($nom !== '') {
+    require_once __DIR__ . '/../core/search_limit.php';
+    $_sl = bkSearchLimit($conn, true);
+    if ($_sl['blocked']) {
+        jsonResponse(array_merge([
+            'success'       => false,
+            'limit_reached' => true,
+            'reason'        => $_sl['reason'],
+            'limit'         => $_sl['limit'],
+            'remaining'     => 0,
+            'error'         => $_sl['reason'] === 'trial'
+                ? 'Decouverte gratuite terminee — inscrivez-vous pour continuer'
+                : ($_sl['reason'] === 'cooldown'
+                    ? 'Patientez avant la prochaine recherche'
+                    : 'Limite de recherches atteinte'),
+        ], bkSlFields($_sl)), 429);
+    }
+}
+
 $where = "";
 if ($nom !== '') {
     $nomEsc = $conn->real_escape_string($nom);
@@ -36,7 +57,17 @@ $cacheKey = 'clubs_' . md5($nom . '_' . $page . '_' . $limit . '_' . ($hasAthlet
 $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
 if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
     $cached = @file_get_contents($cacheFile);
-    if ($cached !== false) { echo $cached; $conn->close(); exit; }
+    if ($cached !== false) {
+        // Rafraichir le quota du visiteur (le cache ne doit pas servir des compteurs perimes)
+        if ($_sl) {
+            $_cd = json_decode($cached, true);
+            if (is_array($_cd)) {
+                echo json_encode(array_merge($_cd, bkSlFields($_sl)), JSON_UNESCAPED_UNICODE);
+                $conn->close(); exit;
+            }
+        }
+        echo $cached; $conn->close(); exit;
+    }
 }
 $join = ($hasAthletes || $maxAthletes > 0) ? "INNER JOIN" : "LEFT JOIN";
 
@@ -122,6 +153,7 @@ $resp = [
     'total_pages' => ceil($total / $limit),
     'clubs'       => $clubs,
 ];
+if ($_sl) $resp = array_merge($resp, bkSlFields($_sl));
 $json = json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 @file_put_contents($cacheFile, $json, LOCK_EX);
 jsonResponse($resp);

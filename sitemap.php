@@ -25,11 +25,11 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : -1;
 
 // === SITEMAP INDEX (par défaut) ===
 if ($page < 0) {
-    $r = $conn->query("SELECT COUNT(*) as c FROM athletes");
+    $r = $conn->query("SELECT COUNT(*) as c FROM athletes WHERE visible = 1");
     $total = $r ? (int)$r->fetch_assoc()['c'] : 0;
     $nbPages = ceil($total / $perPage);
     // Date réelle de dernière modification des données
-    $lastModRes = $conn->query("SELECT MAX(date_creation_athlete) as last_update FROM athletes");
+    $lastModRes = $conn->query("SELECT MAX(date_creation_athlete) as last_update FROM athletes WHERE visible = 1");
     $lastUpdate = ($lastModRes && $row = $lastModRes->fetch_assoc()) ? ($row['last_update'] ?? date('Y-m-d')) : date('Y-m-d');
     $sitemapDate = substr($lastUpdate, 0, 10);
     $conn->close();
@@ -152,7 +152,7 @@ if ($page === 0) {
 
 // === PAGE 1+ : athlètes paginés (500 par page) ===
 $offset = ($page - 1) * $perPage;
-$res = $conn->query("SELECT athlete_id_externe FROM athletes ORDER BY id_athlete LIMIT $perPage OFFSET $offset");
+$res = $conn->query("SELECT athlete_id_externe FROM athletes WHERE visible = 1 ORDER BY id_athlete LIMIT $perPage OFFSET $offset");
 ?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <?php

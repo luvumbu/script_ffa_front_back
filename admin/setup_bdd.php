@@ -18,7 +18,7 @@ require_once dirname(__DIR__) . "/core/credentials.php";
 // =============================================
 // Créer la BDD si elle n'existe pas
 // =============================================
-$conn = new mysqli($servername, $username, $password);
+$conn = new mysqli($servername ?? 'localhost', $username, $password);
 if ($conn->connect_error) {
     die("Connexion échouée : " . $conn->connect_error);
 }

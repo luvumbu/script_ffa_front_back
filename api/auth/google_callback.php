@@ -151,24 +151,104 @@ createSession($conn, $userId);
 if ($isNewUser) {
     $prenom = $givenName ?: 'Athlete';
 
-    $html = '<html><body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f4f4f4;">'
-        . '<div style="max-width:500px;margin:0 auto;background:#fff;padding:30px;border-radius:8px;">'
-        . '<h1 style="color:#6c5ce7;text-align:center;">Bienvenue sur Bokonzi !</h1>'
-        . '<p>Bonjour <b>' . htmlspecialchars($prenom) . '</b>,</p>'
-        . '<p>Votre compte a ete cree avec succes. Vous pouvez maintenant :</p>'
-        . '<ul>'
-        . '<li>Rechercher parmi 330 000+ athletes</li>'
-        . '<li>Suivre vos athletes et clubs favoris</li>'
-        . '<li>Telecharger des fiches PDF</li>'
-        . '<li>Consulter les classements en temps reel</li>'
-        . '</ul>'
-        . '<p style="text-align:center;margin-top:20px;"><a href="https://bokonzi.com" style="background:#6c5ce7;color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;">Explorer Bokonzi</a></p>'
-        . '<p style="color:#999;font-size:11px;text-align:center;margin-top:20px;">bokonzi.com</p>'
+    $_p = htmlspecialchars($prenom);
+    $html = '<html><body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">'
+        . '<div style="max-width:560px;margin:30px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">'
+        . '<div style="background:linear-gradient(135deg,#6c5ce7,#5541d0);padding:36px 30px;text-align:center;">'
+        . '<h1 style="color:#fff;font-size:28px;margin:0 0 6px;font-weight:800;">Bienvenue sur Bokonzi !</h1>'
+        . '<p style="color:#e0d8ff;font-size:14px;margin:0;">La plus grande base de donnees de l\'athletisme francais</p>'
+        . '</div>'
+        . '<div style="padding:32px 30px;">'
+        . '<p style="font-size:16px;color:#333;line-height:1.6;margin:0 0 20px;">Bonjour <b>' . $_p . '</b>,</p>'
+        . '<p style="font-size:15px;color:#444;line-height:1.7;margin:0 0 24px;">Votre compte a ete cree avec succes. Vous pouvez desormais explorer librement toutes les donnees de l\'athletisme francais :</p>'
+        . '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">'
+        . '<tr><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:20px;width:36px;text-align:center;">&#128100;</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333;"><b style="color:#6c5ce7;">Consulter les profils</b> de plus de 330 000 athletes</td></tr>'
+        . '<tr><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:20px;width:36px;text-align:center;">&#127963;</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333;"><b style="color:#10b981;">Decouvrir les clubs</b>, leurs athletes, epreuves et statistiques</td></tr>'
+        . '<tr><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:20px;width:36px;text-align:center;">&#128202;</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333;"><b style="color:#3b82f6;">Analyser les performances</b>, records, progressions et classements</td></tr>'
+        . '<tr><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:20px;width:36px;text-align:center;">&#9878;</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333;"><b style="color:#f59e0b;">Comparer des athletes</b> ou des clubs entre eux</td></tr>'
+        . '<tr><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:20px;width:36px;text-align:center;">&#11088;</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333;"><b style="color:#c026d3;">Suivre vos favoris</b> et retrouver vos athletes preferes</td></tr>'
+        . '<tr><td style="padding:10px 12px;font-size:20px;width:36px;text-align:center;">&#128196;</td><td style="padding:10px 12px;font-size:14px;color:#333;"><b style="color:#ea580c;">Telecharger des fiches PDF</b> avec le palmares complet</td></tr>'
+        . '</table>'
+        . '<p style="text-align:center;margin:0 0 24px;"><a href="https://bokonzi.com" style="display:inline-block;background:linear-gradient(135deg,#6c5ce7,#5541d0);color:#fff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:16px;font-weight:700;">Explorer Bokonzi</a></p>'
+        . '<p style="font-size:13px;color:#999;line-height:1.5;margin:0;">Bonne exploration ' . $_p . ', et a tres bientot sur Bokonzi !</p>'
+        . '</div>'
+        . '<div style="background:#f9fafb;padding:20px 30px;text-align:center;border-top:1px solid #f0f0f0;">'
+        . '<p style="font-size:11px;color:#999;margin:0;">Bokonzi — Base de donnees Athletisme francais<br><a href="https://bokonzi.com" style="color:#6c5ce7;text-decoration:none;">bokonzi.com</a></p>'
+        . '</div>'
         . '</div></body></html>';
 
-    $subject = 'Bienvenue sur Bokonzi, ' . $prenom . ' !';
-    $headers = "From: noreply@bokonzi.com\r\nContent-Type: text/html; charset=UTF-8\r\nMIME-Version: 1.0";
-    mail($email, $subject, $html, $headers);
+    $subject = 'Bienvenue ' . $prenom . ' - Bokonzi';
+    $headers  = "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $headers .= "From: Bokonzi <noreply@bokonzi.com>\r\n";
+    $headers .= "Reply-To: noreply@bokonzi.com\r\n";
+    $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
+    @mail($email, $subject, $html, $headers);
+
+    // Notification admin : nouvel inscrit
+    $adminHtml = '<html><body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">'
+        . '<div style="max-width:500px;margin:30px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">'
+        . '<div style="background:#10b981;padding:24px 30px;text-align:center;">'
+        . '<h1 style="color:#fff;font-size:22px;margin:0;font-weight:800;">Nouvel inscrit sur Bokonzi</h1>'
+        . '</div>'
+        . '<div style="padding:24px 30px;">'
+        . '<table style="width:100%;border-collapse:collapse;">'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;width:100px;">Prenom</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($givenName ?: '-') . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Nom</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($familyName ?: '-') . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Email</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($email) . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Date</td><td style="padding:8px 0;color:#333;font-size:14px;">' . date('d/m/Y H:i:s') . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">IP</td><td style="padding:8px 0;color:#333;font-size:14px;">' . htmlspecialchars($_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '') . '</td></tr>'
+        . '</table>'
+        . '<p style="text-align:center;margin:20px 0 0;"><a href="https://bokonzi.com/admin/panel.php" style="display:inline-block;background:#6c5ce7;color:#fff;padding:10px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">Voir le panel admin</a></p>'
+        . '</div></div></body></html>';
+    require_once __DIR__ . '/../../core/mailer.php';
+    bkMail('luvumbu.n@gmail.com', 'Nouvel inscrit : ' . ($givenName ?: '') . ' ' . ($familyName ?: '') . ' - Bokonzi', $adminHtml);
+    // Mail rapide a contact@bokonzi.com
+    bkMail('contact@bokonzi.com', 'Inscription : ' . $email, '<p>L\'adresse <b>' . htmlspecialchars($email) . '</b> vient de s\'inscrire sur Bokonzi (Google).</p><p>' . date('d/m/Y H:i:s') . '</p>');
+} else {
+    // Notification admin : connexion d'un user existant via Google
+    $ipAddr = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    // [DEBUG TEMPORAIRE] log entree dans le else
+    @file_put_contents(__DIR__ . '/../../logs/login_debug.log', date('Y-m-d H:i:s') . " | ELSE branch reached | email=$email | isNewUser=" . ($isNewUser ? '1' : '0') . "\n", FILE_APPEND);
+    $loginHtml = '<html><body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">'
+        . '<div style="max-width:500px;margin:30px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">'
+        . '<div style="background:#3b82f6;padding:24px 30px;text-align:center;">'
+        . '<h1 style="color:#fff;font-size:22px;margin:0;font-weight:800;">Connexion sur Bokonzi</h1>'
+        . '<p style="color:#dbeafe;font-size:13px;margin:6px 0 0;">via Google</p>'
+        . '</div>'
+        . '<div style="padding:24px 30px;">'
+        . '<table style="width:100%;border-collapse:collapse;">'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;width:100px;">Prenom</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($givenName ?: '-') . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Nom</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($familyName ?: '-') . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Email</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($email) . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Date</td><td style="padding:8px 0;color:#333;font-size:14px;">' . date('d/m/Y H:i:s') . '</td></tr>'
+        . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">IP</td><td style="padding:8px 0;color:#333;font-size:14px;">' . htmlspecialchars($ipAddr) . '</td></tr>'
+        . '</table>'
+        . '<p style="text-align:center;margin:20px 0 0;"><a href="https://bokonzi.com/admin/panel.php" style="display:inline-block;background:#6c5ce7;color:#fff;padding:10px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">Voir le panel admin</a></p>'
+        . '</div></div></body></html>';
+    require_once __DIR__ . '/../../core/mailer.php';
+    $mailResult = bkMail('luvumbu.n@gmail.com', 'Connexion Google : ' . $email . ' - Bokonzi', $loginHtml);
+    @file_put_contents(__DIR__ . '/../../logs/login_debug.log', date('Y-m-d H:i:s') . " | bkMail result = " . ($mailResult ? 'TRUE' : 'FALSE') . " | to=luvumbu.n@gmail.com\n", FILE_APPEND);
+
+    // Notification utilisateur : confirmation de connexion
+    $_p = htmlspecialchars($givenName ?: 'Athlete');
+    $userHtml = '<html><body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">'
+        . '<div style="max-width:500px;margin:30px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">'
+        . '<div style="background:#3b82f6;padding:24px 30px;text-align:center;">'
+        . '<h1 style="color:#fff;font-size:22px;margin:0;font-weight:800;">Nouvelle connexion sur Bokonzi</h1>'
+        . '</div>'
+        . '<div style="padding:24px 30px;">'
+        . '<p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 16px;">Bonjour <b>' . $_p . '</b>,</p>'
+        . '<p style="font-size:14px;color:#444;line-height:1.6;margin:0 0 16px;">Une connexion a ete effectuee sur votre compte Bokonzi via Google.</p>'
+        . '<table style="width:100%;border-collapse:collapse;background:#f9fafb;border-radius:8px;margin-bottom:16px;">'
+        . '<tr><td style="padding:10px 14px;color:#888;font-size:13px;width:80px;">Date</td><td style="padding:10px 14px;color:#333;font-size:14px;">' . date('d/m/Y H:i:s') . '</td></tr>'
+        . '<tr><td style="padding:10px 14px;color:#888;font-size:13px;">IP</td><td style="padding:10px 14px;color:#333;font-size:14px;">' . htmlspecialchars($ipAddr) . '</td></tr>'
+        . '</table>'
+        . '<p style="font-size:13px;color:#888;line-height:1.6;margin:0;">Si ce n\'etait pas vous, contactez-nous immediatement.</p>'
+        . '</div></div></body></html>';
+    bkMail($email, 'Connexion sur Bokonzi', $userHtml);
+    // Mail rapide a contact@bokonzi.com
+    bkMail('contact@bokonzi.com', 'Connexion : ' . $email, '<p>L\'adresse <b>' . htmlspecialchars($email) . '</b> vient de se connecter sur Bokonzi (Google).</p><p>' . date('d/m/Y H:i:s') . '</p>');
 }
 
 // --- 8. Rediriger vers l'accueil ---

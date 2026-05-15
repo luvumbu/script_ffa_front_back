@@ -201,7 +201,7 @@ if ($id && is_numeric($id)):
     <?php if (!empty($identite['taille_cm'])): ?>Taille : <?= $identite['taille_cm'] ?>cm | <?php endif; ?>
     <?php if (!empty($identite['poids_kg'])): ?>Poids : <?= $identite['poids_kg'] ?>kg | <?php endif; ?>
     <?php if (!empty($identite['licence'])): ?>Licence : <?= htmlspecialchars($identite['licence']) ?> | <?php endif; ?>
-    ID athle.fr : <?= $identite['athlete_id'] ?>
+    <?php /* ID externe masque - reserve admin */ ?>
 </div>
 
 <!-- CLUBS -->

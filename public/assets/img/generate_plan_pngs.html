@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Images Stripe — Plans BOKONZI (export PNG)</title>
+<style>
+  body{background:#0d1117;color:#c9d1d9;font-family:Inter,system-ui,Arial,sans-serif;margin:0;padding:32px;}
+  h1{color:#a78bfa;font-size:22px;margin:0 0 6px;}
+  p.intro{color:#8b949e;font-size:14px;max-width:680px;line-height:1.6;}
+  code{background:#161b22;padding:1px 5px;border-radius:4px;}
+  .bar{margin-top:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#8b949e;font-size:13px;}
+  .bar input{width:74px;background:#0d1117;border:1px solid #1e2a3a;color:#c9d1d9;border-radius:6px;padding:6px 8px;}
+  .btn{padding:8px 16px;border:0;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;}
+  .btn-grey{background:#21262d;color:#c9d1d9;}
+  .btn-main{background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;}
+  #grid{display:flex;flex-wrap:wrap;gap:20px;margin-top:26px;}
+  .card{background:#161b22;border:1px solid #1e2a3a;border-radius:14px;padding:18px;text-align:center;width:260px;}
+  .card h3{margin:0 0 12px;color:#fff;font-size:15px;letter-spacing:1px;text-transform:uppercase;}
+  .card canvas{width:200px;height:200px;border-radius:10px;display:block;margin:0 auto;}
+  .dl{display:inline-block;margin-top:14px;padding:9px 16px;background:#21262d;border:1px solid #1e2a3a;
+      color:#c9d1d9;text-decoration:none;border-radius:9px;font-size:13px;font-weight:700;}
+  .dl:hover{border-color:#6c5ce7;color:#a78bfa;}
+</style>
+</head>
+<body>
+  <h1>&#127941; Images des plans BOKONZI &mdash; export PNG pour Stripe</h1>
+  <p class="intro">
+    Voici les <b>4 images individuelles</b>, une par offre. Ce PC n'a pas de convertisseur d'image,
+    donc la conversion SVG&nbsp;&rarr;&nbsp;PNG se fait ici, dans le navigateur.
+    Clique <b>« Télécharger les 4 PNG »</b> : les fichiers <code>bokonzi-bronze.png</code>,
+    <code>bokonzi-argent.png</code>, <code>bokonzi-or.png</code>, <code>bokonzi-platine.png</code>
+    arrivent dans ton dossier <b>Téléchargements</b>. Ce sont eux que tu uploades dans
+    <code>Stripe &rarr; Produits &rarr; (chaque produit) &rarr; Image</code>.
+  </p>
+  <div class="bar">
+    Taille : <input type="number" id="sz" value="1024" min="256" max="2048" step="128"> px (carré)
+    <button class="btn btn-grey" onclick="render()">Régénérer</button>
+    <button class="btn btn-main" onclick="downloadAll()">&#11015; Télécharger les 4 PNG</button>
+  </div>
+  <div id="grid"></div>
+
+<script>
+var PLANS = [
+  { key:'bronze',  name:'Bronze'  },
+  { key:'argent',  name:'Argent'  },
+  { key:'or',      name:'Or'      },
+  { key:'platine', name:'Platine' }
+];
+var READY = {}; // key -> dataURL
+
+function triggerDownload(dataUrl, filename) {
+  var a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function downloadAll() {
+  var keys = Object.keys(READY);
+  if (keys.length < PLANS.length) {
+    alert('Les images sont encore en cours de génération, réessaie dans 1 seconde.');
+    return;
+  }
+  PLANS.forEach(function(p, i) {
+    setTimeout(function() {
+      triggerDownload(READY[p.key], 'bokonzi-' + p.key + '.png');
+    }, i * 350); // léger décalage : le navigateur accepte les 4 téléchargements
+  });
+}
+
+function render() {
+  var grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  READY = {};
+  var S = Math.max(256, Math.min(2048, parseInt(document.getElementById('sz').value, 10) || 1024));
+
+  PLANS.forEach(function(p) {
+    var card = document.createElement('div'); card.className = 'card';
+    var title = document.createElement('h3'); title.textContent = p.name;
+    var cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+    card.appendChild(title);
+    card.appendChild(cv);
+    grid.appendChild(card);
+
+    var img = new Image();
+    img.onload = function() {
+      var ctx = cv.getContext('2d');
+      ctx.clearRect(0, 0, S, S);
+      ctx.drawImage(img, 0, 0, S, S);
+      var a = document.createElement('a');
+      a.className = 'dl';
+      a.textContent = 'Télécharger bokonzi-' + p.key + '.png';
+      try {
+        var url = cv.toDataURL('image/png');
+        READY[p.key] = url;
+        a.href = url;
+        a.download = 'bokonzi-' + p.key + '.png';
+      } catch (e) {
+        a.textContent = 'Erreur de conversion';
+      }
+      card.appendChild(a);
+    };
+    img.onerror = function() {
+      var e = document.createElement('p');
+      e.style.color = '#f85149'; e.style.fontSize = '12px';
+      e.textContent = 'SVG introuvable : stripe-' + p.key + '.svg';
+      card.appendChild(e);
+    };
+    img.src = 'stripe-' + p.key + '.svg';
+  });
+}
+render();
+</script>
+</body>
+</html>

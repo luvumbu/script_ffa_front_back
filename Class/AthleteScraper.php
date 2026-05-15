@@ -344,44 +344,103 @@ class AthleteScraper
     {
         $selections = [];
 
-        // Pattern des sélections :
-        // "Jeune - 22/07/2000 (1j) - (22 ans)"
-        // "Liverpool GBR - FRA - GER moins de 23 ans : 4 x 400 m - 2è 3'43''65"
-        $blocks = preg_split('/<(?:div|tr|li)[^>]*>/i', $this->html);
+        if (empty($this->html)) {
+            $this->selections = [];
+            return;
+        }
 
-        $currentType = '';
-        $currentDate = '';
-        $currentDuree = '';
-        $currentAge = '';
+        // Format athle.fr 2025+ (nouvelle interface) :
+        //   <p class="body-small bold text-blue mb-5">INT A - 13/09/2025 (9j) - (39 ans)</p>
+        //   <p class="body-small">Tokyo (JPN) - Championnats du Monde : Perche (Finale) 8. 5m75</p>
+        //
+        // Strategie : isoler la section "Selections en equipe de France", puis
+        // extraire les paires (header bold) + (resultat) sous forme de <p>...</p>.
 
-        foreach ($blocks as $block) {
-            $text = trim(strip_tags($block));
-            if (empty($text)) continue;
+        $startPos = stripos($this->html, 'Sélections en équipe de France');
+        if ($startPos === false) {
+            // Fallback : vieille interface ou page sans selection
+            $this->selections = [];
+            return;
+        }
+        $sectionHtml = substr($this->html, $startPos);
+        $endPos = stripos($sectionHtml, '</section>');
+        if ($endPos !== false) {
+            $sectionHtml = substr($sectionHtml, 0, $endPos);
+        }
 
-            // Ligne d'en-tête de sélection : "A - 22/07/2000 (1j) - (22 ans)" ou "Jeune - 22/07/2000..."
-            if (preg_match('/(A|Jeune|Junior|Espoir)\s*-\s*(\d{2}\/\d{2}\/\d{4})\s*\((\d+j?)\)\s*-\s*\((\d+)\s*ans\)/iu', $text, $m)) {
-                $currentType  = trim($m[1]);
-                $currentDate  = $this->convertDateToSql($m[2]);
-                $currentDuree = trim($m[3]);
-                $currentAge   = (int)$m[4];
+        // Trouver les paires <p ... bold ...>HEADER</p>  <p ...>RESULT</p>
+        $pattern = '/<p[^>]*\bbold\b[^>]*>(.*?)<\/p>\s*<p[^>]*>(.*?)<\/p>/si';
+        if (!preg_match_all($pattern, $sectionHtml, $pairs, PREG_SET_ORDER)) {
+            $this->selections = [];
+            return;
+        }
+
+        foreach ($pairs as $pair) {
+            $header = trim(html_entity_decode(strip_tags($pair[1]), ENT_QUOTES, 'UTF-8'));
+            $result = trim(html_entity_decode(strip_tags($pair[2]), ENT_QUOTES, 'UTF-8'));
+            // Normaliser les espaces multiples
+            $header = preg_replace('/\s+/u', ' ', $header);
+            $result = preg_replace('/\s+/u', ' ', $result);
+
+            // Parser le header : "TYPE - DATE (Xj) - (Y ans)"
+            // TYPE = "INT A", "Jeune", "Junior", "Espoir", "A", etc.
+            if (!preg_match('#^(.+?)\s*-\s*(\d{2}/\d{2}/\d{4})\s*\((\d+)\s*j?\)\s*-\s*\((\d+)\s*ans\)#u', $header, $hm)) {
                 continue;
             }
+            $type  = trim($hm[1]);
+            $date  = $this->convertDateToSql($hm[2]);
+            $duree = (int)$hm[3];
+            $age   = (int)$hm[4];
 
-            // Ligne de résultat : "Liverpool GBR - FRA - GER moins de 23 ans : 4 x 400 m - 2è 3'43''65"
-            if (!empty($currentDate) && preg_match('/(.+?)\s*:\s*(.+?)\s*-\s*(\d+)[èe]?\s+([\d\'\'\"\.:]+\d+)/u', $text, $m)) {
-                $selections[] = [
-                    'athlete_id'  => $this->athleteId,
-                    'type'        => $currentType,
-                    'date'        => $currentDate,
-                    'duree_jours' => (int)$currentDuree,
-                    'age'         => $currentAge,
-                    'competition' => trim($m[1]),
-                    'epreuve'     => trim($m[2]),
-                    'classement'  => (int)$m[3],
-                    'performance'     => self::performanceToInt(trim($m[4])),
-                    'performance_brut' => trim($m[4]),
-                ];
+            // Parser le resultat : "LIEU (PAYS) - COMPETITION : EPREUVE (TOUR) RANK. PERF [extra]"
+            // Decoupage : tout avant " : " = competition (lieu + competition), tout apres = epreuve + result
+            $rParts = explode(' : ', $result, 2);
+            if (count($rParts) < 2) continue;
+            $competition = trim($rParts[0]);  // ex: "Tokyo (JPN) - Championnats du Monde"
+            $epReste     = trim($rParts[1]);  // ex: "Perche (Finale) 8. 5m75"
+
+            // Extraire (TOUR) en premier - ex: (Finale), (Série), (Demi-finale)
+            $tour = '';
+            $epRestePropre = $epReste;
+            if (preg_match('/^(.+?)\s*\(([^)]+)\)/u', $epReste, $tm)) {
+                // Premier paren = tour si pas de digit (eviter parens d'extra info comme "(Série - 5m65)")
+                $candidate = trim($tm[2]);
+                if (!preg_match('/^\d/u', $candidate)) {
+                    $tour = $candidate;
+                }
             }
+
+            // Extraire RANK. PERF — pattern : "<epreuve> <RANK>. <PERF>"
+            $epreuve    = $epReste;
+            $classement = 0;
+            $perfBrut   = '';
+            if (preg_match('/^(.+?)(?:\s*\(([^)]+)\))?\s+(\d+)\.\s+(\S+)/u', $epReste, $rm)) {
+                $epreuve    = trim($rm[1]);
+                $classement = (int)$rm[3];
+                $perfBrut   = trim($rm[4]);
+                // Filtrer les pseudo-perfs ("DNF", "NM", "DSQ", etc.)
+                if (!preg_match('/[0-9]/', $perfBrut)) {
+                    $perfBrut = '';
+                }
+            } else {
+                // Pas de rang/perf : selection sans resultat (blessure, etc.)
+                // Nettoyer eventuellement la (TOUR) en fin
+                $epreuve = preg_replace('/\s*\([^)]+\)\s*$/u', '', $epReste);
+            }
+
+            $selections[] = [
+                'athlete_id'       => $this->athleteId,
+                'type'             => $type,
+                'date'             => $date,
+                'duree_jours'      => $duree,
+                'age'              => $age,
+                'competition'      => $competition,
+                'epreuve'          => $epreuve,
+                'tour'             => $tour,
+                'classement'       => $classement,
+                'performance'      => $perfBrut !== '' ? self::performanceToInt($perfBrut) : 0,
+                'performance_brut' => $perfBrut,
+            ];
         }
 
         $this->selections = $selections;

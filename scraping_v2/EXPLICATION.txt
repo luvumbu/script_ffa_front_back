@@ -1,0 +1,844 @@
+================================================================================
+SCRAPING_V2 — EXPLICATION COMPLETE
+================================================================================
+
+Ce document explique TOUT le systeme scraping_v2 de A a Z, sans rien supposer.
+Lis-le dans l'ordre, chaque section construit sur la precedente.
+
+
+================================================================================
+1. POURQUOI CE SYSTEME EXISTE
+================================================================================
+
+Le projet BOKONZI scrape des donnees d'athletes depuis athle.fr (le site
+officiel de la Federation Francaise d'Athletisme).
+
+Le scraping classique (dossier scraping/) parcourt la table nom_et_liens qui
+contient les URLs directes de CHAQUE ATHLETE :
+    https://athle.fr/athletes/2688957/bilans
+    https://athle.fr/athletes/2688958/bilans
+    ...
+
+Mais d'ou viennent ces 300 000 URLs au depart ? Elles ont ete decouvertes en
+parcourant des CLASSEMENTS PAR EPREUVE :
+
+    "Donne-moi les 100 meilleures performeuses au 800m femme en 2024"
+    https://bases.athle.fr/...?frmannee=2024&frmepreuve=208&frmsexe=F&...
+
+Sur chaque page de classement, on trouve une liste d'athletes avec leurs URLs
+individuelles. C'est en parcourant ces classements qu'on alimente la table
+nom_et_liens.
+
+Les tables comme u489596434_bokonzi_on_demi_fond_piste_f stockent ces URLs
+DE CLASSEMENT : une URL par combinaison (annee, epreuve, sexe).
+
+Probleme : ces tables contiennent des URLs depuis 2004 jusqu'a 2026. Si on
+relance la decouverte sans filtre, on perd du temps sur des annees qu'on ne
+veut plus traiter.
+
+LA SOLUTION : scraping_v2 est une couche d'INTELLIGENCE qui :
+  1. Lit ces tables
+  2. Comprend les URLs (parse les parametres : annee, epreuve, sexe...)
+  3. Te laisse choisir QUELLES annees garder (via checkboxes)
+  4. Compte exactement combien d'URLs seront scrapees
+  5. (Phase 2 a venir) Lance le scraping uniquement sur les URLs cochees
+
+
+================================================================================
+2. LES 5 FICHIERS DU PROJET
+================================================================================
+
+scraping_v2/
+|
+|-- index.php                      Interface web (le seul fichier que tu ouvres)
+|
+|-- lib/
+|   |-- UrlAnalyzer.php            Decode les URLs athle.fr
+|   |-- EpreuveMapper.php          Apprend les codes FFA tout seul
+|   `-- SourceTableReader.php      Lit les tables sources de la BDD
+|
+|-- data/
+|   `-- parametres_athle.json      Dictionnaire des parametres URL
+|
+`-- EXPLICATION.txt                Ce fichier
+
+
+================================================================================
+3. LE FICHIER index.php
+================================================================================
+
+C'est l'interface. Quand tu ouvres https://bokonzi.com/scraping_v2/, voici
+ce qui se passe DANS L'ORDRE :
+
+  1. PHP demarre, active l'affichage des erreurs (utile pour debug).
+
+  2. Verifie que tous les fichiers prerequis sont presents.
+     Si non, affiche la liste des fichiers manquants et s'arrete.
+
+  3. Inclut core/db.php qui ouvre une connexion MySQL ($conn).
+
+  4. Cree une instance de SourceTableReader.
+     Lui demande "donne-moi toutes les tables sources".
+     Resultat : 14 tables (sprint_piste_h, demi_fond_piste_f, etc.)
+
+  5. Determine quelle table tu regardes :
+     - Si l'URL contient ?table=NOM, prend celle-la
+     - Sinon, prend la 1ere de la liste
+
+  6. Compte combien de lignes existent par annee (GROUP BY annee).
+     Resultat : [2004 => 1, 2005 => 2, ..., 2026 => 5]
+
+  7. Determine quelles annees sont cochees :
+     - Si l'URL contient ?annees[]=2024&annees[]=2025, prend celles-la
+     - Si tu as soumis le formulaire sans rien cocher, liste vide
+     - Sinon (1er chargement), coche par defaut toutes les annees >= 2024
+
+  8. Cree une instance d'UrlAnalyzer.
+
+  9. Cree une instance d'EpreuveMapper.
+     Lui demande "apprends le mapping en lisant toutes les tables".
+     Le mapper parcourt chaque ligne et apprend que frmepreuve=208 -> "800m".
+
+ 10. Lit les 5 premieres lignes de la table active.
+
+ 11. Prend la 1ere ligne, demande a l'analyzer de decoder son URL.
+     Resultat : { annee:2004, code:208, sexe:F, ... }
+
+ 12. Croise avec le mapper : code 208 -> libelle "800m".
+
+ 13. Compte combien de lignes passeront le filtre (annee cochee).
+
+ 14. Affiche tout : formulaire en haut, 5 sections d'analyse en dessous.
+
+Le formulaire envoie ses parametres en GET, donc l'URL devient partageable
+et bookmarkable :
+
+    ?table=u489596434_bokonzi_on_demi_fond_piste_f
+    &annees[]=2024
+    &annees[]=2025
+    &annees[]=2026
+
+Boutons rapides en JS (pas de PHP) :
+  - Tout cocher / Tout decocher
+  - >= 2024 / >= 2020 (coche toutes les annees superieures ou egales)
+
+
+================================================================================
+4. LE FICHIER lib/UrlAnalyzer.php
+================================================================================
+
+Role : prendre une URL bases.athle.fr et la rendre lisible.
+
+CLASSE : UrlAnalyzer
+
+Constructeur :
+  Charge data/parametres_athle.json en memoire (le dictionnaire des params).
+
+Methode publique principale : analyze($url)
+
+  Entree : "https://bases.athle.fr/asp.net/liste.aspx?frmpostback=true&
+            frmbase=bilans&frmannee=2004&frmepreuve=208&frmsexe=F&..."
+
+  Sortie : tableau associatif structure :
+    [
+      'valide'           => true,
+      'url_brute'        => '...',
+      'hote'             => 'bases.athle.fr',
+      'chemin'           => '/asp.net/liste.aspx',
+      'parametres_bruts' => [...],
+      'type_page'        => 'Classement annuel par epreuve',
+      'annee'            => 2004,
+      'epreuve_code'     => '208',
+      'epreuve_libelle'  => null,  (rempli plus tard par EpreuveMapper)
+      'sexe'             => 'Femme',
+      'categorie'        => 'Toutes categories',
+      'departement'      => '(toute la France)',
+      'ligue'            => '(toutes ligues)',
+      'nationalite'      => '(toutes)',
+      'vent'             => '(aucun filtre)',
+      'pagination'       => [
+        'position' => 0,
+        'page_estimee' => 1,
+        'taille_page' => 50,
+      ],
+      'alertes'          => [],
+    ]
+
+  Si l'URL n'a pas de parametres, retourne ['valide' => false, 'erreur' => ...].
+
+  Detection d'incoherences : si annee manque, ou code epreuve manque, ou sexe
+  manque, ajoute un message dans 'alertes'.
+
+Methode publique : passesYearFilter($url, $minYear)
+  Renvoie true si annee >= minYear, false sinon.
+  Plus utilisee depuis qu'on a les checkboxes, mais reste dispo.
+
+Methode publique : urlPourPage($url, $numeroPage)
+  Cree une nouvelle URL avec une pagination differente.
+  Exemple : urlPourPage($u, 3) -> meme URL avec frmposition=100 (page 3).
+  Utile pour la phase 2 : parcourir les pages 1, 2, 3, ..., 11 d'un classement.
+
+Methode publique : resume($url)
+  Renvoie une chaine courte : "2004 | 800m | Femme".
+
+Methodes privees (pas appelees de l'exterieur) :
+  decodeBase($value)      : 'bilans' -> 'Classement annuel par epreuve'
+  decodeSexe($value)      : 'F' -> 'Femme'
+  decodeCategorie($value) : 'SE' -> 'Senior'
+
+Toutes les correspondances viennent de data/parametres_athle.json.
+
+
+================================================================================
+5. LE FICHIER lib/EpreuveMapper.php
+================================================================================
+
+Role : apprendre TOUT SEUL ce que veut dire chaque code FFA.
+
+Probleme initial : on n'a pas la liste officielle des codes athle.fr.
+On voit frmepreuve=208 dans l'URL mais on ne sait pas que c'est "800m".
+
+Solution astucieuse : tes tables BDD contiennent A LA FOIS l'URL et le
+libelle (colonne epreuve : "2004 | 800m | F"). En croisant les deux,
+on apprend le mapping automatiquement.
+
+CLASSE : EpreuveMapper
+
+Constructeur :
+  Recoit la connexion MySQL et le prefixe des colonnes.
+  Initialise un cache vide.
+
+Methode publique principale : chargerDepuisTables(array $tables)
+
+  Pour chaque table :
+    1. Verifie que la colonne url existe
+    2. Lit toutes les lignes
+    3. Pour chaque ligne :
+       a. Extrait frmepreuve de l'URL    -> code (ex: 208)
+       b. Extrait le libelle de la colonne epreuve -> libelle (ex: "800m")
+       c. Stocke code -> libelle dans le cache
+       d. Compte les occurrences (combien de fois on a vu ce code)
+       e. Note dans quelles tables ce code apparait
+
+  Apres l'execution, le cache ressemble a :
+    [
+      '208' => ['libelle' => '800m', 'tables' => [...], 'occurrences' => 12],
+      '209' => ['libelle' => '1500m', 'tables' => [...], 'occurrences' => 18],
+      ...
+    ]
+
+Methode publique : libelle($code)
+  Renvoie "800m" si on lui passe "208", null si inconnu.
+
+Methode publique : tousLesMappings()
+  Renvoie tout le cache pour affichage.
+
+Methode publique : nombreMappings()
+  Renvoie le total de codes appris (affiche en haut de l'UI).
+
+Methodes privees :
+  extraireCode($url)         : parse l'URL, renvoie la valeur de frmepreuve.
+  extraireLibelle($colonne)  : split "2004 | 800m | F" et garde "800m".
+
+
+================================================================================
+6. LE FICHIER lib/SourceTableReader.php
+================================================================================
+
+Role : couche d'acces a la BDD. Decouvre les tables sources et lit leurs
+donnees.
+
+POINT IMPORTANT : toutes les tables soeurs partagent le MEME prefixe pour
+leurs colonnes (u489596434_bokonzi_on_), pas le nom de la table.
+
+Exemple :
+  Table : u489596434_bokonzi_on_sprint_piste_h
+  Colonnes : u489596434_bokonzi_on_id, u489596434_bokonzi_on_url, ...
+             (PAS u489596434_bokonzi_on_sprint_piste_h_id !)
+
+Cette particularite a cause un bug a la 1ere version (page blanche),
+maintenant corrige : le code utilise le prefixe FIXE.
+
+CLASSE : SourceTableReader
+
+Constructeur :
+  Recoit la connexion MySQL et le prefixe (par defaut u489596434_bokonzi_on_).
+
+Methode publique : listerTables()
+
+  Requete :
+    SELECT TABLE_NAME, TABLE_ROWS FROM INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_SCHEMA = 'u489596434_bokonzi_on'
+      AND (TABLE_NAME LIKE '...sprint%'
+        OR TABLE_NAME LIKE '...demi_fond%'
+        OR TABLE_NAME LIKE '...saut%'
+        OR TABLE_NAME LIKE '...lancer%'
+        OR TABLE_NAME LIKE '...haies%'
+        OR TABLE_NAME LIKE '...marche%'
+        OR TABLE_NAME LIKE '...combine%')
+
+  Renvoie pour chaque table :
+    [
+      'nom'           => 'u489596434_bokonzi_on_sprint_piste_h',
+      'lignes_approx' => 137,
+      'meta' => [
+        'discipline' => 'sprint',
+        'lieu'       => 'piste',
+        'sexe'       => 'H',
+      ],
+    ]
+
+Methode publique : compterLignes($table)
+  SELECT COUNT(*) exact (peut etre different de TABLE_ROWS qui est approximatif).
+
+Methode publique : premieresLignes($table, $limit = 5)
+  Lit les N premieres lignes.
+  Renvoie : [['id' => 1, 'url' => '...', 'page_total' => '11',
+              'epreuve' => '2004 | 800m | F', 'time' => '2025-06-09 ...'], ...]
+
+Methode publique : compterParAnnee($table)
+  Requete :
+    SELECT TRIM(SUBSTRING_INDEX(epreuve, '|', 1)) AS annee, COUNT(*) AS n
+    FROM table GROUP BY annee ORDER BY annee ASC
+
+  Renvoie : [2004 => 1, 2005 => 2, 2006 => 1, ..., 2026 => 5]
+
+  C'est cette fonction qui alimente :
+    - Les checkboxes en haut du formulaire
+    - La section "Distribution des annees"
+
+Methode publique : prefixeColonnes()
+  Renvoie le prefixe (utile si une autre classe en a besoin).
+
+Methode privee : extraireMeta($nomTable)
+  Parse "u489596434_bokonzi_on_sprint_piste_h" en :
+    - discipline : sprint
+    - lieu : piste
+    - sexe : H
+
+
+================================================================================
+7. LE FICHIER data/parametres_athle.json
+================================================================================
+
+Pas de code, juste un dictionnaire JSON.
+
+Documente chaque parametre URL d'athle.fr :
+  frmpostback   : indicateur ASP.NET (peu important)
+  frmbase       : type de classement (bilans / records / selections)
+  frmmode       : mode interne ASP.NET
+  frmespace     : espace de consultation
+  frmannee      : annee (CLE pour le filtre)
+  frmepreuve    : code numerique de l'epreuve (mappe par EpreuveMapper)
+  frmsexe       : F (Femme) / M ou H (Homme)
+  frmcategorie  : SE, ES, JU, CA, MI, BE, PO, EA, V1-V4 (vide = toutes)
+  frmdepartement: code departement (75, 13, 92...)
+  frmligue      : code ligue regionale
+  frmnationalite: code nationalite (FRA, MAR, ALG...)
+  frmvent       : filtre vent (sprint/saut)
+  frmamaxi      : limite de performance
+  frmposition   : pagination (page_n = position / 50 + 1)
+
+Structure typique :
+{
+  "parametres": {
+    "frmsexe": {
+      "role": "Genre",
+      "valeurs": {
+        "F": "Femme",
+        "M": "Homme",
+        "H": "Homme (variante)"
+      },
+      "important": true
+    },
+    ...
+  }
+}
+
+UrlAnalyzer charge ce fichier au constructeur et l'utilise pour les fonctions
+decode*().
+
+
+================================================================================
+8. LE FLUX COMPLET (qui appelle qui)
+================================================================================
+
+Quand tu ouvres https://bokonzi.com/scraping_v2/?annees[]=2024&annees[]=2025
+
+  +--------------------------------------------------------------+
+  | NAVIGATEUR                                                   |
+  +--------------------------------------------------------------+
+                              |
+                              | GET /scraping_v2/?annees[]=2024...
+                              v
+  +--------------------------------------------------------------+
+  | APACHE/PHP HOSTINGER                                         |
+  | execute index.php                                            |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | index.php                                                    |
+  | 1. require core/db.php          -> $conn                     |
+  | 2. require lib/UrlAnalyzer.php                              |
+  | 3. require lib/EpreuveMapper.php                            |
+  | 4. require lib/SourceTableReader.php                        |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | new SourceTableReader($conn)                                 |
+  | -> listerTables()                                            |
+  |    SQL: INFORMATION_SCHEMA.TABLES                            |
+  |    Resultat: 14 tables                                       |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | compterParAnnee('demi_fond_piste_f')                         |
+  | SQL: SELECT annee, COUNT(*) GROUP BY annee                  |
+  | Resultat: [2004=>1, 2005=>2, ..., 2026=>5]                  |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | new UrlAnalyzer()                                            |
+  | charge data/parametres_athle.json                            |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | new EpreuveMapper($conn)                                     |
+  | -> chargerDepuisTables(14 tables)                            |
+  |    Pour chaque ligne :                                       |
+  |      extraireCode(url) + extraireLibelle(epreuve)            |
+  |    -> [208 => '800m', 209 => '1500m', ...]                   |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | premieresLignes('demi_fond_piste_f', 5)                      |
+  | Resultat: 5 lignes brutes                                    |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | analyzer->analyze(premieres[0]['url'])                       |
+  | Resultat: structure complete (annee, code, sexe, ...)        |
+  | mapper->libelle('208') -> "800m"                             |
+  +--------------------------------------------------------------+
+                              |
+                              v
+  +--------------------------------------------------------------+
+  | RENDU HTML                                                   |
+  | - Header                                                     |
+  | - Formulaire avec selecteur de table + checkboxes annees     |
+  | - Section 1: URL brute                                       |
+  | - Section 2: Analyse intelligente (table avec verdict)       |
+  | - Section 3: Distribution des annees                         |
+  | - Section 4: Mapping codes appris                            |
+  | - Section 5: Apercu 5 premieres lignes                       |
+  +--------------------------------------------------------------+
+                              |
+                              v
+                      [Affichage navigateur]
+
+
+================================================================================
+9. COMMENT UTILISER LE SYSTEME
+================================================================================
+
+Etape 1 : Ouvrir https://bokonzi.com/scraping_v2/
+
+Etape 2 : Choisir une table dans le selecteur
+   (par defaut la 1ere : demi_fond_piste_f)
+
+Etape 3 : Cocher les annees a garder
+   - Au 1er chargement : >= 2024 sont cochees automatiquement
+   - Boutons rapides : Tout cocher / Tout decocher / >= 2024 / >= 2020
+   - Ou clique manuellement sur chaque case
+
+Etape 4 : Cliquer "Analyser"
+
+Etape 5 : Lire les 5 sections :
+   - URL brute       (la 1ere URL de la table avec son contexte)
+   - Analyse         (decodage complet de cette URL)
+   - Distribution   (combien de lignes par annee, lesquelles passent)
+   - Mapping         (les codes FFA appris automatiquement)
+   - Apercu          (les 5 premieres lignes avec leur verdict)
+
+Etape 6 (a venir, phase 2) : cliquer sur un bouton "Lancer le scraping"
+   qui parcourt les URLs cochees et alimente nom_et_liens.
+
+
+================================================================================
+10. EXEMPLES DE FILTRAGE
+================================================================================
+
+Cas 1 : Tu veux tout scraper depuis 2024
+  -> Coche [2024] [2025] [2026]
+  -> Ou clique sur le bouton ">= 2024"
+
+Cas 2 : Tu veux uniquement les performances olympiques 2024
+  -> Coche [2024] uniquement
+  -> Decoche tout le reste
+
+Cas 3 : Tu veux comparer 2020 et 2024
+  -> Coche [2020] [2024] uniquement
+  -> Les annees 2021, 2022, 2023, 2025, 2026 seront ignorees
+
+Cas 4 : Tu veux tout reprendre depuis le debut
+  -> Clique "Tout cocher"
+  -> Toutes les annees passent le filtre
+
+L'URL est partageable :
+  /scraping_v2/?table=...&annees[]=2024&annees[]=2025
+
+Tu peux la bookmarker pour retrouver ta selection plus tard.
+
+
+================================================================================
+11. CE QUI N'EST PAS ENCORE FAIT (PHASE 2)
+================================================================================
+
+scraping_v2/ ne fait QUE de la lecture pour l'instant. Aucun scraping reel.
+
+Phase 2 a construire :
+
+  A. Bouton "Lancer le scraping" dans l'UI
+     Une fois les annees cochees, un bouton lance le traitement.
+
+  B. Boucle sur les URLs cochees
+     Pour chaque ligne dont annee est cochee :
+       1. Recuperer l'URL et le nombre de pages (page_total)
+       2. Pour chaque page (1 a page_total) :
+          a. Generer l'URL de cette page (analyzer->urlPourPage)
+          b. Telecharger le HTML (curl)
+          c. Parser le HTML pour extraire les liens d'athletes
+          d. Inserer dans nom_et_liens si pas deja present
+
+  C. Progression et reprise
+     Comme scraper.php : flag start/stop, fichier progress, auto-refresh,
+     gestion des erreurs dans failed.json.
+
+  D. Logs et statistiques
+     Combien d'athletes nouveaux par execution, combien de doublons evites.
+
+A ce stade, scraping_v2 alimentera nom_et_liens, qui sera ensuite scrapee
+par scraper.php classique pour remplir la BDD athletes.
+
+
+================================================================================
+12. POINTS D'ATTENTION
+================================================================================
+
+- Toutes les tables soeurs partagent le MEME prefixe de colonnes
+  (u489596434_bokonzi_on_), pas le nom de la table. Ne JAMAIS supposer
+  que la colonne s'appelle nom_table_id, c'est faux.
+
+- Le mapping des codes epreuves est appris dynamiquement. Si tu ajoutes une
+  nouvelle table avec de nouveaux codes, ils seront appris automatiquement
+  au prochain chargement.
+
+- L'affichage des erreurs PHP est active dans index.php (display_errors=1).
+  A desactiver une fois en production stable.
+
+- Le dossier est PUBLIC : n'importe qui peut ouvrir l'URL. Pour la phase 2
+  qui touchera la BDD en ecriture, il faudra ajouter une protection
+  (cookie admin ou cle API).
+
+- La requete chargerDepuisTables() lit TOUTES les tables a chaque chargement.
+  Pour les grosses tables, ca peut etre lent. Si besoin, ajouter un cache
+  de 24h plus tard.
+
+- Les colonnes longtext stockent les URLs. Pas de probleme pour l'instant
+  mais pour des index plus efficaces, on pourrait migrer vers VARCHAR(500).
+
+
+================================================================================
+13. DEBOGAGE
+================================================================================
+
+Si la page est blanche :
+  1. Verifier que tous les fichiers sont uploades (lib/, data/)
+  2. Ajouter ?debug=1 a l'URL pour voir l'etat de la connexion BDD
+  3. Verifier les logs PHP de Hostinger (hPanel -> Logs)
+  4. Tester un fichier minimal isolement
+
+Si "Aucune table source detectee" :
+  - Probleme de prefixe de colonnes (deja corrige dans la version actuelle)
+  - Verifier que les 14 tables existent toujours en BDD
+
+Si les checkboxes restent vides :
+  - Verifier que compterParAnnee renvoie bien des donnees
+  - Verifier le format de la colonne epreuve : doit etre "YYYY | libelle | sexe"
+
+Si le mapping FFA est vide :
+  - Verifier que chargerDepuisTables est bien appele
+  - Verifier que les colonnes url et epreuve contiennent des valeurs
+
+
+================================================================================
+14. SECTION 2 DE L'UI : "ANALYSE INTELLIGENTE DE L'URL"
+================================================================================
+
+Cette section affiche DEUX cartes cote a cote.
+
+CARTE GAUCHE : "Decodage des parametres"
+
+C'est la traduction humaine de chaque parametre de l'URL.
+
+  Hote
+    Le domaine du site source.
+    Valeur typique : "bases.athle.fr"
+    D'ou ca vient : parse_url($url)['host']
+
+  Type de page
+    Indique quel type de classement est consulte.
+    Valeurs possibles :
+      - "Classement annuel par epreuve"  (frmbase=bilans)
+      - "Records"                         (frmbase=records)
+      - "Selections en equipe nationale"  (frmbase=selections)
+    D'ou ca vient : decodeBase() qui lit parametres_athle.json
+
+  Annee
+    L'annee du classement.
+    Valeur : entier 4 chiffres (ex: 2004, 2024, 2026)
+    Couleur :
+      - VERT  si l'annee est cochee dans tes checkboxes -> "GARDE"
+      - JAUNE si l'annee n'est pas cochee              -> "SKIP"
+    D'ou ca vient : frmannee= dans l'URL
+
+  Code epreuve
+    Code numerique FFA de l'epreuve.
+    Affichage : "frmepreuve=208"
+    Pas de sens en lui-meme, c'est juste un identifiant.
+    D'ou ca vient : frmepreuve= dans l'URL
+
+  Libelle (mapping auto)
+    Le nom lisible correspondant au code FFA.
+    Valeur : "800m", "1500m", "Longueur", "Poids", etc.
+    Couleur :
+      - VERT si le mapping est connu
+      - GRIS italique "(non appris)" si le code n'a pas encore ete vu
+    D'ou ca vient : EpreuveMapper::libelle($code)
+
+  Sexe
+    Affiche un badge de couleur :
+      - Bleu  pour H/M (Homme)
+      - Rose pour F (Femme)
+    Texte du badge : "Homme" ou "Femme"
+    D'ou ca vient : decodeSexe(frmsexe)
+
+  Categorie
+    Categorie d'age FFA.
+    Valeurs typiques :
+      - "Toutes categories" (vide)
+      - "Senior", "Espoir", "Junior", "Cadet", "Minime", "Benjamin",
+        "Poussin", "Eveil athletique", "Veteran 1" a "Veteran 4"
+    D'ou ca vient : decodeCategorie(frmcategorie)
+
+  Departement
+    Code numerique du departement (75, 13, 92...).
+    Si vide : affiche "(toute la France)".
+    D'ou ca vient : frmdepartement=
+
+  Ligue
+    Code de la ligue regionale.
+    Si vide : "(toutes ligues)".
+
+  Nationalite
+    Code 3 lettres ISO (FRA, MAR, ALG...).
+    Si vide : "(toutes)".
+
+  Pagination
+    Affichage : "position 0 -> page 1 (50/page)"
+    Signifie : on est a la position 0 dans les resultats, ce qui correspond
+    a la page 1, avec 50 resultats par page.
+    Calcul : page = (position / 50) + 1
+    D'ou ca vient : frmposition= dans l'URL
+
+
+CARTE DROITE : "Verdict du filtre annee"
+
+Bloc colore qui te dit si cette URL serait scrapee ou ignoree.
+
+  Cas VERT (GARDE) :
+    "A SCRAPER (annee 2024 cochee)"
+    Description : "Cette URL passe le filtre : 2024 est dans les annees
+    selectionnees."
+    Apparait quand l'annee de l'URL est presente dans tes checkboxes.
+
+  Cas ROUGE (SKIP) :
+    "SKIP (annee 2004 non cochee)"
+    Description : "Cette URL ne passe PAS le filtre. Coche 2004 dans les
+    annees pour la garder."
+    Apparait quand l'annee n'est pas cochee.
+
+  Section "Alertes" (si presente) :
+    Liste de problemes detectes :
+      - "Aucune annee trouvee dans l'URL"
+      - "Aucun code epreuve trouve"
+      - "Aucun sexe specifie"
+    Affichee en jaune sur fond marron seulement si l'URL a un probleme.
+
+  Section "Resume sur 1 ligne" :
+    Une chaine compacte representant l'URL.
+    Format : "annee | libelle | sexe"
+    Exemple : "2004 | 800m | Femme"
+    D'ou ca vient : UrlAnalyzer::resume($url)
+
+
+================================================================================
+15. SECTION 3 DE L'UI : "DISTRIBUTION DES ANNEES DANS LA TABLE"
+================================================================================
+
+Statistiques globales sur la table choisie.
+
+Bandeau du haut :
+  "Total : 205 lignes -- Annees cochees : 5 -- Skip : 200"
+  - Total : nombre absolu de lignes dans la table
+  - Annees cochees : nombre de lignes qui passent ton filtre
+  - Skip : ce qui sera ignore
+
+Liste des annees :
+  Une ligne par annee presente dans la table.
+  Format : "X 2024  62 lignes (30.2%)"
+  - "X" si l'annee est cochee (vert) -> verdict GARDE
+  - "x" si l'annee n'est pas cochee (gris barre) -> verdict SKIP
+  - L'annee
+  - Le nombre absolu de lignes pour cette annee
+  - Le pourcentage par rapport au total
+
+D'ou ca vient :
+  SourceTableReader::compterParAnnee()
+  qui fait : SELECT TRIM(SUBSTRING_INDEX(epreuve, '|', 1)) AS annee,
+                    COUNT(*) AS n
+             FROM table GROUP BY annee
+
+
+================================================================================
+16. SECTION 4 DE L'UI : "MAPPING CODES EPREUVES APPRIS"
+================================================================================
+
+Tableau de tous les codes FFA decouverts automatiquement.
+
+4 colonnes :
+
+  Colonne 1 : Code FFA
+    Le code numerique tel qu'il apparait dans frmepreuve=N de l'URL.
+    Exemple : 208, 209, 210, 311, 502...
+    Affichage : en jaune monospace.
+    D'ou ca vient : extrait des URLs de toutes les tables.
+
+  Colonne 2 : Libelle
+    Le nom humain de l'epreuve.
+    Exemple : "800m", "1500m", "Longueur", "Poids", "100m haies"...
+    Affichage : en blanc gras.
+    D'ou ca vient : extrait de la colonne epreuve "2004 | 800m | F".
+    On prend le morceau du milieu (entre les deux "|").
+
+  Colonne 3 : Occurrences
+    Combien de fois ce code a ete vu dans toutes les tables.
+    Exemple : si le code 208 (800m) apparait 12 fois dans la table femme et
+    8 fois dans la table homme, occurrences = 20.
+    Indication de "popularite" du code.
+    D'ou ca vient : compteur incremente a chaque rencontre.
+
+  Colonne 4 : Tables
+    Combien de tables differentes contiennent ce code.
+    Exemple : "2 tables" signifie que le code apparait dans 2 tables soeurs.
+    Permet de voir si une epreuve est specifique (1 table) ou transverse
+    (plusieurs tables).
+    D'ou ca vient : compteur de tables distinctes.
+
+Important : ce tableau est CONSTRUIT EN DIRECT a chaque chargement.
+Si tu ajoutes une nouvelle table demain avec de nouveaux codes, ils seront
+appris automatiquement.
+
+Le bandeau du haut precise :
+  "Construit dynamiquement en croisant frmepreuve=N (URL) avec la colonne
+   epreuve (libelle). Le mapping s'enrichit automatiquement avec chaque
+   table."
+
+
+================================================================================
+17. SECTION 5 DE L'UI : "APERCU DES 5 PREMIERES LIGNES"
+================================================================================
+
+Tableau qui montre concretement comment chaque ligne sera traitee.
+
+5 colonnes :
+
+  Colonne 1 : id
+    L'identifiant primaire de la ligne dans la table BDD.
+    Format : "#1", "#3", "#4", etc.
+    Affichage : prefixe "#" suivi du chiffre.
+    D'ou ca vient : valeur de la colonne u489596434_bokonzi_on_id.
+
+  Colonne 2 : epreuve
+    Le contenu brut de la colonne epreuve.
+    Format : "ANNEE | LIBELLE | SEXE"
+    Exemple : "2004 | 800m | F"
+    Affichage : tel quel, en blanc.
+    D'ou ca vient : valeur de la colonne u489596434_bokonzi_on_epreuve.
+
+  Colonne 3 : pages
+    Le nombre total de pages de resultats que cette URL contient sur athle.fr.
+    Exemple : "11" signifie que le classement a 11 pages.
+    Important pour la phase 2 : il faudra parcourir 11 pages pour cette URL.
+    D'ou ca vient : valeur de la colonne u489596434_bokonzi_on_page_total.
+
+  Colonne 4 : annee
+    L'annee extraite de l'URL via UrlAnalyzer::analyze().
+    Affichee en chiffres : 2004, 2026, etc.
+    Si non trouvee : "?".
+    D'ou ca vient : analyse->annee = parsing de frmannee= dans l'URL.
+
+  Colonne 5 : verdict
+    Badge colore qui resume le sort de cette ligne :
+      - Badge VERT "GARDE"  : l'annee est cochee, la ligne sera scrapee
+      - Badge ROUGE "SKIP"  : l'annee n'est pas cochee, ligne ignoree
+    Calcul : in_array(annee, annees_cochees)
+
+Cette section est l'illustration concrete de ton filtre. Tu vois directement,
+ligne par ligne, ce qui sera traite et ce qui sera ignore.
+
+
+================================================================================
+18. RESUME ULTRA-COURT (POUR MEMORISATION)
+================================================================================
+
+Quoi ?
+  Un outil qui te montre chaque URL de tes 14 tables et te laisse choisir
+  lesquelles scraper, par annee, via des checkboxes.
+
+Pourquoi ?
+  Pour ne pas perdre de temps sur des annees qui ne t'interessent pas
+  (ex: 2004-2023) et te concentrer sur 2024+.
+
+Comment ?
+  3 classes PHP qui se completent :
+    UrlAnalyzer       : decode 1 URL
+    EpreuveMapper     : apprend les codes 208 -> "800m" tout seul
+    SourceTableReader : lit la BDD et liste les tables
+
+Quoi voir ?
+  L'UI affiche 5 sections qui montrent la 1ere URL en detail, les
+  statistiques par annee, le mapping des codes, et un apercu des 5
+  premieres lignes avec leur verdict.
+
+Quoi ensuite ?
+  Phase 2 : ajouter un bouton "Lancer le scraping" qui parcourt
+  uniquement les URLs cochees pour les 14 tables choisies, telecharge
+  les pages athle.fr, extrait les liens d'athletes, et alimente
+  nom_et_liens.
+
+
+================================================================================
+FIN DU DOCUMENT
+================================================================================
+
+Si quelque chose n'est pas clair ou tu veux qu'on ajoute une fonction,
+demande. Le code est volontairement simple et lisible : chaque fichier a
+une seule responsabilite, pas plus.

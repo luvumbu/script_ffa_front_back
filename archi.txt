@@ -1,0 +1,47 @@
+/project-root
+│
+├── /app
+│   ├── /Core
+│   │   ├── Application.php
+│   │   ├── Router.php
+│   │   ├── Controller.php
+│   │   ├── Model.php
+│   │   ├── View.php
+│   │   ├── Request.php
+│   │   ├── Response.php
+│   │   ├── Database.php
+│   │   ├── Session.php
+│   │   └── Middleware.php
+│   │
+│   ├── /Controllers
+│   │   └── HomeController.php
+│   │
+│   ├── /Models
+│   │   └── User.php
+│   │
+│   ├── /Views
+│   │   ├── layouts/
+│   │   └── home/
+│   │
+│   ├── /Middlewares
+│   │
+│   └── /Services
+│
+├── /config
+│   ├── app.php
+│   └── database.php
+│
+├── /routes
+│   └── web.php
+│
+├── /storage
+│   ├── logs/
+│   └── cache/
+│
+├── /public
+│   ├── index.php
+│   └── assets/
+│
+├── vendor/
+├── composer.json
+└── .env

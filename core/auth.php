@@ -62,7 +62,7 @@ function getCurrentUser($conn) {
 
     $token = $_COOKIE['bk_token'];
     $stmt = $conn->prepare(
-        "SELECT u.id_user, u.email, u.nom, u.prenom, u.role, u.id_athlete
+        "SELECT u.id_user, u.email, u.nom, u.prenom, u.role, u.id_athlete, u.picture, u.email_verified, u.locale, u.last_login
          FROM user_sessions s
          JOIN users u ON u.id_user = s.id_user
          WHERE s.token = ? AND s.expire_at > NOW()"
@@ -84,7 +84,10 @@ function getCurrentUser($conn) {
 function requireAuth($conn) {
     $user = getCurrentUser($conn);
     if (!$user) {
-        header('Location: login.php');
+        // Chemin ABSOLU : sinon, depuis un sous-dossier (ex: pages/), le navigateur
+        // résout "login.php" en "pages/login.php" qui n'existe pas → page blanche.
+        if (!defined('BK_BASE')) require_once __DIR__ . '/paths.php';
+        header('Location: ' . BK_BASE . '/login.php');
         exit;
     }
     return $user;
@@ -125,6 +128,16 @@ function logout($conn) {
         'httponly'  => true,
         'samesite' => 'Lax',
     ]);
+
+    // Supprimer aussi le cookie super admin si present
+    if (!empty($_COOKIE['bk_sa_token'])) {
+        setcookie('bk_sa_token', '', [
+            'expires'  => time() - 3600,
+            'path'     => '/',
+            'httponly'  => true,
+            'samesite' => 'Lax',
+        ]);
+    }
 }
 
 /**

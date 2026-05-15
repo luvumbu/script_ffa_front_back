@@ -138,7 +138,7 @@ if ($email === $username && $password === $GLOBALS['password']) {
 }
 
 // === LOGIN NORMAL ===
-$stmt = $conn->prepare("SELECT id_user, email, password_hash, nom, prenom, role, id_athlete, oauth_provider FROM users WHERE email = ?");
+$stmt = $conn->prepare("SELECT id_user, email, password_hash, nom, prenom, role, id_athlete, oauth_provider, email_verified FROM users WHERE email = ?");
 $stmt->bind_param("s", $email);
 $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
@@ -181,6 +181,46 @@ if (!verifyPassword($password, $user['password_hash'])) {
 clearAttempts($attemptsFile, $attempts, $ip);
 
 $token = createSession($conn, $user['id_user']);
+
+// Notification admin : connexion email/password
+$loginHtml = '<html><body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">'
+    . '<div style="max-width:500px;margin:30px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">'
+    . '<div style="background:#3b82f6;padding:24px 30px;text-align:center;">'
+    . '<h1 style="color:#fff;font-size:22px;margin:0;font-weight:800;">Connexion sur Bokonzi</h1>'
+    . '<p style="color:#dbeafe;font-size:13px;margin:6px 0 0;">via email / mot de passe</p>'
+    . '</div>'
+    . '<div style="padding:24px 30px;">'
+    . '<table style="width:100%;border-collapse:collapse;">'
+    . '<tr><td style="padding:8px 0;color:#888;font-size:13px;width:100px;">Prenom</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($user['prenom'] ?: '-') . '</td></tr>'
+    . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Nom</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($user['nom'] ?: '-') . '</td></tr>'
+    . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Email</td><td style="padding:8px 0;color:#333;font-size:14px;font-weight:600;">' . htmlspecialchars($user['email']) . '</td></tr>'
+    . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">Date</td><td style="padding:8px 0;color:#333;font-size:14px;">' . date('d/m/Y H:i:s') . '</td></tr>'
+    . '<tr><td style="padding:8px 0;color:#888;font-size:13px;">IP</td><td style="padding:8px 0;color:#333;font-size:14px;">' . htmlspecialchars($ip) . '</td></tr>'
+    . '</table>'
+    . '<p style="text-align:center;margin:20px 0 0;"><a href="https://bokonzi.com/admin/panel.php" style="display:inline-block;background:#6c5ce7;color:#fff;padding:10px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">Voir le panel admin</a></p>'
+    . '</div></div></body></html>';
+require_once __DIR__ . '/../../core/mailer.php';
+bkMail('luvumbu.n@gmail.com', 'Connexion email : ' . $user['email'] . ' - Bokonzi', $loginHtml);
+
+// Notification utilisateur : confirmation de connexion
+$_p = htmlspecialchars($user['prenom'] ?: 'Athlete');
+$userHtml = '<html><body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">'
+    . '<div style="max-width:500px;margin:30px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">'
+    . '<div style="background:#3b82f6;padding:24px 30px;text-align:center;">'
+    . '<h1 style="color:#fff;font-size:22px;margin:0;font-weight:800;">Nouvelle connexion sur Bokonzi</h1>'
+    . '</div>'
+    . '<div style="padding:24px 30px;">'
+    . '<p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 16px;">Bonjour <b>' . $_p . '</b>,</p>'
+    . '<p style="font-size:14px;color:#444;line-height:1.6;margin:0 0 16px;">Une connexion a ete effectuee sur votre compte Bokonzi avec votre email et mot de passe.</p>'
+    . '<table style="width:100%;border-collapse:collapse;background:#f9fafb;border-radius:8px;margin-bottom:16px;">'
+    . '<tr><td style="padding:10px 14px;color:#888;font-size:13px;width:80px;">Date</td><td style="padding:10px 14px;color:#333;font-size:14px;">' . date('d/m/Y H:i:s') . '</td></tr>'
+    . '<tr><td style="padding:10px 14px;color:#888;font-size:13px;">IP</td><td style="padding:10px 14px;color:#333;font-size:14px;">' . htmlspecialchars($ip) . '</td></tr>'
+    . '</table>'
+    . '<p style="font-size:13px;color:#888;line-height:1.6;margin:0;">Si ce n\'etait pas vous, contactez-nous immediatement.</p>'
+    . '</div></div></body></html>';
+bkMail($user['email'], 'Connexion sur Bokonzi', $userHtml);
+// Mail rapide a contact@bokonzi.com
+bkMail('contact@bokonzi.com', 'Connexion : ' . $user['email'], '<p>L\'adresse <b>' . htmlspecialchars($user['email']) . '</b> vient de se connecter sur Bokonzi (email/password).</p><p>' . date('d/m/Y H:i:s') . '</p>');
 
 jsonResponse([
     'success' => true,

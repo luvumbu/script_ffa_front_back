@@ -23,60 +23,12 @@
 
 require_once __DIR__ . '/config.php';
 
-// Limites recherches/jour (modifier ici uniquement)
-define('BK_SEARCH_LIMIT_ANON', 100);
-define('BK_SEARCH_LIMIT_LOGGED', 500);
-
-// Rate limiting recherches
-$ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
-$ip = trim(explode(',', $ip)[0]);
-$_isLogged = !empty($_COOKIE['bk_token']);
-$_isSA = !empty($_COOKIE['bk_sa_token']);
-// Cle API = bypass rate limit (utilise par le panel admin)
-if (!$_isSA && (($_GET['bk_key'] ?? '') === 'bk_s3cr3t_2026_xK9mP' || ($_SERVER['HTTP_X_BK_KEY'] ?? '') === 'bk_s3cr3t_2026_xK9mP')) {
-    $_isSA = true;
-}
-
-// Compteurs globaux pour la reponse
-$_searchUsed = 0;
-$_searchLimit = 0;
-
-// Super admin : illimite
-if (!$_isSA) {
-    // Whitelist Google + Hostinger + localhost + bots
-    $wl = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.','35.','34.','153.92.','31.170.','185.201.','127.0.0.1','::1'];
-    $_skip = false;
-    foreach ($wl as $p) { if ($ip !== '' && strpos($ip, $p) === 0) { $_skip = true; break; } }
-    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    if ($ua === '' || strpos($ua, 'curl') !== false || strpos($ua, 'bot') !== false || strpos($ua, 'Bot') !== false) $_skip = true;
-
-    if (!$_skip && $ip !== '') {
-        $slFile = __DIR__ . '/../logs/.search_limits.php';
-        $slData = [];
-        if (file_exists($slFile)) {
-            $raw = file_get_contents($slFile);
-            $pos = strpos($raw, "\n");
-            if ($pos !== false) $slData = json_decode(substr($raw, $pos + 1), true) ?: [];
-        }
-        $slKey = $ip;
-        $slLimit = $_isLogged ? BK_SEARCH_LIMIT_LOGGED : BK_SEARCH_LIMIT_ANON;
-        $slCount = ($slData[$slKey] ?? 0) + 1;
-        $slData[$slKey] = $slCount;
-        @file_put_contents($slFile, "<?php die('Acces interdit'); ?>\n" . json_encode($slData), LOCK_EX);
-        $_searchUsed = $slCount;
-        $_searchLimit = $slLimit;
-        if ($slCount > $slLimit) {
-            jsonResponse([
-                'success' => false,
-                'limit_reached' => true,
-                'limit' => $slLimit,
-                'logged' => $_isLogged,
-                'remaining' => 0,
-                'error' => 'Limite de recherches atteinte'
-            ], 429);
-        }
-    }
-}
+// ---- Rate limiting recherches : 5/jour + 30 min entre 2 recherches ----
+// Logique centralisee dans core/search_limit.php (cf. bkSearchLimit()).
+// Le quota n'est consomme qu'une fois les filtres connus (voir plus bas).
+require_once __DIR__ . '/../core/search_limit.php';
+$_sl   = null;
+$_isSA = false;
 
 function highestNiveau($niveaux) {
     $order = ['IE'=>100,'IR'=>99];
@@ -104,22 +56,59 @@ $competition = trim($_GET['competition'] ?? '');
 $medaille    = trim($_GET['medaille'] ?? '');
 $annee       = trim($_GET['annee'] ?? '');
 $licence     = trim($_GET['licence'] ?? '');
+$niveau      = trim($_GET['niveau'] ?? '');
+// Filtres avances : athletes multi-clubs / multi-disciplines
+$multiClubs       = !empty($_GET['multi_clubs']);
+$multiDisciplines = !empty($_GET['multi_disciplines']);
 $page        = max(1, (int)($_GET['page'] ?? 1));
 $limit       = min(100, max(1, (int)($_GET['limit'] ?? 50)));
 $offset      = ($page - 1) * $limit;
 
+// ---- Quota de recherches : 5/jour + 30 min de delai entre 2 recherches ----
+// On ne consomme le quota que s'il s'agit d'une vraie recherche (au moins 1 filtre).
+$hasFilter = ($nom !== '' || $nom1 !== '' || $nom2 !== '' || $club !== '' || $categorie !== ''
+    || $sexe !== '' || $nationalite !== '' || $epreuve !== '' || $ville !== '' || $competition !== ''
+    || $medaille !== '' || $annee !== '' || $licence !== '' || $niveau !== ''
+    || $multiClubs || $multiDisciplines || trim($_GET['ep_type'] ?? '') !== '');
+$_sl   = bkSearchLimit($conn, $hasFilter);
+$_isSA = $_sl['is_sa'];
+if ($hasFilter && $_sl['blocked']) {
+    jsonResponse(array_merge([
+        'success'       => false,
+        'limit_reached' => true,
+        'reason'        => $_sl['reason'],
+        'limit'         => $_sl['limit'],
+        'remaining'     => 0,
+        'error'         => $_sl['reason'] === 'trial'
+            ? 'Decouverte gratuite terminee — inscrivez-vous pour continuer'
+            : ($_sl['reason'] === 'cooldown'
+                ? 'Patientez avant la prochaine recherche'
+                : 'Limite de recherches atteinte'),
+    ], bkSlFields($_sl)), 429);
+}
+
 // ---- Cache fichier (24h) ----
 $cacheDir = __DIR__ . '/../cache';
 if (!is_dir($cacheDir)) @mkdir($cacheDir, 0755, true);
-$cacheKey = 'search_' . md5($nom.'_'.$nom1.'_'.$nom2.'_'.$club.'_'.$categorie.'_'.$sexe.'_'.$nationalite.'_'.$epreuve.'_'.$ville.'_'.$competition.'_'.$medaille.'_'.$annee.'_'.$licence.'_'.$page.'_'.$limit);
+$cacheKey = 'search_' . md5($nom.'_'.$nom1.'_'.$nom2.'_'.$club.'_'.$categorie.'_'.$sexe.'_'.$nationalite.'_'.$epreuve.'_'.$ville.'_'.$competition.'_'.$medaille.'_'.$annee.'_'.$licence.'_'.$niveau.'_'.$page.'_'.$limit.'_mc'.($multiClubs?1:0).'_md'.($multiDisciplines?1:0).'_et'.strtolower(trim($_GET['ep_type'] ?? '')));
 $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
 if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
     $cached = @file_get_contents($cacheFile);
-    if ($cached !== false) { echo $cached; $conn->close(); exit; }
+    if ($cached !== false) {
+        // Le cache ne doit pas servir des compteurs de quota perimes : on les rafraichit.
+        $_cd = json_decode($cached, true);
+        if (is_array($_cd)) {
+            echo json_encode(array_merge($_cd, bkSlFields($_sl)), JSON_UNESCAPED_UNICODE);
+        } else {
+            echo $cached;
+        }
+        $conn->close();
+        exit;
+    }
 }
 
 // Construire la requete
-$where = [];
+$where = ['1=1']; // garde-fou : evite "WHERE " vide si seuls des joins sont ajoutes (ex: filtre club uniquement avec super admin)
 $joins = [];
 
 if ($nom !== '') {
@@ -163,10 +152,52 @@ if ($club !== '') {
     $joins[] = "JOIN clubs cl ON cl.id_club = ac.id_club AND cl.nom_club LIKE '%$clubEsc%'";
 }
 
-if ($epreuve !== '') {
+// Niveau + Epreuve : MODE STRICT (niveau X SUR epreuve Y, via athlete_niv_perfs.code_perf_niveau)
+$strictNivEp = ($niveau !== '' && $epreuve !== '');
+if ($strictNivEp) {
+    $allowedNiv = ['IA','IB','IE','IR','IR1','IR2','IR3','IR4','N1','N2','N3','N4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
+    $nivCodes = [];
+    foreach (explode(',', $niveau) as $n) {
+        $code = trim($n);
+        if (in_array($code, $allowedNiv, true)) $nivCodes[] = "'" . $conn->real_escape_string($code) . "'";
+    }
+    if (!empty($nivCodes)) {
+        $nivList = implode(',', $nivCodes);
+        $epEsc = $conn->real_escape_string($epreuve);
+        $joins[] = "JOIN athlete_niveaux an_strict ON an_strict.id_athlete = a.id_athlete";
+        $joins[] = "JOIN athlete_niv_perfs anp_strict ON anp_strict.id_niveau = an_strict.id_niveau AND anp_strict.code_perf_niveau IN ($nivList)";
+        $joins[] = "JOIN epreuves ep_strict ON ep_strict.id_epreuve = anp_strict.id_epreuve AND ep_strict.nom_epreuve LIKE '%$epEsc%'";
+    } else {
+        $strictNivEp = false; // niveaux invalides → tomber sur mode normal
+    }
+}
+
+// Mode normal : epreuve seule
+if (!$strictNivEp && $epreuve !== '') {
     $epEsc = $conn->real_escape_string($epreuve);
     $joins[] = "JOIN athlete_records ar ON ar.id_athlete = a.id_athlete";
     $joins[] = "JOIN epreuves ep ON ep.id_epreuve = ar.id_epreuve AND ep.nom_epreuve LIKE '%$epEsc%'";
+}
+
+// Mode normal : niveau seul (best level global)
+if (!$strictNivEp && $niveau !== '') {
+    $hierarchy = ['IA','IB','IE','IR','IR2','N1','N2','N3','N4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
+    $hierarchyList = "'" . implode("','", $hierarchy) . "'";
+    $filterRanks = [];
+    foreach (explode(',', $niveau) as $n) {
+        $code = trim($n);
+        $idx = array_search($code, $hierarchy, true);
+        if ($idx !== false) $filterRanks[] = $idx + 1;
+    }
+    if (!empty($filterRanks)) {
+        $rankList = implode(',', $filterRanks);
+        $joins[] = "INNER JOIN (
+            SELECT id_athlete, MIN(FIELD(code_niveau, $hierarchyList)) as best_rank
+            FROM athlete_niveaux
+            WHERE FIELD(code_niveau, $hierarchyList) > 0
+            GROUP BY id_athlete
+        ) an_filt ON an_filt.id_athlete = a.id_athlete AND an_filt.best_rank IN ($rankList)";
+    }
 }
 
 if ($ville !== '') {
@@ -198,10 +229,48 @@ if ($licence !== '') {
     $where[] = "a.licence_athlete LIKE '%$licEsc%'";
 }
 
+// Filtres avances : athletes multi-clubs (transferts)
+if ($multiClubs) {
+    $where[] = "(SELECT COUNT(DISTINCT id_club) FROM athlete_clubs WHERE id_athlete = a.id_athlete) >= 2";
+}
+
+// Filtres avances : athletes polyvalents (multi-disciplines, 2+ epreuves dans leurs records)
+if ($multiDisciplines) {
+    $where[] = "(SELECT COUNT(DISTINCT id_epreuve) FROM athlete_records WHERE id_athlete = a.id_athlete) >= 2";
+}
+
+// Filtres avances : type d'epreuve (sprint, sauts, lancers, etc.)
+$epType = trim($_GET['ep_type'] ?? '');
+if ($epType !== '') {
+    // Regex MySQL par categorie FFA — appliquees sur epreuves.nom_epreuve
+    $epTypeMap = [
+        'sprint'    => '^(60m|100m|200m|400m)( |$|-)',
+        'demi-fond' => '^(600m|800m|1000m|1500m|Mile|2000m)',
+        'fond'      => '^(3000m|5000m|10000m|Marathon|Semi|Heure|Steeple)',
+        'haies'     => 'Haies|Steeple',
+        'sauts'     => '^(Longueur|Triple saut|Hauteur|Perche)',
+        'lancers'   => '^(Poids|Disque|Marteau|Javelot)',
+        'combines'  => '^(Decathlon|Heptathlon|Pentathlon|Triathlon|Tetrathlon)',
+        'marche'    => '^Marche',
+        'route'     => '(Route|Cross|Trail|Ekiden)',
+    ];
+    $epTypeKey = strtolower($epType);
+    if (isset($epTypeMap[$epTypeKey])) {
+        $regex = $conn->real_escape_string($epTypeMap[$epTypeKey]);
+        $where[] = "EXISTS (
+            SELECT 1 FROM athlete_records ar_t
+            JOIN epreuves ep_t ON ep_t.id_epreuve = ar_t.id_epreuve
+            WHERE ar_t.id_athlete = a.id_athlete
+              AND ep_t.nom_epreuve REGEXP '$regex'
+        )";
+    }
+}
+
 // Filtre clubs >5000 supprime — tous les athletes sont trouvables
 
-// Au moins un filtre requis
-if (empty($where) && empty($joins)) {
+// Au moins un filtre requis (on ignore la sentinelle '1=1')
+$_realWhere = array_filter($where, function($w) { return $w !== '1=1'; });
+if (empty($_realWhere) && empty($joins)) {
     jsonResponse([
         'success' => false,
         'error'   => 'Au moins un filtre requis',
@@ -219,6 +288,9 @@ if (empty($where) && empty($joins)) {
             'medaille'    => 'Type de medaille (or, argent, bronze) → table athlete_medailles',
             'annee'       => 'Annee de resultat (2024, 2023...) → table athlete_resultats',
             'licence'     => 'Numero de licence (partiel) → table athletes.licence_athlete',
+            'multi_clubs'       => '1 = uniquement athletes ayant porte 2+ clubs differents (transferts)',
+            'multi_disciplines' => '1 = uniquement athletes avec records dans 2+ epreuves differentes (polyvalents)',
+            'ep_type'           => 'Type d\'epreuve : sprint, demi-fond, fond, haies, sauts, lancers, combines, marche, route',
             'page'        => 'Numero de page (defaut: 1)',
             'limit'       => 'Resultats par page (defaut: 50, max: 100)',
         ]
@@ -372,16 +444,14 @@ if (!empty($athIds)) {
 
 $totalPages = ceil($total / $limit);
 
-$resp = [
+$resp = array_merge([
     'success'    => true,
     'total'      => $total,
     'page'       => $page,
     'limit'      => $limit,
     'total_pages' => $totalPages,
     'athletes'   => $athletes,
-    'search_used'  => $_searchUsed,
-    'search_limit' => $_searchLimit,
-];
+], bkSlFields($_sl));
 $json = json_encode($resp, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 @file_put_contents($cacheFile, $json, LOCK_EX);
 jsonResponse($resp);
