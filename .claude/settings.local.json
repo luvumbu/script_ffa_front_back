@@ -76,7 +76,16 @@
       "Bash(awk -F: '$1 > 5467 && $1 < 9534')",
       "Bash(awk '$1 != \"??\" && $1 != \"D\"')",
       "Bash(awk '{print $2}')",
-      "Bash(xargs -I{} stat -c \"%s %n\" \"/c/xampp/htdocs/BK/{}\")"
+      "Bash(xargs -I{} stat -c \"%s %n\" \"/c/xampp/htdocs/BK/{}\")",
+      "Bash(xargs -I{} sh -c 'test -f \"/c/xampp/htdocs/BK/{}\" && stat -c \"%s {}\" \"/c/xampp/htdocs/BK/{}\"')",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('Total:', d['total']\\); print\\('Identité:', d['identite']\\); print\\('Enfants:', d['enfants']\\); print\\('Top 3:', [{'id':a['id_athlete'],'name':a['nom_complet_athlete'],'score':a['score_manques']} for a in d['top'][:3]]\\)\")",
+      "Bash(awk NR>=5660 && NR<=5710 {print NR\": \"$0} *)",
+      "Bash(awk '/^elseif \\\\\\(\\\\$page === .profil.\\\\\\)/,/^elseif \\\\\\(\\\\$page === /' index.php)",
+      "Bash(awk 'NR>=8200 && NR<=8260 {print NR\": \"$0}' index.php)",
+      "Bash(awk '/^elseif \\\\\\(\\\\$page === .profil.\\\\\\)/{flag=1} flag{print NR\": \"$0; if\\(/^elseif \\\\\\(\\\\$page ===/ && NR>5640\\) exit}' index.php)",
+      "Bash(node -e \"try{new Function\\(require\\('fs'\\).readFileSync\\('/tmp/prodjs.js','utf8'\\)\\);console.log\\('  JS prod : syntaxe OK'\\)}catch\\(e\\){console.log\\('  JS prod ERREUR: '+e.message\\)}\")",
+      "Bash(node -e \"try{new Function\\(require\\('fs'\\).readFileSync\\('C:/Windows/Temp/cj.js','utf8'\\)\\);console.log\\('JS syntaxe: OK'\\)}catch\\(e\\){console.log\\('JS ERREUR: '+e.message\\)}\")",
+      "Bash(awk *)"
     ]
   }
 }

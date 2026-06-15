@@ -20,7 +20,25 @@
 
 require_once __DIR__ . '/../core/db.php';             // $conn
 require_once __DIR__ . '/../core/stripe_config.php';  // STRIPE_WEBHOOK_SECRET, stripeRequest()
-require_once __DIR__ . '/../core/subscription.php';   // bkUpsertSubscriptionRow()
+require_once __DIR__ . '/../core/subscription.php';   // bkUpsertSubscriptionRow(), hasActiveSubscription()
+require_once __DIR__ . '/../core/emails.php';         // bkSendSubscriptionWelcome()
+
+/**
+ * Envoie l'email de bienvenue / remerciement UNIQUEMENT si l'abonnement est
+ * réellement payé (statut Stripe strictement 'active' — pas 'trialing' ni
+ * 'past_due'). N'est appelé que depuis les événements de paiement encaissé.
+ * Anti-doublon géré dans bkSendSubscriptionWelcome() (1 envoi par user+plan).
+ */
+function wh_welcome_if_active($conn, $idUser) {
+    $idUser = (int)$idUser;
+    if ($idUser <= 0) return;
+    // On lit la ligne fraîche pour vérifier le statut exact.
+    $sub = getUserSubscription($conn, $idUser, true);
+    if (!$sub || ($sub['status'] ?? '') !== 'active') return;
+    // Période payée encore valable ?
+    if (!empty($sub['current_period_end']) && strtotime($sub['current_period_end']) < time()) return;
+    bkSendSubscriptionWelcome($conn, $idUser, $sub['plan'] ?? null);
+}
 
 // On répond toujours vite et sobrement (texte brut, pas de JSON/CORS).
 header('Content-Type: text/plain; charset=utf-8');
@@ -98,14 +116,19 @@ if ($alreadySeen) {
 switch ($eventType) {
 
     case 'checkout.session.completed':
-        // L'utilisateur vient de payer (Checkout OU Payment Link).
+        // Fin de Checkout / Payment Link. On met à jour la base, MAIS on n'envoie
+        // l'email QUE si le paiement est réellement encaissé (payment_status = paid).
+        // Un Checkout avec essai gratuit a payment_status = 'no_payment_required'
+        // → pas d'email tant qu'aucun euro n'est encaissé.
         $subId     = $object['subscription'] ?? '';
         $idHint    = (int)($object['client_reference_id'] ?? 0);
         $emailHint = $object['customer_details']['email'] ?? ($object['customer_email'] ?? null);
+        $isPaid    = (($object['payment_status'] ?? '') === 'paid');
         if ($subId) {
             $resp = stripeRequest('GET', 'subscriptions/' . $subId);
             if (!$resp['error'] && !empty($resp['body']['id'])) {
-                bkUpsertSubscriptionRow($conn, $resp['body'], $idHint, $emailHint);
+                $uid = bkUpsertSubscriptionRow($conn, $resp['body'], $idHint, $emailHint);
+                if ($uid && $isPaid) wh_welcome_if_active($conn, $uid);
             }
         }
         break;
@@ -113,21 +136,35 @@ switch ($eventType) {
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
     case 'customer.subscription.deleted':
-        // L'objet est directement l'abonnement (statut à jour, y compris 'canceled').
+        // Événements de cycle de vie : on met à jour le statut UNIQUEMENT.
+        // Aucun email ici (création/essai/renouvellement/annulation ≠ paiement).
         if (!empty($object['id'])) {
             bkUpsertSubscriptionRow($conn, $object);
         }
         break;
 
     case 'invoice.payment_failed':
-    case 'invoice.paid':
-        // Le changement de statut réel arrive via customer.subscription.updated,
-        // mais on rafraîchit quand même par sécurité si on a l'abonnement.
+        // Échec de paiement : on rafraîchit le statut, pas d'email de bienvenue.
         $subId = $object['subscription'] ?? '';
         if ($subId) {
             $resp = stripeRequest('GET', 'subscriptions/' . $subId);
             if (!$resp['error'] && !empty($resp['body']['id'])) {
                 bkUpsertSubscriptionRow($conn, $resp['body']);
+            }
+        }
+        break;
+
+    case 'invoice.paid':
+        // Paiement RÉELLEMENT encaissé (montant > 0). C'est le seul signal sûr.
+        // L'anti-doublon de bkSendSubscriptionWelcome() évite tout renvoi aux
+        // renouvellements mensuels suivants (1 bienvenue par membre + plan).
+        $subId    = $object['subscription'] ?? '';
+        $amount   = (int)($object['amount_paid'] ?? 0);
+        if ($subId) {
+            $resp = stripeRequest('GET', 'subscriptions/' . $subId);
+            if (!$resp['error'] && !empty($resp['body']['id'])) {
+                $uid = bkUpsertSubscriptionRow($conn, $resp['body']);
+                if ($uid && $amount > 0) wh_welcome_if_active($conn, $uid);
             }
         }
         break;

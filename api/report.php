@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/../core/db.php';
 require_once __DIR__ . '/../core/auth.php';
+require_once __DIR__ . '/../core/athlete_purge.php';
 
 // Auto-creation table
 $conn->query("CREATE TABLE IF NOT EXISTS `profile_reports` (
@@ -96,37 +97,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $_isAdmin) {
     if (isset($_GET['hide_athlete'])) {
         $eid = (int)$_GET['hide_athlete'];
         if ($eid > 0) {
+            $purge = purgeAthleteByExternalId($conn, $eid, 'admin_panel');
+            echo json_encode(['success' => true, 'purged' => true, 'detail' => $purge]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'id invalide']);
+        }
+        exit;
+    }
+    // Soft hide : SET visible=0 (donnees conservees, reversible)
+    if (isset($_GET['soft_hide'])) {
+        $eid = (int)$_GET['soft_hide'];
+        if ($eid > 0) {
             $stmt = $conn->prepare("UPDATE athletes SET visible = 0 WHERE athlete_id_externe = ?");
             $stmt->bind_param('i', $eid);
             $stmt->execute();
+            $affected = $stmt->affected_rows;
             $stmt->close();
-            // Vider tous les caches de cet athlete (toutes les cles possibles)
+            // Vider cache athlete + caches agreges
             $cacheDir = __DIR__ . '/../cache';
-            $files = glob($cacheDir . '/athlete_*.json');
-            if ($files) foreach ($files as $f) {
-                $json = @file_get_contents($f);
-                if ($json && strpos($json, '"' . $eid . '"') !== false) @unlink($f);
+            $cleared = 0;
+            if (is_dir($cacheDir)) {
+                foreach (glob($cacheDir . '/athlete_*.json') ?: [] as $f) {
+                    $json = @file_get_contents($f);
+                    if ($json && (strpos($json, '"' . $eid . '"') !== false || strpos($json, ':' . $eid) !== false)) {
+                        if (@unlink($f)) $cleared++;
+                    }
+                }
+                foreach (['search_*.json', 'liste_*.json', 'stats_*.json', 'topsearched_*.json'] as $pat) {
+                    foreach (glob($cacheDir . '/' . $pat) ?: [] as $f) {
+                        if (@unlink($f)) $cleared++;
+                    }
+                }
             }
+            echo json_encode(['success' => true, 'visible' => 0, 'affected' => $affected, 'cache_cleared' => $cleared]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'id invalide']);
         }
-        echo json_encode(['success' => true, 'visible' => 0]);
         exit;
     }
-    if (isset($_GET['show_athlete'])) {
-        $eid = (int)$_GET['show_athlete'];
+    // Restore : SET visible=1
+    if (isset($_GET['restore'])) {
+        $eid = (int)$_GET['restore'];
         if ($eid > 0) {
             $stmt = $conn->prepare("UPDATE athletes SET visible = 1 WHERE athlete_id_externe = ?");
             $stmt->bind_param('i', $eid);
             $stmt->execute();
+            $affected = $stmt->affected_rows;
             $stmt->close();
-            // Vider tous les caches de cet athlete (toutes les cles possibles)
+            // Vider caches pour que le profil reapparaisse partout
             $cacheDir = __DIR__ . '/../cache';
-            $files = glob($cacheDir . '/athlete_*.json');
-            if ($files) foreach ($files as $f) {
-                $json = @file_get_contents($f);
-                if ($json && strpos($json, '"' . $eid . '"') !== false) @unlink($f);
+            $cleared = 0;
+            if (is_dir($cacheDir)) {
+                foreach (glob($cacheDir . '/athlete_*.json') ?: [] as $f) {
+                    if (@unlink($f)) $cleared++;
+                }
+                foreach (['search_*.json', 'liste_*.json', 'stats_*.json', 'topsearched_*.json'] as $pat) {
+                    foreach (glob($cacheDir . '/' . $pat) ?: [] as $f) {
+                        if (@unlink($f)) $cleared++;
+                    }
+                }
             }
+            echo json_encode(['success' => true, 'visible' => 1, 'affected' => $affected, 'cache_cleared' => $cleared]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'id invalide']);
         }
-        echo json_encode(['success' => true, 'visible' => 1]);
+        exit;
+    }
+    if (isset($_GET['show_athlete'])) {
+        // Reactivation impossible : la purge est definitive (DELETE complet + blacklist).
+        // Pour reapparaitre, il faut retirer manuellement l'entree de athlete_blacklist
+        // puis attendre le prochain scraping.
+        $eid = (int)$_GET['show_athlete'];
+        $unblacklisted = 0;
+        if ($eid > 0 && _tableExists($conn, 'athlete_blacklist')) {
+            $stmt = $conn->prepare("DELETE FROM athlete_blacklist WHERE athlete_id_ext = ?");
+            $stmt->bind_param('i', $eid);
+            $stmt->execute();
+            $unblacklisted = $stmt->affected_rows;
+            $stmt->close();
+        }
+        echo json_encode([
+            'success'       => true,
+            'unblacklisted' => $unblacklisted,
+            'message'       => $unblacklisted > 0
+                ? 'Athlete retire de la blacklist. Il sera re-scrap&eacute; au prochain passage du pipeline (peut prendre plusieurs jours).'
+                : 'Aucune entree blacklist trouvee pour cet ID.'
+        ]);
         exit;
     }
     if (isset($_GET['delete'])) {
@@ -395,10 +451,10 @@ if ($reason === 'retrait' && $email !== '') {
     <div style="max-width:520px;margin:40px auto;background:#111830;border:1px solid #1a2540;border-radius:16px;padding:40px 36px;text-align:center;">
         <div style="font-size:48px;margin-bottom:16px;">&#128274;</div>
         <h2 style="color:#f0f6fc;font-size:22px;margin:0 0 12px;">Confirmer le retrait de votre profil</h2>
-        <p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 8px;">Vous avez demande a rendre invisible le profil suivant sur Bokonzi :</p>
+        <p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 8px;">Vous avez demande le retrait du profil suivant sur Bokonzi :</p>
         <p style="color:#c9d1d9;font-size:16px;font-weight:700;margin:0 0 24px;">' . htmlspecialchars($athleteName) . '</p>
-        <p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 24px;">En cliquant sur le bouton ci-dessous, votre profil ne sera plus accessible publiquement. Vous pourrez toujours demander sa reactivation en nous contactant.</p>
-        <a href="' . $confirmLink . '" style="display:inline-block;padding:14px 36px;background:#a29bfe;color:#080c14;font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;">Oui, masquer mon profil</a>
+        <p style="color:#fcd34d;font-size:14px;line-height:1.6;margin:0 0 24px;">En cliquant ci-dessous, votre profil sera <strong>retire des resultats de recherche, du classement et de Google</strong>. Vos donnees seront conservees mais inaccessibles publiquement.</p>
+        <a href="' . $confirmLink . '" style="display:inline-block;padding:14px 36px;background:#f59e0b;color:#fff;font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;">Oui, masquer mon profil</a>
         <p style="color:#5a6580;font-size:12px;margin:24px 0 0;line-height:1.5;">Ce lien expire dans 48 heures.<br>Si vous n\'avez pas fait cette demande, ignorez simplement cet email.</p>
     </div>
     </body></html>';

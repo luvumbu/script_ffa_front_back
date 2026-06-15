@@ -59,15 +59,27 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
             try {
                 const url = config.url(q);
                 const resp = await fetch(url, { signal: controller.signal });
-                const data = await resp.json();
+                const rawText = await resp.text();
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    console.error('[live-search] JSON parse failed', {
+                        url, status: resp.status,
+                        contentType: resp.headers.get('content-type'),
+                        bodyPreview: rawText.substring(0, 500),
+                    });
+                    throw parseErr;
+                }
 
                 input.style.borderColor = '#1a2540';
                 input.classList.remove('ls-loading');
 
                 if (!data.success) {
-                    status.textContent = data.error || 'Erreur';
+                    status.textContent = data.error || ('Erreur HTTP ' + resp.status);
                     status.className = 'ls-status error';
                     input.style.borderColor = '#ff7675';
+                    console.warn('[live-search] API a renvoye success=false', { url, status: resp.status, data });
                     return;
                 }
 
@@ -105,8 +117,9 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                 if (e.name === 'AbortError') return;
                 input.style.borderColor = '#ff7675';
                 input.classList.remove('ls-loading');
-                status.textContent = 'Erreur de connexion';
+                status.textContent = 'Erreur de connexion (' + (e.name || 'fetch') + ')';
                 status.className = 'ls-status error';
+                console.error('[live-search] fetch ou parse echoue', e);
             }
         }, 300);
     });

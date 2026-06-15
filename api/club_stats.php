@@ -12,7 +12,24 @@ $_visJoin = " AND (a.visible = 1 OR 1=$_isAdminInt)"; // a inserer apres chaque 
 
 $idClub  = intval($_GET['id'] ?? 0);
 $nomClub = trim($_GET['nom'] ?? '');
-$annee   = intval($_GET['annee'] ?? 0);
+// Filtre annee(s) : accepte une seule annee ou une liste "2021,2023,2024".
+// Vide = toutes les annees.
+$anneeList = [];
+foreach (explode(',', (string)($_GET['annee'] ?? '')) as $__y) {
+    $__yi = intval(trim($__y));
+    if ($__yi > 0) $anneeList[] = $__yi;
+}
+$anneeList = array_values(array_unique($anneeList));
+sort($anneeList);
+$hasYear = !empty($anneeList);
+$yearIn  = implode(',', $anneeList);           // sur de l'injection (uniquement des entiers)
+$anneeKey = $hasYear ? $yearIn : '0';          // pour la cle de cache
+$annee   = $hasYear ? $anneeList[0] : 0;       // compat : 1ere annee si besoin ponctuel
+
+// Helper : retourne " AND <col> IN (y1,y2)" ou "" si aucune annee selectionnee.
+function _bkYearIn($col, $list) {
+    return empty($list) ? '' : " AND $col IN (" . implode(',', $list) . ")";
+}
 $recPage = max(1, (int)($_GET['rp'] ?? 1));
 $recLimit = 10;
 $recOffset = ($recPage - 1) * $recLimit;
@@ -28,6 +45,18 @@ $natDetail = trim($_GET['nat_detail'] ?? '');
 $filterNat  = trim($_GET['nationalite'] ?? '');
 $filterSexe = trim($_GET['sexe'] ?? '');
 $filterCat  = trim($_GET['categorie'] ?? '');
+// Filtre par annee(s) de naissance (liste separee par virgules)
+$filterNaissance = trim($_GET['annee_naissance'] ?? '');
+$naissanceList = [];
+if ($filterNaissance !== '') {
+    foreach (explode(',', $filterNaissance) as $_y) {
+        $_y = (int) trim($_y);
+        if ($_y > 1900 && $_y < 2100) $naissanceList[] = $_y;
+    }
+}
+$naissanceList = array_values(array_unique($naissanceList));
+$naissanceIn = implode(',', $naissanceList);
+$filterNaissance = $naissanceIn; // normalise (retire les valeurs invalides)
 
 if ($idClub <= 0 && $nomClub === '') {
     jsonResponse(['success' => false, 'error' => 'Parametre id ou nom requis'], 400);
@@ -36,7 +65,7 @@ if ($idClub <= 0 && $nomClub === '') {
 // ---- Cache fichier (24h) ----
 $cacheDir = __DIR__ . '/../cache';
 if (!is_dir($cacheDir)) @mkdir($cacheDir, 0755, true);
-$cacheKey = 'clubstats_' . md5($idClub . '_' . $nomClub . '_' . $annee . '_' . $epPage . '_' . $recPage . '_' . $perfPage . '_' . $perfMode . '_' . $perso . '_' . $natDetail . '_' . $filterNat . '_' . $filterSexe . '_' . $filterCat);
+$cacheKey = 'clubstats_' . md5($idClub . '_' . $nomClub . '_' . $anneeKey . '_' . $epPage . '_' . $recPage . '_' . $perfPage . '_' . $perfMode . '_' . $perso . '_' . $natDetail . '_' . $filterNat . '_' . $filterSexe . '_' . $filterCat . '_' . $filterNaissance);
 $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
 $noCache = isset($_GET['nocache']);
 if (!$noCache && file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
@@ -62,20 +91,23 @@ if (!$club) {
 
 $cid = (int) $club['id_club'];
 
-// Filtre athletes (nationalite, sexe, categorie) — sous-requete universelle
+// Filtre athletes (nationalite, sexe, categorie, annee de naissance) — sous-requete universelle
 $athFilter = '';
 $athFilterProg = '';
-if ($filterNat !== '' || $filterSexe !== '' || $filterCat !== '') {
-    $afConds = [];
-    if ($filterNat !== '') $afConds[] = "_af.nationalite_athlete = '" . $conn->real_escape_string(strtoupper($filterNat)) . "'";
-    if ($filterSexe !== '') $afConds[] = "_af.sexe_athlete = '" . $conn->real_escape_string(strtoupper($filterSexe)) . "'";
-    if ($filterCat !== '') $afConds[] = "_af.categorie_athlete = '" . $conn->real_escape_string($filterCat) . "'";
-    $athFilter = " AND ac.id_athlete IN (SELECT _af.id_athlete FROM athletes _af WHERE " . implode(' AND ', $afConds) . ")";
+$afConds = [];
+if ($filterNat !== '')  $afConds[] = "_af.nationalite_athlete = '" . $conn->real_escape_string(strtoupper($filterNat)) . "'";
+if ($filterSexe !== '') $afConds[] = "_af.sexe_athlete = '" . $conn->real_escape_string(strtoupper($filterSexe)) . "'";
+if ($filterCat !== '')  $afConds[] = "_af.categorie_athlete = '" . $conn->real_escape_string($filterCat) . "'";
+// Conditions hors annee de naissance — sert a lister TOUTES les annees disponibles du club
+$afCondsNoNaiss = $afConds;
+if (!empty($naissanceList)) $afConds[] = "_af.annee_naissance_athlete IN ($naissanceIn)";
+if (!empty($afConds)) {
+    $athFilter     = " AND ac.id_athlete IN (SELECT _af.id_athlete FROM athletes _af WHERE " . implode(' AND ', $afConds) . ")";
     $athFilterProg = " AND ap.id_athlete IN (SELECT _af.id_athlete FROM athletes _af WHERE " . implode(' AND ', $afConds) . ")";
 }
 
 // Filtre annee pour progressions
-$progFilterYear = $annee > 0 ? " AND ap.annee_progression = $annee" : '';
+$progFilterYear = _bkYearIn('ap.annee_progression', $anneeList);
 
 // Filtres d'appartenance : ne compter que les perfs réalisées pendant la période de membership
 $mcRec  = "AND (ar.date_record IS NULL OR YEAR(ar.date_record) BETWEEN IFNULL(NULLIF(ac.annee_debut,0),0) AND IFNULL(NULLIF(ac.annee_fin,0),9999))";
@@ -130,11 +162,11 @@ function _updateBestBySex(&$epBestBySex, $row) {
 
 // Filtre athletes actifs sur une annee donnee (sous-requete reutilisable)
 $activeFilter = '';
-if ($annee > 0) {
+if ($hasYear) {
     $activeFilter = " AND ac.id_athlete IN (
-        SELECT ares.id_athlete FROM athlete_resultats ares WHERE ares.annee_resultat = $annee
+        SELECT ares.id_athlete FROM athlete_resultats ares WHERE ares.annee_resultat IN ($yearIn)
         UNION
-        SELECT ap.id_athlete FROM athlete_progressions ap WHERE ap.annee_progression = $annee
+        SELECT ap.id_athlete FROM athlete_progressions ap WHERE ap.annee_progression IN ($yearIn)
     )";
 }
 
@@ -170,7 +202,7 @@ if ($res) while ($row = $res->fetch_assoc()) {
 
 // Medailles des athletes du club
 $medailles = ['or' => 0, 'argent' => 0, 'bronze' => 0];
-$medailleFilter = $annee > 0 ? " AND am.annee_medaille = $annee" : '';
+$medailleFilter = _bkYearIn('am.annee_medaille', $anneeList);
 $res = $conn->query("
     SELECT am.type_medaille, COUNT(*) as c
     FROM athlete_medailles am
@@ -182,13 +214,16 @@ if ($res) while ($row = $res->fetch_assoc()) {
     $medailles[$row['type_medaille']] = (int) $row['c'];
 }
 
-// Nationalites des athletes du club
+// Nationalites des athletes du club — UNIQUEMENT les etrangers (on exclut FRA).
+// Si le club n'a aucun athlete etranger, la liste est vide => les sections
+// "Nationalites" sont automatiquement masquees cote affichage (gardes !empty).
 $nationalites = [];
 $res = $conn->query("
     SELECT a.nationalite_athlete, COUNT(DISTINCT a.id_athlete) as c
     FROM athlete_clubs ac
     JOIN athletes a ON a.id_athlete = ac.id_athlete AND (a.visible = 1 OR 1={$_isAdminInt})
-    WHERE ac.id_club = $cid AND a.nationalite_athlete IS NOT NULL AND a.nationalite_athlete != '' $activeFilter
+    WHERE ac.id_club = $cid AND a.nationalite_athlete IS NOT NULL AND a.nationalite_athlete != ''
+      AND a.nationalite_athlete != 'FRA' $activeFilter
     GROUP BY a.nationalite_athlete ORDER BY c DESC
 ");
 if ($res) while ($row = $res->fetch_assoc()) {
@@ -217,7 +252,7 @@ function getEpreuveDiscipline($nom) {
 
 // Toutes les epreuves (avec nb athletes + nb records + meilleur record du club) — paginé
 // Source : UNION athlete_records + athlete_progressions pour cohérence complète
-$recordFilter = $annee > 0 ? " AND YEAR(ar.date_record) = $annee" : '';
+$recordFilter = _bkYearIn('YEAR(ar.date_record)', $anneeList);
 
 // Sous-requete UNION : tous les (athlete, epreuve) du club depuis records + progressions
 $epUnionSub = "
@@ -448,7 +483,7 @@ $performances = [];
 
 if ($perfMode === 'perso') {
     // Mode Records personnels : table athlete_records, sans filtre période
-    $perfRecFilter = $annee > 0 ? " AND YEAR(ar.date_record) = $annee" : '';
+    $perfRecFilter = _bkYearIn('YEAR(ar.date_record)', $anneeList);
     $resCount = $conn->query("
         SELECT COUNT(*) as c
         FROM athlete_records ar
@@ -493,7 +528,7 @@ if ($perfMode === 'perso') {
     }
 } else {
     // Mode Toutes les épreuves : table athlete_resultats avec filtre période
-    $perfAnneeFilter = $annee > 0 ? " AND ares.annee_resultat = $annee" : '';
+    $perfAnneeFilter = _bkYearIn('ares.annee_resultat', $anneeList);
     $resCount = $conn->query("
         SELECT COUNT(*) as c
         FROM athlete_resultats ares
@@ -547,7 +582,7 @@ if ($res) while ($row = $res->fetch_assoc()) {
 
 // Top 10 athletes (par nombre de resultats)
 $topAthletes = [];
-$topAthFilter = $annee > 0 ? " AND ares.annee_resultat = $annee" : '';
+$topAthFilter = _bkYearIn('ares.annee_resultat', $anneeList);
 $res = $conn->query("
     SELECT a.id_athlete, a.athlete_id_externe, a.nom_complet_athlete, a.categorie_athlete, a.sexe_athlete,
            COUNT(DISTINCT ares.id_resultat) as nb_resultats,
@@ -577,7 +612,7 @@ if ($res) while ($row = $res->fetch_assoc()) {
 }
 
 // Niveaux des athletes du club (repartition par code_niveau)
-$niveauFilter = $annee > 0 ? " AND n.annee_niveau = $annee" : '';
+$niveauFilter = _bkYearIn('n.annee_niveau', $anneeList);
 $niveaux = [];
 $res = $conn->query("
     SELECT n.code_niveau, COUNT(DISTINCT n.id_athlete) as nb_athletes,
@@ -625,7 +660,7 @@ $periode = $res ? $res->fetch_assoc() : ['d' => null, 'f' => null];
 
 // Podiums du club (top places)
 $podiums = ['1er' => 0, '2e' => 0, '3e' => 0];
-$podiumFilter = $annee > 0 ? " AND ap.annee_podium = $annee" : '';
+$podiumFilter = _bkYearIn('ap.annee_podium', $anneeList);
 $res = $conn->query("
     SELECT ap.place_podium, COUNT(*) as c
     FROM athlete_podiums ap
@@ -656,7 +691,7 @@ if ($res) while ($row = $res->fetch_assoc()) {
 
 // Sélections nationales
 $selections = [];
-$selFilter = $annee > 0 ? " AND YEAR(s.date_selection) = $annee" : '';
+$selFilter = _bkYearIn('YEAR(s.date_selection)', $anneeList);
 $res = $conn->query("
     SELECT COUNT(*) as nb_selections, COUNT(DISTINCT s.id_athlete) as nb_athletes_selectionnes,
            COUNT(DISTINCT s.id_competition) as nb_competitions
@@ -675,7 +710,7 @@ if ($res) {
 
 // Top villes (lieux de compétition)
 $topVilles = [];
-$villeFilter = $annee > 0 ? " AND ares.annee_resultat = $annee" : '';
+$villeFilter = _bkYearIn('ares.annee_resultat', $anneeList);
 $res = $conn->query("
     SELECT v.nom_ville, COUNT(*) as nb_resultats, COUNT(DISTINCT ares.id_athlete) as nb_athletes
     FROM athlete_resultats ares
@@ -690,7 +725,7 @@ if ($res) while ($row = $res->fetch_assoc()) {
 
 // Progressions (nb total + nb épreuves)
 $progressions = ['nb_progressions' => 0, 'nb_epreuves' => 0];
-$progFilter = $annee > 0 ? " AND ap.annee_progression = $annee" : '';
+$progFilter = _bkYearIn('ap.annee_progression', $anneeList);
 $res = $conn->query("
     SELECT COUNT(*) as nb, COUNT(DISTINCT ap.id_epreuve) as nb_ep
     FROM athlete_progressions ap
@@ -718,7 +753,7 @@ if ($res) {
 
 // Top niveaux de résultats (répartition D/R/N/I)
 $niveauxResultats = [];
-$nivResFilter = $annee > 0 ? " AND ares.annee_resultat = $annee" : '';
+$nivResFilter = _bkYearIn('ares.annee_resultat', $anneeList);
 $res = $conn->query("
     SELECT ares.niveau_resultat, COUNT(*) as c
     FROM athlete_resultats ares
@@ -898,12 +933,12 @@ $niveauxParAnnee = array_values($niveauxParAnnee);
 // Compteurs supplementaires pour comparaison annuelle
 $nbResultats = null;
 $nbEpreuves = null;
-if ($annee > 0) {
+if ($hasYear) {
     $res = $conn->query("
         SELECT COUNT(*) as nb_resultats, COUNT(DISTINCT ares.id_epreuve) as nb_epreuves
         FROM athlete_resultats ares
         JOIN athlete_clubs ac ON ac.id_athlete = ares.id_athlete AND ac.id_club = $cid $athFilter $mcRes
-        WHERE ares.annee_resultat = $annee
+        WHERE ares.annee_resultat IN ($yearIn)
     ");
     if ($res) {
         $row = $res->fetch_assoc();
@@ -952,6 +987,27 @@ if ($natDetail !== '') {
     }
 }
 
+// Annees de naissance disponibles dans le club (pour l'onglet Generations)
+// Respecte les autres filtres (nat/sexe/cat) mais PAS le filtre annee de naissance
+// pour que le selecteur affiche toujours toutes les annees.
+$anneesNaissanceDisponibles = [];
+$naissWhere = !empty($afCondsNoNaiss)
+    ? (' AND a.id_athlete IN (SELECT _af.id_athlete FROM athletes _af WHERE ' . implode(' AND ', $afCondsNoNaiss) . ')')
+    : '';
+$resN = $conn->query("
+    SELECT a.annee_naissance_athlete AS annee, COUNT(DISTINCT a.id_athlete) AS nb
+    FROM athletes a
+    JOIN athlete_clubs ac ON ac.id_athlete = a.id_athlete AND ac.id_club = $cid
+    WHERE a.annee_naissance_athlete IS NOT NULL AND a.annee_naissance_athlete > 0 $naissWhere
+    GROUP BY a.annee_naissance_athlete
+    ORDER BY a.annee_naissance_athlete DESC
+");
+if ($resN) {
+    while ($rowN = $resN->fetch_assoc()) {
+        $anneesNaissanceDisponibles[] = ['annee' => (int) $rowN['annee'], 'nb' => (int) $rowN['nb']];
+    }
+}
+
 $response = [
     'success'             => true,
     'club'                => ['id_club' => $cid, 'nom_club' => $club['nom_club']],
@@ -997,57 +1053,26 @@ $response = [
     'annee_debut'              => $periode['d'] ? (int) $periode['d'] : null,
     'annee_fin'                => $periode['f'] ? (int) $periode['f'] : null,
     'annees_disponibles'       => $anneesDisponibles,
-    'annee_filtree'            => $annee > 0 ? $annee : null,
+    'annee_filtree'            => $hasYear ? $yearIn : null,
     'filter_nationalite'       => $filterNat !== '' ? $filterNat : null,
     'filter_sexe'              => $filterSexe !== '' ? $filterSexe : null,
     'filter_categorie'         => $filterCat !== '' ? $filterCat : null,
+    'annees_naissance_disponibles' => $anneesNaissanceDisponibles,
+    'filter_annee_naissance'   => $filterNaissance !== '' ? $filterNaissance : null,
 ];
 if (!empty($natCompare)) {
     $response['nat_compare'] = $natCompare;
 }
-if ($annee > 0) {
+if ($hasYear) {
     $response['nb_resultats'] = $nbResultats;
     $response['nb_epreuves']  = $nbEpreuves;
 }
 
 // ============================================================
-//  FILTRE ANNEES : garder uniquement annee en cours + precedente
+//  Plafond annuel leve : toutes les annees sont desormais
+//  selectionnables et visibles. Le filtrage se fait via le
+//  parametre `annee` (liste IN), pas par un fenetrage fixe.
 // ============================================================
-$__bkMinYear = (int)date('Y') - 1;
-$__bkMaxYear = (int)date('Y');
-
-$__bkYearKeys = ['annee','annee_resultat','annee_medaille','annee_podium','annee_progression','annee_niveau','annee_selection'];
-$__bkFilterByYear = function($items) use ($__bkMinYear, $__bkMaxYear, $__bkYearKeys) {
-    if (!is_array($items)) return $items;
-    $out = [];
-    foreach ($items as $it) {
-        if (!is_array($it)) { $out[] = $it; continue; }
-        $y = null;
-        foreach ($__bkYearKeys as $k) {
-            if (isset($it[$k]) && (int)$it[$k] > 0) { $y = (int)$it[$k]; break; }
-        }
-        if ($y === null && isset($it['date'])) {
-            if (preg_match('/(\d{4})/', (string)$it['date'], $m)) $y = (int)$m[1];
-        }
-        if ($y === null || ($y >= $__bkMinYear && $y <= $__bkMaxYear)) $out[] = $it;
-    }
-    return $out;
-};
-
-// Appliquer le filtre aux tableaux temporels
-foreach (['performances','top_medaille_competitions','resultats_par_annee','niveaux_par_annee','medailles_detail','athletes_selectionnes','top_medaille_athletes','progressions'] as $__k) {
-    if (isset($response[$__k]) && is_array($response[$__k])) {
-        $response[$__k] = array_values($__bkFilterByYear($response[$__k]));
-    }
-}
-
-// Filtrer annees_disponibles
-if (isset($response['annees_disponibles']) && is_array($response['annees_disponibles'])) {
-    $response['annees_disponibles'] = array_values(array_filter($response['annees_disponibles'], function($y) use ($__bkMinYear, $__bkMaxYear) {
-        $y = (int)$y;
-        return $y >= $__bkMinYear && $y <= $__bkMaxYear;
-    }));
-}
 
 $json = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 @file_put_contents($cacheFile, $json, LOCK_EX);

@@ -124,6 +124,14 @@ function insertAthleteData($scraper, $conn, &$cache)
     // =============================================
 
     $identite = $scraper->identite;
+
+    // Blacklist : si l'athlete a ete purge volontairement (retrait demande), on refuse l'INSERT
+    require_once __DIR__ . '/athlete_purge.php';
+    $athleteIdExtCheck = (int)($identite['athlete_id'] ?? 0);
+    if ($athleteIdExtCheck > 0 && isAthleteBlacklisted($conn, $athleteIdExtCheck)) {
+        echo "<p style='color:orange;'>Athlete $athleteIdExtCheck blackliste (retrait demande) — INSERT ignore.</p>";
+        return;
+    }
     $id_ville_naissance = cachedGetOrInsertId($cache, $conn, 'villes', 'id_ville', 'nom_ville', $identite['lieu_naissance']);
     $id_nationalite = cachedGetOrInsertId($cache, $conn, 'nationalites', 'id_nationalite', 'code_nationalite', $identite['nationalite']);
 
@@ -252,6 +260,7 @@ function insertAthleteData($scraper, $conn, &$cache)
             // Mode fichier : append dans archives/athlete_progressions_live.jsonl
             // avec marker delete-and-replace pour eviter les doublons
             $rows = [];
+            $_progDebugStart = microtime(true);
             foreach ($scraper->progressions as $p) {
                 $id_ep = cachedGetOrInsertId($cache, $conn, 'epreuves', 'id_epreuve', 'nom_epreuve', $p['epreuve']);
                 $id_vi = cachedGetOrInsertId($cache, $conn, 'villes', 'id_ville', 'nom_ville', $p['lieu']);
@@ -270,7 +279,28 @@ function insertAthleteData($scraper, $conn, &$cache)
                     'ligue_dept_progression'       => $p['ligue_dept'] ?? null,
                 ];
             }
-            progStoreAppendBatch((int)$id_athlete, $rows);
+            // Ecriture + verification immediate : si la lecture ne retrouve pas
+            // les rows juste apres l'ecriture, c'est un bug (write silencieux ou
+            // index desynchronise). On loge l'incident dans archives/.prog_idx/_errors.log.
+            $_progWriteOk = progStoreAppendBatch((int)$id_athlete, $rows);
+            $_progReadback = progStoreLoadForAthlete((int)$id_athlete);
+            $_progBack = count($_progReadback);
+            $_progExpected = count($rows);
+            if (!$_progWriteOk || $_progBack !== $_progExpected) {
+                $_progErrFile = __DIR__ . '/../archives/.prog_idx/_errors.log';
+                @mkdir(dirname($_progErrFile), 0755, true);
+                $_progSrc = function_exists('progStoreSourcePath') ? progStoreSourcePath() : '?';
+                $_progLine = sprintf(
+                    "[%s] id_athlete=%d write_ok=%s expected=%d readback=%d src=%s\n",
+                    date('Y-m-d H:i:s'),
+                    (int)$id_athlete,
+                    $_progWriteOk ? 'true' : 'FALSE',
+                    $_progExpected,
+                    $_progBack,
+                    basename($_progSrc)
+                );
+                @file_put_contents($_progErrFile, $_progLine, FILE_APPEND | LOCK_EX);
+            }
         } else {
             // Mode BDD (legacy)
             $vals = [];

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOKONZI — Décorticage d'index.php</title>
+<link rel="stylesheet" href="doc_style.css">
+</head>
+<body>
+<div class="backbar">
+  <a href="documentation_technique.html">← Sommaire</a>
+  <span class="crumb">Documentation détaillée · index.php ligne par ligne</span>
+</div>
+<div class="wrap">
+
+<h1>index.php — la carte détaillée</h1>
+<div class="subtitle">~23 500 lignes mélangeant PHP, HTML et JavaScript. Voici comment t'y retrouver.</div>
+
+<div class="box danger">
+  <div class="box-t">🚨 Ne lis JAMAIS ce fichier en entier</div>
+  <code>index.php</code> fait environ <strong>23 533 lignes</strong> (~27 % PHP/HTML serveur, ~73 % JavaScript client).
+  Il sert <strong>toutes</strong> les pages publiques via <code>?page=…</code>. Utilise les numéros de ligne ci-dessous
+  pour aller directement au bon endroit. Les numéros sont approximatifs (le fichier évolue) — cherche plutôt le
+  marqueur indiqué (ex. <code>elseif ($page === 'profil'</code>).
+</div>
+
+<div class="localtoc">
+  <a href="#entete">A · En-tête & initialisation (1-360)</a>
+  <a href="#apicall">B · apiCall() (249-361)</a>
+  <a href="#seo">C · SEO dynamique (363-690)</a>
+  <a href="#pages">D · Les pages (?page=)</a>
+  <a href="#profil">E · Les DEUX profils</a>
+  <a href="#js">F · Le JavaScript (par thème)</a>
+  <a href="#fonctions">G · Fonctions JS clés</a>
+</div>
+
+<section id="entete">
+<h2>A · En-tête & initialisation <span class="crumb">(lignes 1-360)</span></h2>
+<table>
+<tr><th>Lignes</th><th>Rôle</th></tr>
+<tr><td>8-14</td><td>Includes : <code>paths.php</code>, <code>db.php</code> ($conn), <code>ip_logger.php</code> + <code>logIp()</code></td></tr>
+<tr><td>16-47</td><td><strong>Anti-scraping</strong> : compteur <code>logs/.page_limits.php</code>, 200 pages/jour max pour l'anonyme → redirection <code>login.php?limit=1</code></td></tr>
+<tr><td>49-60</td><td><strong>Minuteur découverte 60 s</strong> : pose le cookie <code>bk_anon_t0</code> à l'arrivée</td></tr>
+<tr><td>62-64</td><td>Charge <code>auth.php</code> → <code>$currentUser</code></td></tr>
+<tr><td>66-217</td><td>Helpers PHP : <code>dateFR()</code>, <code>highestNiveau()</code>, <code>nivBadgeHtml()</code>, <code>bkSocialEmbed()</code>, <code>bkPerfSpeedKmh()</code>, <code>bkPerfBadge()</code></td></tr>
+</table>
+</section>
+
+<section id="apicall">
+<h2>B · <code>apiCall()</code> — le pont PHP→données <span class="crumb">(249-361)</span></h2>
+<p>Cette fonction est le cœur du rendu serveur. Elle appelle un endpoint <code>/api/*.php</code> <strong>mais</strong>
+court-circuite par une lecture directe du fichier cache local quand il existe (pour <code>stats</code>,
+<code>epreuve_stats</code>, <code>athlete</code>, <code>club_stats</code>). Elle renvoie le tableau PHP décodé.</p>
+<div class="box info"><div class="box-t">ℹ️</div>C'est <code>apiCall()</code> qui fait l'« appel loopback » : en prod, sans les cookies du visiteur.</div>
+</section>
+
+<section id="seo">
+<h2>C · SEO dynamique <span class="crumb">(363-690)</span></h2>
+<table>
+<tr><th>Lignes</th><th>Rôle</th></tr>
+<tr><td>363-365</td><td>Capture <code>?page</code>, <code>?id</code>, <code>?p</code></td></tr>
+<tr><td>370-439</td><td>Athlètes mis en avant (lit <code>.featured_athletes.php</code>)</td></tr>
+<tr><td>542-667</td><td><strong>Titres & descriptions par page</strong> (blocs conditionnels pour ~18 pages)</td></tr>
+<tr><td>669-690</td><td>URLs canoniques (adapte local vs <code>bokonzi.com</code>)</td></tr>
+<tr><td>732-799</td><td>JSON-LD (WebSite, SportsOrganization, BreadcrumbList)</td></tr>
+<tr><td>800-895</td><td>CSS global + styles du panier flottant / boutons</td></tr>
+<tr><td>1816-1887</td><td>Nav + <strong>badge de quota recherche</strong> (∞ / découverte / cooldown / X-Y)</td></tr>
+</table>
+</section>
+
+<section id="pages">
+<h2>D · Les pages (chaque <code>?page=</code>)</h2>
+<p>Le corps d'index.php est une grande cascade <code>if ($page === 'x'): … elseif ($page === 'y'): …</code></p>
+<table>
+<tr><th>Page</th><th>Lignes ≈</th><th>Rendu</th></tr>
+<tr><td><code>accueil</code></td><td>1892-2599</td><td>100 % HTML/CSS/JS (volontairement aucun appel API → indexation SEO garantie). Hero, features, pricing.</td></tr>
+<tr><td><code>athletes</code></td><td>2600-3692</td><td>Lit la config admin <code>.athletes_filter.php</code> (niveaux, année, nb H/F, layout magazine/grid/list/flex) + graphiques + boucle SQL</td></tr>
+<tr><td><code>recherche</code></td><td>3693-4392</td><td>Tracking (search_tracking), filtres affichés en titre, formulaire + résultats (JS liveSearch)</td></tr>
+<tr><td><code>profil2</code></td><td>4393-5768</td><td>Profil <strong>v2</strong> (vue détaillée à onglets) — voir section E</td></tr>
+<tr><td><code>profil</code></td><td>5769-9462</td><td>Profil <strong>v1 magazine</strong> (vue narrative stylée) — voir section E</td></tr>
+<tr><td><code>clubs</code></td><td>12745-13155</td><td>Liste + panneau détail JS (<code>openClubDetail</code> → club_stats.php)</td></tr>
+<tr><td><code>epreuves</code></td><td>12868-13197</td><td>Liste + panneau détail JS (<code>openEpreuveDetail</code> → epreuve_stats.php)</td></tr>
+<tr><td><code>villes</code></td><td>13331-14390</td><td>Liste / détail ville (rendu serveur PHP + Leaflet)</td></tr>
+<tr><td><code>noms</code></td><td>14392-15271</td><td>Recherche par patronyme (mode index + détail <code>?q=</code>)</td></tr>
+<tr><td><code>comparer</code></td><td>15397-15532</td><td>Comparateur (localStorage + graphiques)</td></tr>
+<tr><td><code>espace</code></td><td>15533-15733</td><td>« Mon espace » : suivis + historique (auth requise)</td></tr>
+<tr><td><code>tarifs</code> / <code>produits</code> / <code>concept</code> / <code>solutions</code> / <code>contact</code></td><td>15734-17164</td><td>Pages marketing (HTML statique + formulaire contact)</td></tr>
+<tr><td><code>tuto</code></td><td>17165-17777</td><td>Tutoriel interactif animé</td></tr>
+<tr><td><code>mentions-legales</code> / <code>confidentialite</code></td><td>15273-15396</td><td>Pages légales statiques</td></tr>
+</table>
+</section>
+
+<section id="profil">
+<h2>E · Les DEUX profils (piège important)</h2>
+<div class="box warn">
+  <div class="box-t">⚠️ Il existe deux versions de la fiche athlète</div>
+  <ul style="margin-top:6px">
+    <li><code>?page=profil</code> (lignes 5769-9462) = <strong>profil v1 « magazine »</strong> : la vue publique actuelle, narrative et stylée (citation, hall of fame, « saviez-vous », progression, athlètes similaires, graphiques Chart.js). Inclut <code>profile_gate.php</code> (1 fiche/jour gratuite + cooldown).</li>
+    <li><code>?page=profil2</code> (lignes 4393-5768) = <strong>profil v2</strong> : vue détaillée à onglets (données brutes). Les anciennes URLs <code>profil2</code> sont redirigées vers <code>profil</code>.</li>
+  </ul>
+  Les deux respectent <code>visible</code> (profil masqué) et incrémentent les vues. Quand tu modifies « le profil »,
+  vérifie de quelle version il s'agit.
+</div>
+</section>
+
+<section id="js">
+<h2>F · Le JavaScript, par thème <span class="crumb">(~4800 → 23533)</span></h2>
+<table>
+<tr><th>Thème</th><th>Ce qu'il gère</th></tr>
+<tr><td>Panier comparaison</td><td>localStorage <code>bk_cmp_athletes</code>/<code>bk_cmp_clubs</code>, badge flottant, add/remove (max 5 athlètes / 3 clubs)</td></tr>
+<tr><td>Panneau club (15 fn)</td><td>Ouverture, remplissage, 5 onglets, recherche interne, filtres, comparaison multi-années, résumé auto</td></tr>
+<tr><td>Panneau épreuve (4 fn)</td><td>Ouverture, onglets, pagination records</td></tr>
+<tr><td>Graphiques Chart.js</td><td>Niveaux, catégories, progressions (line), radar, médailles (bar empilé)</td></tr>
+<tr><td>Recherche live</td><td><code>liveSearch()</code> générique (debounce, fetch, highlight) + tracking + badge quota</td></tr>
+<tr><td>Bio athlète</td><td><code>buildAthleteBio()</code> (~500 lignes) + sélecteur d'années</td></tr>
+<tr><td>Comparateur</td><td>add/remove, 3 graphiques, résumé narratif pairwise</td></tr>
+<tr><td>Follow / Mon espace</td><td>toggleFollow, unfollow, effacer historique</td></tr>
+<tr><td>PDF / Newsletter</td><td>génération print-to-PDF, barre newsletter</td></tr>
+<tr><td>Quota / disclaimer</td><td>minuteurs cooldown & découverte, popups légales</td></tr>
+<tr><td>Tuto</td><td>étapes, animations, démos live</td></tr>
+</table>
+</section>
+
+<section id="fonctions">
+<h2>G · Fonctions JavaScript clés (avec leur ligne ≈)</h2>
+
+<h3>Panneau club</h3>
+<table>
+<tr><th>Fonction</th><th>Ligne</th><th>Rôle</th></tr>
+<tr><td><code>_openClubPanel(url, suffix)</code></td><td>18172</td><td>Ouvre le panneau, fetch club_stats.php → _fillClubPanel</td></tr>
+<tr><td><code>_fillClubPanel(data, suffix)</code></td><td>18132</td><td>Remplit l'en-tête (nom, médailles, QR, follow), init recherche + onglets</td></tr>
+<tr><td><code>_switchClubTab / _renderClubTab</code></td><td>18402 / 18438</td><td>Change d'onglet + rend le contenu (boucles + Chart.js)</td></tr>
+<tr><td><code>_clubSearchExec(suffix)</code></td><td>18318</td><td>Recherche d'athlètes dans le club (debounce 350 ms)</td></tr>
+<tr><td><code>_clubRunEpYearCmp(suffix)</code></td><td>20249</td><td>Comparaison épreuve sur plusieurs années (fetch parallèle)</td></tr>
+<tr><td><code>_buildResumeText(d, annee)</code></td><td>19470</td><td>Résumé narratif club (~200 lignes, 18 paragraphes conditionnels)</td></tr>
+</table>
+
+<h3>Panneau épreuve</h3>
+<table>
+<tr><th>Fonction</th><th>Ligne</th><th>Rôle</th></tr>
+<tr><td><code>openEpreuveDetail(nom)</code></td><td>20532</td><td>Ouvre le panneau, fetch epreuve_stats.php</td></tr>
+<tr><td><code>switchEpreuveTab / _renderEpreuveTab</code></td><td>20576 / 20598</td><td>Onglets records/nationalités/stats/résumé</td></tr>
+<tr><td><code>loadEpreuveRecPage(page)</code></td><td>20583</td><td>Pagination records (50/page)</td></tr>
+</table>
+
+<h3>Recherche & quota</h3>
+<table>
+<tr><th>Fonction</th><th>Ligne</th><th>Rôle</th></tr>
+<tr><td><code>liveSearch(input, status, results, paginated, config)</code></td><td>21039</td><td>Recherche live générique (debounce, fetch, highlight, 50 max)</td></tr>
+<tr><td><code>_trackSearch(params)</code></td><td>21032</td><td>Envoie le tracking (sendBeacon → search_track.php)</td></tr>
+<tr><td><code>_updateSearchQuota(data)</code></td><td>17931</td><td>Met à jour le badge (∞ / minuteur découverte / cooldown / X-Y)</td></tr>
+<tr><td><code>_bkStartTrial / _bkStartCooldown</code></td><td>17859 / 17828</td><td>Lancent les minuteurs visuels</td></tr>
+<tr><td><code>_buildLimitMsg(data)</code></td><td>17885</td><td>Construit le message « quota atteint » + CTA</td></tr>
+</table>
+
+<h3>Bio & comparateur</h3>
+<table>
+<tr><th>Fonction</th><th>Ligne</th><th>Rôle</th></tr>
+<tr><td><code>buildAthleteBio(data, selectedYears)</code></td><td>4646</td><td>Génère la biographie narrative complète, filtrable par années</td></tr>
+<tr><td><code>compareNow()</code></td><td>21498</td><td>Lance la comparaison (3 graphiques)</td></tr>
+<tr><td><code>buildProgressionChart / buildRadarChart / buildMedaillesChart</code></td><td>21526 / 21596 / 21660</td><td>Les 3 graphiques de comparaison</td></tr>
+<tr><td><code>buildComparisonSummary(athletes, epreuve)</code></td><td>21731</td><td>Résumé comparatif narratif</td></tr>
+</table>
+
+<h3>Helpers transverses</h3>
+<table>
+<tr><th>Fonction</th><th>Ligne</th><th>Rôle</th></tr>
+<tr><td><code>_nivBadge(code)</code></td><td>18413</td><td>Badge HTML coloré d'un niveau</td></tr>
+<tr><td><code>_highestNiveau(arr)</code></td><td>18427</td><td>Meilleur niveau selon la hiérarchie FFA</td></tr>
+<tr><td><code>escapeHtml(str)</code> / <code>highlight(text, q)</code></td><td>17797 / 21157</td><td>Échappement HTML / surlignage <code>&lt;mark&gt;</code></td></tr>
+</table>
+</section>
+
+<div style="text-align:center;color:#6e7681;font-size:13px;padding:24px 0;border-top:1px solid var(--border)">
+  <a class="link" href="documentation_technique.html">← Retour au sommaire</a> &nbsp;·&nbsp;
+  <a class="link" href="doc_recettes.html">Recettes de code →</a>
+</div>
+</div>
+</body>
+</html>

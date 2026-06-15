@@ -15,8 +15,14 @@
  */
 
 require_once __DIR__ . '/paths.php'; // BK_BASE
+// IMPORTANT : subscription.php au scope global, jamais a l'interieur d'une
+// fonction — sinon $BK_ACTIVE_STATUSES devient local, hasActiveSubscription()
+// fatale sur in_array($status, null, true) en PHP 8 (cf. core/search_limit.php).
+require_once __DIR__ . '/subscription.php';
 
-define('BK_PROFILE_FREE_SECONDS', 120);          // durée de consultation gratuite
+// === Limites offre gratuite (modifier ici, tout suit) ===
+define('BK_PROFILE_FREE_PER_DAY', 5);            // nombre de fiches profil/jour pour la formule gratuite
+define('BK_PROFILE_FREE_SECONDS', 120);          // durée de consultation gratuite (par fiche, en secondes)
 define('BK_PROFILE_GATE_FILE', __DIR__ . '/../logs/.profile_views.php');
 
 /** IP du visiteur (CloudFlare / proxy aware). */
@@ -48,8 +54,8 @@ function bkProfileGateExempt($conn) {
 
     // Abonné actif
     if (!empty($_COOKIE['bk_token'])) {
-        if (!function_exists('getCurrentUser'))   require_once __DIR__ . '/auth.php';
-        if (!function_exists('hasActiveSubscription')) require_once __DIR__ . '/subscription.php';
+        if (!function_exists('getCurrentUser')) require_once __DIR__ . '/auth.php';
+        // subscription.php est deja require au top du fichier
         $u = getCurrentUser($conn);
         if ($u && hasActiveSubscription($conn, $u['id_user'])) return true;
     }
@@ -120,12 +126,12 @@ function bkProfileGateStatus($conn, $athleteIdExterne) {
         }
     }
 
-    // Profil différent : autorisé seulement si aucune fiche déjà consultée aujourd'hui
-    if (count($list) >= 1) {
+    // Profil différent : autorisé tant qu'on est sous le quota journalier
+    if (count($list) >= BK_PROFILE_FREE_PER_DAY) {
         return ['allowed' => false, 'exempt' => false, 'reason' => 'limit', 'remaining' => 0];
     }
 
-    // 1re fiche de la journée → on l'enregistre
+    // Nouvelle fiche → on l'enregistre
     $data['ips'][$ip][] = ['id' => $aid, 'ts' => $now];
     bkGateWrite($data);
     return ['allowed' => true, 'exempt' => false, 'reason' => 'first', 'remaining' => BK_PROFILE_FREE_SECONDS];
@@ -138,9 +144,14 @@ function bkProfileGateStatus($conn, $athleteIdExterne) {
 function bkProfilePaywallHtml($mode = 'limit') {
     $isTimer = ($mode === 'timer_expired');
     $title = $isTimer ? 'Votre aperçu gratuit est terminé' : 'Limite gratuite atteinte';
+    $perDay  = BK_PROFILE_FREE_PER_DAY;
+    $mins    = max(1, (int)round(BK_PROFILE_FREE_SECONDS / 60));
+    $perDayTxt = $perDay === 1
+        ? 'une seule fiche athlète par jour'
+        : $perDay . ' fiches athlète par jour';
     $intro = $isTimer
-        ? 'Vous avez consulté cette fiche pendant 2 minutes — la durée offerte par la formule gratuite.'
-        : 'La formule gratuite donne accès à <b>une seule fiche athlète par jour</b>. Vous l\'avez déjà utilisée aujourd\'hui.';
+        ? 'Vous avez consulté cette fiche pendant ' . $mins . ' minute' . ($mins > 1 ? 's' : '') . ' — la durée offerte par la formule gratuite.'
+        : 'La formule gratuite donne accès à <b>' . $perDayTxt . '</b>. Vous avez atteint cette limite aujourd\'hui.';
     $base = BK_BASE;
     ob_start();
     ?>
@@ -156,7 +167,7 @@ function bkProfilePaywallHtml($mode = 'limit') {
                 <a href="<?= $base ?>/login.php" class="bk-pgate-cta2">Se connecter</a>
                 <?php endif; ?>
             </div>
-            <p class="bk-pgate-note">Sans abonnement, l'accès se réinitialise demain : 1 nouvelle fiche gratuite par jour.</p>
+            <p class="bk-pgate-note">Sans abonnement, l'accès se réinitialise demain : <?= $perDay ?> fiche<?= $perDay > 1 ? 's' : '' ?> gratuite<?= $perDay > 1 ? 's' : '' ?> par jour.</p>
         </div>
     </div>
     <style>
@@ -184,7 +195,11 @@ function bkProfilePaywallHtml($mode = 'limit') {
  */
 function bkProfileTimerBlock($remaining) {
     $remaining = max(1, (int)$remaining);
-    $base = BK_BASE;
+    $base    = BK_BASE;
+    $perDay  = BK_PROFILE_FREE_PER_DAY;
+    $mins    = max(1, (int)round(BK_PROFILE_FREE_SECONDS / 60));
+    $perDayTxt = $perDay === 1 ? '1 fiche par jour' : $perDay . ' fiches par jour';
+    $minsTxt   = $mins . ' minute' . ($mins > 1 ? 's' : '');
     $loginBtn = empty($_COOKIE['bk_token'])
         ? '<a href="' . $base . '/login.php" style="display:inline-block;padding:12px 22px;border-radius:11px;font-size:14px;font-weight:700;text-decoration:none;border:1.5px solid #30363d;color:#c9d1d9;">Se connecter</a>'
         : '';
@@ -202,13 +217,13 @@ function bkProfileTimerBlock($remaining) {
                 '<div style="max-width:480px;width:100%;background:linear-gradient(150deg,#131a28,#0d1117);border:1px solid #1e2a3a;border-radius:18px;padding:38px 30px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);">'
               + '<div style="font-size:46px;margin-bottom:10px;">&#128274;</div>'
               + '<h2 style="color:#fff;font-size:21px;font-weight:800;margin:0 0 12px;border:none;">&#9670; Votre aper&ccedil;u gratuit est termin&eacute;</h2>'
-              + '<p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 12px;">La formule gratuite offre <b style="color:#c9d1d9;">2 minutes</b> de consultation sur <b style="color:#c9d1d9;">1 fiche par jour</b>.</p>'
+              + '<p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 12px;">La formule gratuite offre <b style="color:#c9d1d9;"><?= $minsTxt ?></b> de consultation sur <b style="color:#c9d1d9;"><?= $perDayTxt ?></b>.</p>'
               + '<p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 20px;">Abonnez-vous pour un acc&egrave;s <b style="color:#c9d1d9;">illimit&eacute;, sans minuteur</b> &mdash; d&egrave;s 1,99&nbsp;&euro;/mois.</p>'
               + '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">'
               + '<a href="<?= $base ?>/tarifs" style="display:inline-block;padding:12px 22px;border-radius:11px;font-size:14px;font-weight:700;text-decoration:none;background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;">Voir les offres &rarr;</a>'
               + '<?= $loginBtn ?>'
               + '</div>'
-              + '<p style="color:#5a6580;font-size:12px;margin:16px 0 0;">Revenez demain pour 1 nouvelle fiche gratuite.</p>'
+              + '<p style="color:#5a6580;font-size:12px;margin:16px 0 0;">Revenez demain pour <?= $perDay ?> nouvelle<?= $perDay > 1 ? 's' : '' ?> fiche<?= $perDay > 1 ? 's' : '' ?> gratuite<?= $perDay > 1 ? 's' : '' ?>.</p>'
               + '</div>';
             document.body.appendChild(ov);
             document.body.style.overflow = 'hidden';

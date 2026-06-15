@@ -13,6 +13,7 @@
  */
 
 require_once __DIR__ . '/stripe_config.php'; // $BK_PLANS, $BK_CAPABILITIES, $BK_ACTIVE_STATUSES
+require_once __DIR__ . '/test_mode.php';     // bkTestRole() — « aperçu en tant que » super admin
 
 // Limite de recherches/jour par défaut pour un utilisateur connecté SANS abonnement.
 // Si api/search.php est chargé, sa constante BK_SEARCH_LIMIT_LOGGED prime (voir getUserSearchLimit).
@@ -28,23 +29,69 @@ if (!defined('BK_FREE_LOGGED_SEARCH_LIMIT')) {
  */
 function getUserSubscription($conn, $idUser, $fresh = false) {
     static $cache = [];
+    static $tableMissing = null; // null = inconnu, true/false = testé une fois
     $idUser = (int)$idUser;
     if ($idUser <= 0) return null;
+
+    // Mode test super admin : on renvoie un abonnement simulé (ou aucun) pour
+    // que tout le site (paywall, capacités, badge nav) réagisse en conséquence.
+    if (function_exists('bkTestRole')) {
+        $tr = bkTestRole();
+        if ($tr === 'visitor' || $tr === 'free') return null;
+        if (in_array($tr, ['bronze', 'argent', 'or', 'platine'], true)) {
+            return [
+                'id_subscription'        => 0,
+                'id_user'                => $idUser,
+                'stripe_customer_id'     => '',
+                'stripe_subscription_id' => 'TEST',
+                'plan'                   => $tr,
+                'status'                 => 'active',
+                'billing_period'         => 'test',
+                'current_period_end'     => null,
+                'cancel_at_period_end'   => 0,
+                'created_at'             => null,
+                'updated_at'             => null,
+            ];
+        }
+    }
+
     if (!$fresh && array_key_exists($idUser, $cache)) return $cache[$idUser];
 
+    // Si la table `subscriptions` n'existe pas (migration Stripe non jouée),
+    // on considère simplement qu'aucun utilisateur n'a d'abonnement, au lieu
+    // de faire planter tout le site (nav.php, index.php...).
+    if ($tableMissing === null) {
+        try {
+            $chk = $conn->query("SHOW TABLES LIKE 'subscriptions'");
+            $tableMissing = !($chk && $chk->num_rows > 0);
+        } catch (\Throwable $e) {
+            $tableMissing = true;
+        }
+    }
+    if ($tableMissing) {
+        $cache[$idUser] = null;
+        return null;
+    }
+
     $sub = null;
-    $stmt = $conn->prepare(
-        "SELECT id_subscription, id_user, stripe_customer_id, stripe_subscription_id,
-                plan, status, billing_period, current_period_end, cancel_at_period_end,
-                created_at, updated_at
-         FROM subscriptions WHERE id_user = ? LIMIT 1"
-    );
-    if ($stmt) {
-        $stmt->bind_param("i", $idUser);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        $sub = $res ? $res->fetch_assoc() : null;
-        $stmt->close();
+    try {
+        $stmt = $conn->prepare(
+            "SELECT id_subscription, id_user, stripe_customer_id, stripe_subscription_id,
+                    plan, status, billing_period, current_period_end, cancel_at_period_end,
+                    created_at, updated_at
+             FROM subscriptions WHERE id_user = ? LIMIT 1"
+        );
+        if ($stmt) {
+            $stmt->bind_param("i", $idUser);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $sub = $res ? $res->fetch_assoc() : null;
+            $stmt->close();
+        }
+    } catch (\Throwable $e) {
+        // Table disparue entre-temps ou autre souci SQL → pas d'abonnement
+        $tableMissing = true;
+        $sub = null;
     }
 
     $cache[$idUser] = $sub ?: null;

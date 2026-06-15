@@ -62,13 +62,25 @@ BK/
 │   ├── cache_urls.php  Pre-generation cache
 │   ├── fix_perf_int.php Correction INT perfs (padding dixiemes, ?go pour executer)
 │   ├── logs.php        Visualisation logs (acces restreint par email)
-│   └── remote_check.php API JSON admin a distance (test_scrape, scrape_status, count, query)
+│   ├── audit_athletes.php   Audit integrite des donnees athletes (NOT EXISTS sur 8 tables enfants + identite + top 200 incomplets + bouton re-scrape, cache 1h)
+│   ├── db_archive.php  Archivage BDD reversible (3 phases : export jsonl, vider, restore) + bouton aide complet
+│   └── remote_check.php API JSON admin a distance (test_scrape, scrape_status, count, query, prog_diag, prog_errors)
 ├── scraping/           Pipeline de collecte de donnees athle.fr
 │   ├── scrape_functions.php  scrapeParallel() — curl_multi 7 athletes x 3 pages
 │   ├── scraper.php           Scraping principal (batch 7, skip BDD, auto-refresh, bouton reset)
 │   ├── check_sync.php        Verification + scraping des absents (2 phases)
 │   ├── check_athletes.php    Comparaison src/ vs BDD → absents.json
+│   ├── refresh_existing.php  Re-scrape complet par date (4 paralleles, console live AJAX athlete par athlete avec nom+action NEW/MAJ+compteurs)
+│   ├── rescrape_selections.php  Re-scrape cible des selections uniquement
 │   └── import_bdd.php        Import fichiers JSON src/ → BDD
+├── scraping_v2/        Pipeline v2 (lib OOP, classements -> nom_et_liens)
+│   ├── index.php             Analyseur URLs + scrape par table+annees cochees (URL sync silencieux via history.replaceState pour persister les checkboxes)
+│   ├── par_annee.php         Interface "1 annee = tout scraper" + colonne couverture BDD (pages x 50 vs athletes ayant donnees datees, cache 1h)
+│   ├── par_epreuve.php       Interface SSE par epreuve (VERIFIER / SCRAPER / MAJ)
+│   ├── explore_classement.php Drill-down par classement (page athle.fr live + comparaison BDD athlete par athlete + bouton re-scrape par ligne)
+│   ├── cleanup_duplicates.php Nettoyage doublons nom_et_liens en 3 phases AJAX (INDEX -> ANALYZE -> DELETE batch IN -> UNIQUE KEY)
+│   ├── diagnose.php          Vue d'ensemble pre-formatee
+│   └── lib/                  ScrapingRunner, DiscoverRunner, PageAnalyzer, UrlAnalyzer, EpreuveMapper, SourceTableReader
 ├── Class/              53 classes utilitaires
 │   ├── DatabaseHandler.php  Wrapper BDD / ORM leger (63 KB)
 │   └── ... (convertisseurs, validateurs, formatters, etc.)
@@ -254,6 +266,61 @@ Fonctions associees : `_bioCollectYears()`, `_bioRenderYearSelector()`, `_bioTog
 - `niv` : filtre niveaux (ex: `D3,D2,R1`)
 - `nat` : filtre nationalites (ex: `FRA,MAR`)
 - `ans` : filtre annees (ex: `2023,2024`)
+
+## API nom.php — Recherche par nom de famille (4 modes)
+### Mode 1 : top noms (sans param)
+- Retourne top 100 noms les plus frequents (`{nom, count, M, F}[]`). `limit` max 500, HAVING total>=2.
+
+### Mode 2 : recherche live (`?search=mart`)
+- Min 2 caracteres. Prefix prioritaire (`UPPER LIKE 'MART%'`) puis substring. Limit 20. Cache 1h `cache/nom_search_*.json`. Utilise par l'autocomplete de la barre de recherche.
+
+### Mode 3 : detail d'un nom (`?q=luvumbu`)
+- Retourne `{nom, total, listed_count, stats, athletes[]}` ou :
+  - `total` = nb total d'athletes du nom en BDD (peut etre > 500)
+  - `listed_count` = nb effectivement listes (max = listLimit 500)
+  - `truncated = total > listed_count`
+- **Stats agregees via SQL sur l'ENSEMBLE des athletes du nom** (refacto 2026-05-24) :
+  - `by_sex`, `by_categorie`, `by_nationalite`, `by_age_range`, `by_niveau_famille` (I/N/R/D/non_classe), `by_niveau_codes` (IA, IB, ...), `top_clubs`, `top_epreuves`, `top_villes_naissance`, `annee_naissance_min/max`
+  - `age_moyen` / `age_moyen_M` / `age_moyen_F` / `age_renseigne_count` (via AVG SQL + ROLLUP par sexe)
+  - `niveau_moyen` / `niveau_moyen_M` / `niveau_moyen_F` `{code, points, points_max, rang, classes_count}` — echelle IA=26..D8=1 sur la hierarchie 26 niveaux
+- **3 sources** pour `meilleur_niveau` par athlete dans `athletes[]` : `athlete_niveaux.code_niveau` + `athlete_resultats.niveau_resultat` + calcul depuis perf via bareme FFA (fonctions `_nomPerfToFfaPts` + `_nomFfaPtsToLevel` repliquees depuis api/athlete.php). C'est ce qui permet d'afficher correctement IA/IB pour les athletes elite qui n'ont pas la qualif formelle (cas SISSOKO -> IB).
+- **Stats `by_niveau_*` et `niveau_moyen` utilisent SEULEMENT 2 sources** (athlete_niveaux + athlete_resultats) via SQL agrege => alignees avec le deep search mode 4 (compteurs coherents).
+
+### Mode 4 : deep search par niveau (`?level=IA&min=10&or_better=0/1`)
+- Cherche les noms ayant >=`min` personnes au niveau `level`. `or_better=1` etend a tous les niveaux >= cible (ex N1+ = IA,IB,IE,N1).
+- **Logique du compte** (fix 2026-05-23 important) : on calcule le MEILLEUR rang par athlete via `MIN(FIELD)` sur `athlete_niveaux + athlete_resultats.niveau_resultat`, puis on filtre :
+  - **Strict** : `best_rk = $targetRank` (le meilleur niveau de l'athlete = exactement le niveau cible)
+  - **Or better** : `best_rk <= $targetRank` (meilleur niveau >= cible)
+- Sans cette logique, un athlete dont le meilleur niveau est IB mais qui a une trace historique N1 etait compte 2 fois (sur IB et sur N1). Maintenant chaque athlete compte 1 fois selon son vrai meilleur niveau.
+- **Stats de scan** (preuve d'execution dans `scan: {}`) : `total_athletes_db`, `athletes_with_any_level`, `athletes_matching_level`, `surnames_with_at_least_one`, `surnames_passing_min`, `athletes_validating`, `duration_ms`.
+- Cache 24h `cache/nom_lvl_*.json`.
+
+### Communs
+- Match case-insensitive sur `nom_1_athlete` (collation `utf8mb4_unicode_ci`). Liste athletes plafonnee a 500.
+- Cache 24h `cache/nom_*.json`. Bypass `?nocache=1`. apiCall() local lookup ajoute pour cet endpoint.
+
+## Page ?page=noms — Recherche par nom de famille
+- URL pretty `/noms` (index) et `/noms/luvumbu` (detail) — `.htaccess` reecrit (avec `?q=` ou `/SLUG`).
+- **Mode index** : hero violet + barre de recherche avec **autocomplete live** (debounce 220ms, dropdown 19px nom + meta 14px, highlight `<mark>`, navigation clavier ↑↓ Enter Escape). Sous le hero, **bouton "Recherche approfondie par niveau"** qui deplie une section dediee (cf. ci-dessous). Plus bas : grille de tuiles top 100 noms avec **3 onglets de tri** (Tous / Hommes / Femmes — JS client-side, masque les tuiles a 0 quand tri par sexe).
+- **Recherche approfondie (deep search) — UI** :
+  - Form : select niveau (groupe par famille International/National/IR/Regional/Departemental), input `min` (1-50, defaut 3), checkbox **"Inclure les niveaux superieurs"** (decoche par defaut = mode strict).
+  - Animation multi-etapes **5 stages** :
+    1. Connexion a la base (300k+ athletes)
+    2. Scan des niveaux enregistres
+    3. Filtre des athletes au niveau requis
+    4. Regroupement par nom de famille
+    5. Application du minimum de personnes
+  - Chaque etape : icone rotative pendant active, ✓ verte quand done. Compteur anime de 0 vers la vraie valeur (easeOutQuad, 600-800ms). Progress bar gradient violet (0->15->40->60->80->100%). Timer en temps reel a droite.
+  - **Apres animation** : bandeau vert "Preuve de traitement" avec phrase complete utilisant les vraies stats du `scan` API. Puis grille de noms valides.
+  - Si `count===0` : affiche le bandeau de preuve + bloc "🚫 Aucun nom ne valide" avec icone (preserve la traçabilite).
+- **Mode detail** : hero + 4 KPI (H/F, Age moyen, Niveau moyen, Repartition niveaux I/N/R/D) + 2 barres (tranches age, categories) + chips top clubs/epreuves/villes naissance + tableau athletes pattern 3-tables.
+  - **Titre du tableau** affiche "X affiches sur Y" + avertissement orange si `truncated`.
+  - Stats KPI calculees sur l'ENSEMBLE (full set SQL), donc coherentes avec le deep search.
+  - Affichage `meilleur_niveau` par athlete utilise les 3 sources (peut differer pour quelques elites mais le KPI compte est correct).
+- Lien dans profil athlete : champ "Nom de famille" cliquable dans la meta (`?page=noms&q={nom_1}`).
+- Nav : "Noms" entre Athletes CTA et Recherche CTA (violet `#a78bfa`).
+- **Theme jour/nuit** : `.bk-noms-page` wrapper + tous les inline styles utilisent CSS variables (`var(--text-primary)`, `var(--bg-card)`, `var(--border)`, etc.). Hero gradient overridee en `body.p2-light` (cream). Filet de securite `[style*="..."]` selectors pour les rares hardcoded restants.
+- SEO : titre dynamique `NOM — Tous les athletes portant ce nom | Bokonzi`, breadcrumb JSON-LD avec `Noms` > nom upper.
 
 ## API search.php — 12 filtres
 `nom`, `nom1`, `nom2`, `club`, `categorie`, `sexe`, `nationalite`, `epreuve`, `ville`, `competition`, `medaille`, `annee`, `licence`, `page`, `limit`
@@ -913,6 +980,112 @@ MySQL (9 tables enfants) + src/{id}.php (JSON)
 - Badge "NON CONFIRME" rouge + badge "EXPIRE" orange si token expire
 - Nom, email, message complet, IP, date d'expiration
 
+## Progressions file store (deportation BDD -> fichier)
+- **Pourquoi** : la table `athlete_progressions` pesait 1.2 GB (43% de la BDD). Deportee en fichier append-only.
+- **Source de verite** : `archives/athlete_progressions_live.jsonl` (JSONL avec marker delete-and-replace)
+- **Index sharde** : `archives/.prog_idx/<shard 0-255>.json` (256 shards par `id_athlete & 0xFF`)
+- **Pointer** : `archives/.prog_idx/source.txt` indique le fichier source courant (verrouille par `progressions_init.php`)
+- **Helper** : `core/progressions_store.php`
+  - `progStoreEnabled()` : true si `config/data_source.json` a `"athlete_progressions": "file"`
+  - `progStoreLoadForAthlete(int)` : lit l'index, applique marker delete, retourne rows
+  - `progStoreAppendBatch(int, array)` : append delete marker + nouvelles rows, met a jour l'index
+  - `progStoreEnrichForProfile($conn, int, $rawRows)` : ajoute noms epreuves/villes/cat/club + niveaux
+- **insertAthleteData** (`core/insert_athle.php`) : branche `if ($_progFile)` → ecrit fichier au lieu de BDD. Verifie write+readback, log mismatch dans `archives/.prog_idx/_errors.log` (patch debug 2026-05-17).
+- **api/athlete.php** (ligne 322-327) : lit fichier si progStoreEnabled, sinon SQL classique
+- **BUG CONNU** : le 26 avril 2026, scrape OK (40 progressions parsees), mais `progStoreLoadForAthlete` retourne 0. Cache 24h masque le probleme (donnees pre-bug). Diagnostic en cours via `remote_check.php?action=prog_diag&id_athlete=X` et `?action=prog_errors`.
+- **Mode BDD reste utilise** par tous les patches non lies a progressions (resultats, records, etc.)
+
+## Audit athletes (admin/audit_athletes.php) (maj 2026-05-16)
+- **URL** : `admin/audit_athletes.php?bk_key=...`
+- **Stats globales** : pour chaque categorie (identite + 8 tables enfants), nb d'athletes sans donnee + % + barre de progression
+- **Identite** : sans nom_complet, nom_1, sexe, categorie, nationalite, licence, annee_naissance
+- **Enfants** (NOT EXISTS) : sans clubs, records, progressions, resultats, medailles, podiums, selections, niveaux
+- **Top 200 incomplets** : score 0-7 (combien de categories manquantes), badge colore, flags OK/NO par categorie, lien fiche athle.fr, bouton "Re-scrape" → `remote_check.php?action=test_scrape&id=X&force`
+- **Cache 1h** : audit lourd (~30-60s sur prod), fichier `logs/.audit_athletes.json`
+- **API JSON** : `?action=json&force=1` pour fetch externe
+
+## Explore classement (scraping_v2/explore_classement.php) (maj 2026-05-16)
+- **URL** : `scraping_v2/explore_classement.php`
+- **Workflow drill-down** : choisir un classement (dropdown groupe par annee) -> fetch live page athle.fr -> comparaison BDD athlete par athlete -> re-scrape ciblee
+- **API endpoints** :
+  - `?api=rescrape&id=X` (POST/GET) : full scrape + insertAthleteData (UPDATE/INSERT auto). Accept `skip_if_recent=1` pour skip si < 24h
+  - `?api=status&id=X` : retourne presence BDD + compteurs detailes
+  - `?api=check_recent&id=X` : age du dernier scrape OK depuis `athlete_scrape_log`
+- **Statuts athlete** : COMPLET (vert, records ET progressions), PARTIEL (jaune, manque l'un), ABSENT (rouge, pas en BDD)
+- **3 checkboxes auto-advance** :
+  - **Page suivante (auto)** : enchaine les pages du classement courant
+  - **Epreuve suivante (auto)** : a la derniere page, passe a l'epreuve suivante filtree par annees cochees
+  - **Skip si scrape < 24h** : utilise `athlete_scrape_log` pour ignorer les scrapes recents (gain massif sur re-runs)
+- **Filtre annees** (encadre vert, top de page) : checkboxes par annee disponible, persistees en `localStorage` (`bk_explore_years`). Tout cocher / decocher boutons.
+- **Persistance** : 3 checkboxes auto-advance + annees stockes en `localStorage` (cles `bk_explore_autoadvance`, `bk_explore_autoadvance_epreuve`, `bk_explore_skip24h`, `bk_explore_years`)
+- **Auto-advance technique** : URL `&autoadvance=1` est posee par la redirect, declenche `rescrapeAllVisible()` apres 1.5s au chargement. URL nettoyee apres usage (anti-boucle).
+- **Bouton individuel "Re-scraper"** : ignore le skip 24h (clic explicite = override)
+
+## Table athlete_scrape_log (tracking skip 24h)
+```sql
+CREATE TABLE athlete_scrape_log (
+    athlete_id_ext INT UNSIGNED PRIMARY KEY,
+    last_scraped_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    last_action ENUM('NEW','MAJ') DEFAULT 'MAJ',
+    INDEX idx_last_scraped (last_scraped_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+```
+- **Cree automatiquement** par `explore_classement.php` au 1er chargement (`CREATE TABLE IF NOT EXISTS`)
+- **Alimente** : `?api=rescrape` apres scrape OK via `INSERT ... ON DUPLICATE KEY UPDATE last_scraped_at=NOW()`
+- **Lecture** : `?api=check_recent&id=X` + `skip_if_recent=1` dans rescrape
+
+## Cleanup duplicates v2 (scraping_v2/cleanup_duplicates.php) (refactore 2026-05-17)
+- **Pourquoi v2** : la v1 crashait par timeout — `SELECT COUNT(DISTINCT url)` + SELF-JOIN `DELETE n1 INNER JOIN n2` sans index = O(n^2) sur 350k lignes
+- **Strategie en 3 phases AJAX** (zero query bloquante au chargement) :
+  - **Phase 0** : `ALTER TABLE nom_et_liens ADD INDEX idx_url (url(191))` (sans, tout est impossible)
+  - **Phase 1** : 1 seul SELECT GROUP BY HAVING COUNT > 1 -> liste figee des IDs perdants dans `state/cleanup_losers.json`
+  - **Phase 2** : DELETE par batch de 5000 IDs via `WHERE id_nom_et_liens IN (...)` (PK = ultra rapide), loop JS pause-able
+  - **Phase 3** : transforme l'INDEX en UNIQUE KEY -> empeche futurs doublons
+- **API endpoints** : `?api=stats` (cache 60s), `?api=add_index`, `?api=analyze`, `?api=delete_batch`, `?api=add_unique`, `?api=reset`
+- **UI** : 4 cartes phase colorees (grise=todo, orange=active, verte=done), barre de progression, log live
+- **State** : `scraping_v2/state/cleanup_losers.json` (liste IDs), `cleanup_progress.json`, `cleanup_stats.json` (cache 60s)
+
+## Coverage par annee (scraping_v2/par_annee.php) (maj 2026-05-17)
+- **Colonne "Couverture"** dans le tableau des annees : pour chaque annee, `expected_athle_fr = pages x 50` vs `bdd_count = athletes distincts ayant donnees datees`
+- **Source bdd_count** : `athlete_progressions.annee_progression` + fallback `YEAR(athlete_resultats.date_resultat)` (max des deux)
+- **Cache 1h** : `scraping_v2/state/coverage_bdd.json` (queries COUNT DISTINCT lentes)
+- **Force refresh** : `?refresh_coverage=1`
+- **Affichage** : barre de progression coloree (rouge < 50%, orange < 80%, vert clair < 95%, vert >= 95%)
+
+## Console live refresh_existing (scraping/refresh_existing.php) (maj 2026-05-16)
+- **Endpoint AJAX** : `?api=log` retourne JSON `{running, progress, total, pct, stats, log}` (lecture seule, pas de BDD, ultra-rapide)
+- **Append log live** : apres chaque athlete scrape, append entry dans `refresh_existing_log.json` (rolling buffer 200 entries)
+- **Entry log** : `{ts, pos, id_ext, name, action: NEW/MAJ/ERR/ERR_FETCH, records, progressions, selections, medailles, clubs, url, msg}`
+- **UI console** : poll AJAX 1.5s, affiche 4 compteurs (NEW vert / MAJ violet / Erreurs rouge / Avancement), log monospace avec nom athlete + lien `[#id]` athle.fr cliquable
+- **Auto-scroll** en bas si pas remonte manuellement
+- **Reset** : nettoie aussi le LOG_FILE
+
+## Bouton Fiche FFA (profil athlete) (maj 2026-05-17)
+- **Position** : entre "Vue brute" (gras) et "Signaler" dans le hero du profil (index.php ligne ~8348)
+- **Style** : degrade bleu (`#1e3a8a -> #3b82f6`), classe CSS `.btn-ffa`, icone trophy `&#127942;`
+- **URL** : `https://athle.fr/athletes/{athlete_id_externe}/bilans` (clean URL, pas l'ancien ASP.NET)
+
+## Remote check endpoints (admin/remote_check.php) — nouveautes
+- **`?action=scrape_status`** (maj 2026-05-16) : etat des 2 pipelines (v2 vers nom_et_liens + scraper principal vers 9 tables) + compteurs BDD + 5 dernieres URLs/athletes + audit qualite (sans_nom, sans_categorie...) + pipeline restants
+- **`?action=prog_diag&id_athlete=X`** (2026-05-17) : etat complet du progressions store pour un athlete (mode, fichier source, mtime, taille, 5 dernieres entries, date max)
+- **`?action=prog_errors&limit=50`** (2026-05-17) : tail du log d'erreurs `archives/.prog_idx/_errors.log` (rempli par insertAthleteData write+verify)
+
+## Aide modale db_archive (admin/db_archive.php) (maj 2026-05-17)
+- **Bouton "?  Aide"** en haut a droite du header (violet)
+- **Modale 9 sections** : Concepts (BDD/Fichier/Source par table), Legende badges et boutons, Actions table detaillees, Actions archive, Boutons globaux, Securite 5 verifications avant TRUNCATE, Workflows types, Format .jsonl, FAQ
+- **Fermeture** : Escape, clic sur fond, bouton X
+- **Position** : `position:fixed; z-index:99999`, scrollable
+
+## Bug fix rate limit (core/search_limit.php) (maj 2026-05-16)
+- **Avant** : compteur par IP -> 2 utilisateurs sur meme WiFi se partageaient le quota/cooldown
+- **Apres** : compteur par `u<id_user>` -> chaque connecte a son propre quota independant
+- **Edge case** : cookie `bk_token` obsolete (session introuvable en BDD) -> `unlimited` au lieu de bloquer
+- **Migration** : anciennes entries IP dans `logs/.search_limits.php` ignorees, balayees au reset quotidien
+
+## URL sync silencieuse checkboxes (scraping_v2/index.php) (maj 2026-05-17)
+- **Bug** : changer la table select submit la form, mais cocher/decocher une case ne syncait pas l'URL -> a la submit/auto-refresh, les checks etaient ignores et les annees >=2024 par defaut s'imposaient
+- **Fix** : fonction JS `bkSyncUrl()` met a jour l'URL via `history.replaceState` a chaque change, plus marqueur `user_picked=1` pour distinguer "tout decoche volontairement" du "premier chargement"
+
 ## Points d'attention CRITIQUES
 - `index.php` est ENORME (~8400 lignes) : PHP + HTML + JS tout-en-un. Lire par sections.
 - `index.php` inclut `core/db.php` → `$conn` disponible pour requetes directes (ex: select nationalites)
@@ -928,6 +1101,82 @@ MySQL (9 tables enfants) + src/{id}.php (JSON)
 - FK vers athletes = ON DELETE CASCADE (supprime toutes les donnees liees)
 - **Three.js** : charge 1 seule fois via CDN avant les sections 3D, utilise par le podium uniquement
 - **Disclaimer** : texte legal affiche sur accueil (bandeau), athletes (popup), profil (popup), footer (complet)
+
+# ═══════════════════════════════════════════════════════════════
+#  SESSION JUIN 2026 — Abonnements, Paywall, Mode test, Espace Club
+# ═══════════════════════════════════════════════════════════════
+
+## Abonnements Stripe — emails transactionnels
+- **`core/emails.php`** (nouveau) : emails brandes BOKONZI.
+  - `bkSendSubscriptionWelcome($conn, $idUser, $planKey, $force=false)` : email de bienvenue/remerciement au client. Anti-doublon via `logs/.sub_welcome_sent.php` (cle `u<id>:<plan>`).
+  - `bkNotifyAdminNewSubscription($conn, $idUser, $planKey)` : notif admin sur `contact@bokonzi.com` (Reply-To = email client). Appelee automatiquement quand la bienvenue part.
+  - Envoi via `bkMail()` (`core/mailer.php`, SMTP Hostinger, fallback `mail()`).
+- **`api/stripe_webhook.php`** (modifie) : l'email part **UNIQUEMENT apres paiement encaisse** :
+  - `checkout.session.completed` avec `payment_status === 'paid'`
+  - `invoice.paid` avec `amount_paid > 0`
+  - PAS sur `subscription.created/updated/deleted` (cycle de vie), PAS sur `trialing`/`past_due`.
+  - Garde `wh_welcome_if_active()` : exige statut strictement `active` + periode valide.
+- **`admin/remote_check.php`** (modifie) : actions distantes `grant_sub&email=&plan=&months=`, `send_sub_welcome&email=[&plan=][&force=1]`, `notify_admin_sub&email=`.
+- **Cause racine d'un paiement « invisible »** : webhook non configure (`STRIPE_WEBHOOK_SECRET` reste `A_REMPLIR`) → `stripe_events` vide → la BDD n'apprend jamais le paiement. Payment Links doivent collecter l'email (rattachement par email).
+
+## Mode test — « Apercu en tant que » (super admin)
+- **`core/test_mode.php`** (nouveau) : un super admin (cookie `bk_sa_token` valide) peut parcourir le site comme : `visitor`, `free`, `bronze`, `argent`, `or`, `platine`.
+  - Active via cookie `bk_test_role` (+ `bk_test_t0` = timer de « premiere visite » remis a zero a chaque activation → simule une vraie arrivee pour la decouverte 60 s).
+  - `bkTestRole()` (retourne '' si non super admin → impossible de se fabriquer un faux abo), `bkTestIsPlan()`, `bkTestBanner()` (banniere fixe en bas + bouton « Quitter »).
+- **Branche dans** : `core/subscription.php` (abonnement simule via `getUserSubscription`), `core/paywall.php` (`bkIsSubscriber`), `core/search_limit.php` (`bkSearchLimitTest()` — quota simule avec compteur isole `test_<role>`).
+- **Controle** : `admin/panel.php` onglet **Abonnes** → encart « Mode test » (boutons JS posent les cookies + ouvrent `../`).
+
+## Paywall — apercu floute + masquage reel (`core/paywall.php`)
+- `bkIsSubscriber($conn)` + `bkPaywallAssets($conn)` (CSS+JS, appele dans le `<head>` d'`index.php`).
+- **Teaser visuel** : classe `bk-premium` + `data-lock-label` → bloc floute en bas + cadenas + CTA `/tarifs` (le haut reste lisible). Le contenu reste dans le DOM (SEO ok).
+- **Masquage REEL** : `window.bkMaskBio(el, fullText, keep=200)` → garde un teaser lisible + remplace la suite par des `*` (le vrai texte n'est PAS insere dans le DOM). Branche dans les 2 `_bioRebuild()` du profil (index.php). NB : `ATHLETE_DATA` reste dans la page → protection 100 % = gating cote serveur (non fait).
+
+## Carte de comparaison partageable (index.php, page=comparer)
+- Banniere dans `#cmpChartArea` → `openCmpCard()` dessine une image **1200x630** sur `<canvas>` (`drawCmpCard()`) : marque BOKONZI, colonnes par athlete (nom, cat/sexe/nat, club, compteurs, record cle), badge VS.
+- `downloadCmpCard()` (PNG), `shareCmpCard()` (Web Share API + fichier sur mobile), liens WhatsApp/X/Facebook (partagent le LIEN `?page=comparer&ids=…` → boucle d'acquisition).
+- Modale `#cmpCardModal`. Gratuit pour tous (volontaire : plus de partages = plus de trafic vers le paywall).
+
+## Panel admin — reorganisation
+- **Onglets groupes** par domaine : Contenu / Membres / Messages / Systeme (libelles `.tab-group-label`, `.tabs-main` en `flex-wrap`).
+- **Accordeon** : chaque grosse carte est repliable (chevron sur le titre, etat memorise en `localStorage` `bk_panel_acc`, **replie par defaut** au 1er chargement). Bouton « Tout replier / deplier » par onglet. JS non-invasif (post-traitement au chargement).
+- **Onglet Abonnes** (`data-pane="abonnes"`) : KPIs (abonnes actifs, par plan, Stripe/manuel) + tableau des membres abonnes (offre, statut, source, echeance) + filtre + lien `subscriptions.php`. Donnees via requete directe `subscriptions`.
+
+## ═══ ESPACE CLUB (pages/club.php) — outil B2B Platine ═══
+Page autonome : tableau de bord complet d'un club. **URL** : `pages/club.php?club=NOM` (ou `?id=ID`).
+
+### Acces
+- Reserve **Platine** (`getUserPlanRank >= 4`) ou super admin (`bk_sa_token`) ou mode test `platine`.
+- **Cle maitre** : `?bk_key=bk_s3cr3t_2026_xK9mP` deverrouille tout (prime sur le mode test). Sert a l'owner + verif a distance.
+- Non-abonne : voit les KPIs (depuis `club_stats.php`) + encart « Reserve a l'offre Platine » + CTA `/tarifs`.
+
+### Effectif (roster)
+- **Tous les licencies depuis le debut** (jointure `athlete_clubs`, toutes periodes), `LIMIT 10000`, `visible=1`, sur 1 seule page (filtre + CSV couvrent tout).
+- Trie par meilleur niveau (les plus forts en haut).
+- **Colonnes** (14) : # · Athlete · Cat. · Sexe · Nat. · Ne(e) · **Meilleur niv.** · **Niveau actuel** · **Perf niv. actuel** · **Specialite** · **Meilleure perf** · **Perf actuelle** · **Periode** · **Statut**.
+
+### Niveaux — 2 sources croisees (IMPORTANT)
+- `_clubNivOrder()` : hierarchie FFA corrigee → **International (IA/IB/IE) > National (N1-N4) > Inter-Regional (IR) > Regional (R1-R6) > Departemental (D1-D8)**. (`IR` = Inter-Regional, EN DESSOUS du National — bug initial : IR2 « battait » N2.)
+- **Meilleur niveau** + **Niveau actuel** calcules depuis `athlete_niveaux.code_niveau` ET `athlete_resultats.niveau_resultat` (sinon un N2 vu seulement en resultat n'apparaissait pas). Closure `$apply` : meilleur = min ordre tous temps ; actuel = annee la plus recente.
+- **Perf niv. actuel** : la perf (+ epreuve) sur laquelle le niveau ACTUEL a ete obtenu — via `athlete_niv_perfs` (source qualif) ou directement la ligne `athlete_resultats` (source resultat).
+- **Specialite** = epreuve du MEILLEUR niveau (via `athlete_niv_perfs` ou l'epreuve du resultat). Fallback : si pas d'epreuve liee → epreuve PRINCIPALE (la plus pratiquee dans `athlete_resultats`, sinon un record).
+
+### Perfs (dans la specialite)
+- **Meilleure perf** = la vraie meilleure perf parmi `athlete_records` + `athlete_progressions`, avec sens **temps (plus petit meilleur)** vs **distance/combines (plus grand meilleur)** (detection regex sur le nom d'epreuve).
+- **Perf actuelle** = perf la plus recente (UNION `athlete_resultats` + `athlete_progressions`, ORDER annee/date DESC) + l'annee entre parentheses.
+
+### Periode + Statut
+- **Periode** : `MIN(annee_debut) – MAX(annee_fin)` (ou « present »), avec le **nombre d'annees** : `2018 – 2024 (7 ans)`.
+- **Statut** : Actif (vert) / Ancien (rouge), selon `$refYear` = derniere saison connue du club (`MAX(annee_fin)` ; evite que tout soit rouge si la derniere saison scrapee n'est pas l'annee calendaire). Barre coloree a gauche de la ligne. Compteurs « Actifs en {refYear} : N · Anciens : M ».
+
+### Recherche & tri
+- **Recherche par epreuve** : champ « Qui a participe a… » (`?epreuve=`) → ne garde que les participants (`athlete_records`/`athlete_resultats` sur les `id_epreuve` qui matchent `LIKE`). En mode filtre, Specialite/perfs portent sur l'epreuve recherchee.
+- **Seuil de perf** (`?perf=`) : « 100m en moins de 11.50 ». `_clubPerfToInt()` convertit `11.50`/`1:55`/`1:55.30`/`6.20`. Sens auto : **course → ≤**, **concours → ≥**. Balaie records + resultats + progressions.
+- **Tri par clic** sur les en-tetes (`clubSort()`, ▲/▼, `data-sort` = ordre niveau / statut). **Filtre par nom** client-side. **Export CSV** + **Impression**.
+- **Autocompletion** des champs club + epreuve : endpoint JSON interne `pages/club.php?ac=club|epreuve&q=…` (min 2 car., prefixe prioritaire) + dropdown clavier (↑↓ Entree Echap) `bkAttachAC()`.
+- **Largeur** : conteneur `.wrap` a 95 % (max 1800px) pour les 14 colonnes.
+
+### Point d'entree
+- Bouton **« Espace Club Pro »** sous le titre du club sur la page Recherche (`index.php`, `page=recherche&club=`), pointe vers `BK_URL('/pages/club.php')?club=…`.
 
 
 

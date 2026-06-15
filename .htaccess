@@ -21,16 +21,16 @@
     # 3) 301 : URLs legacy /index.php?page=X -> /X
     #    (preserve les parametres supplementaires)
     # ----------------------------------------------------------
-    RewriteCond %{THE_REQUEST} \s/+index\.php\?page=(accueil|athletes|recherche|clubs|villes|epreuves|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)\s [NC]
+    RewriteCond %{THE_REQUEST} \s/+index\.php\?page=(accueil|athletes|recherche|clubs|villes|epreuves|noms|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)\s [NC]
     RewriteRule ^index\.php$ /%1? [R=301,L]
 
-    RewriteCond %{THE_REQUEST} \s/+index\.php\?page=(accueil|athletes|recherche|clubs|villes|epreuves|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)&([^\s]+)\s [NC]
+    RewriteCond %{THE_REQUEST} \s/+index\.php\?page=(accueil|athletes|recherche|clubs|villes|epreuves|noms|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)&([^\s]+)\s [NC]
     RewriteRule ^index\.php$ /%1?%2 [R=301,L]
 
-    RewriteCond %{THE_REQUEST} \s/+\?page=(accueil|athletes|recherche|clubs|villes|epreuves|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)\s [NC]
+    RewriteCond %{THE_REQUEST} \s/+\?page=(accueil|athletes|recherche|clubs|villes|epreuves|noms|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)\s [NC]
     RewriteRule ^$ /%1? [R=301,L]
 
-    RewriteCond %{THE_REQUEST} \s/+\?page=(accueil|athletes|recherche|clubs|villes|epreuves|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)&([^\s]+)\s [NC]
+    RewriteCond %{THE_REQUEST} \s/+\?page=(accueil|athletes|recherche|clubs|villes|epreuves|noms|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)&([^\s]+)\s [NC]
     RewriteRule ^$ /%1?%2 [R=301,L]
 
     # ----------------------------------------------------------
@@ -40,11 +40,12 @@
     RewriteRule ^clubs/([^/]+)/?$ index.php?page=clubs&open=$1 [L,QSA]
     RewriteRule ^villes/([^/]+)/?$ index.php?page=villes&open=$1 [L,QSA]
     RewriteRule ^epreuves/([^/]+)/?$ index.php?page=epreuves&nom=$1 [L,QSA]
+    RewriteRule ^noms/([^/]+)/?$ index.php?page=noms&q=$1 [L,QSA]
 
     # ----------------------------------------------------------
     # 5) Pages principales : /accueil, /athletes, etc.
     # ----------------------------------------------------------
-    RewriteRule ^(accueil|athletes|recherche|clubs|villes|epreuves|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)/?$ index.php?page=$1 [L,QSA]
+    RewriteRule ^(accueil|athletes|recherche|clubs|villes|epreuves|noms|comparer|tuto|espace|produits|concept|contact|solutions|tarifs|mentions-legales|confidentialite)/?$ index.php?page=$1 [L,QSA]
 
     # ----------------------------------------------------------
     # 6) Racine / -> accueil (sans redirection visible)

@@ -52,7 +52,7 @@ function isSuperAdmin() {
 // === FILTRES PAGE ATHLETES (public) ===
 function getAthletesFilter() {
     $f = __DIR__ . '/../logs/.athletes_filter.php';
-    $defaults = ['niveaux' => ['IA','IB'], 'annee' => (int)date('Y'), 'nb_hommes' => 50, 'nb_femmes' => 50, 'layout' => 'magazine', 'club_filter' => '', 'epreuve_filter' => '', 'filter_cible_enabled' => false];
+    $defaults = ['niveaux' => ['IA','IB'], 'annee' => (int)date('Y'), 'nb_hommes' => 50, 'nb_femmes' => 50, 'layout' => 'magazine', 'club_filter' => '', 'epreuve_filter' => '', 'filter_cible_enabled' => false, 'all_epreuves' => false];
     if (!file_exists($f)) return $defaults;
     $raw = file_get_contents($f);
     $pos = strpos($raw, "\n");
@@ -68,9 +68,12 @@ function getAthletesFilter() {
         'club_filter'          => trim((string)($data['club_filter'] ?? '')),
         'epreuve_filter'       => trim((string)($data['epreuve_filter'] ?? '')),
         'filter_cible_enabled' => !empty($data['filter_cible_enabled']),
+        'all_epreuves'         => !empty($data['all_epreuves']),
     ];
 }
-function setAthletesFilter($niveaux, $annee, $nbH = 50, $nbF = 50, $layout = 'magazine', $clubFilter = '', $epreuveFilter = '', $filterCibleEnabled = false) {
+// Normalise un jeu de criteres en config canonique (sans ecrire). Reutilise par
+// le filtre actif ET par les selections enregistrees (presets).
+function normalizeAthletesConfig($niveaux, $annee, $nbH = 50, $nbF = 50, $layout = 'magazine', $clubFilter = '', $epreuveFilter = '', $filterCibleEnabled = false, $allEpreuves = false) {
     $allowedNiv = ['IA','IB','IE','IR','IR2','N1','N2','N3','N4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
     $cleanNiv = array_values(array_intersect((array)$niveaux, $allowedNiv));
     if (empty($cleanNiv)) $cleanNiv = ['IA','IB'];
@@ -100,12 +103,73 @@ function setAthletesFilter($niveaux, $annee, $nbH = 50, $nbF = 50, $layout = 'ma
         if (mb_strlen($out) > 1000) $out = mb_substr($out, 0, 1000);
         return $out;
     };
-    $clubFilter = $normalizeMulti($clubFilter);
-    $epreuveFilter = $normalizeMulti($epreuveFilter);
+    return [
+        'niveaux' => $cleanNiv,
+        'annee' => $year,
+        'nb_hommes' => $nbH,
+        'nb_femmes' => $nbF,
+        'layout' => $layout,
+        'club_filter' => $normalizeMulti($clubFilter),
+        'epreuve_filter' => $normalizeMulti($epreuveFilter),
+        'filter_cible_enabled' => (bool)$filterCibleEnabled,
+        'all_epreuves' => (bool)$allEpreuves,
+    ];
+}
+// Ecrit une config canonique dans le filtre actif lu par /?page=athletes
+function writeAthletesFilterConfig($config) {
+    $data = $config;
+    $data['updated_at'] = date('Y-m-d H:i:s');
     $f = __DIR__ . '/../logs/.athletes_filter.php';
-    $data = ['niveaux' => $cleanNiv, 'annee' => $year, 'nb_hommes' => $nbH, 'nb_femmes' => $nbF, 'layout' => $layout, 'club_filter' => $clubFilter, 'epreuve_filter' => $epreuveFilter, 'filter_cible_enabled' => (bool)$filterCibleEnabled, 'updated_at' => date('Y-m-d H:i:s')];
     file_put_contents($f, "<?php die(); ?>\n" . json_encode($data, JSON_UNESCAPED_UNICODE));
     return $data;
+}
+function setAthletesFilter($niveaux, $annee, $nbH = 50, $nbF = 50, $layout = 'magazine', $clubFilter = '', $epreuveFilter = '', $filterCibleEnabled = false, $allEpreuves = false) {
+    return writeAthletesFilterConfig(
+        normalizeAthletesConfig($niveaux, $annee, $nbH, $nbF, $layout, $clubFilter, $epreuveFilter, $filterCibleEnabled, $allEpreuves)
+    );
+}
+
+// === SELECTIONS ENREGISTREES (presets) page Athletes ===
+// Fichier logs/.athletes_presets.php : { active_id, presets:[{id,label,config,created_at}] }
+function getAthletesPresets() {
+    $f = __DIR__ . '/../logs/.athletes_presets.php';
+    $out = ['active_id' => '', 'presets' => []];
+    if (!file_exists($f)) return $out;
+    $raw = file_get_contents($f);
+    $pos = strpos($raw, "\n");
+    if ($pos === false) return $out;
+    $data = json_decode(substr($raw, $pos + 1), true) ?: [];
+    $out['active_id'] = (string)($data['active_id'] ?? '');
+    if (is_array($data['presets'] ?? null)) $out['presets'] = array_values($data['presets']);
+    return $out;
+}
+function saveAthletesPresets($store) {
+    $f = __DIR__ . '/../logs/.athletes_presets.php';
+    $clean = ['active_id' => (string)($store['active_id'] ?? ''), 'presets' => array_values($store['presets'] ?? [])];
+    file_put_contents($f, "<?php die(); ?>\n" . json_encode($clean, JSON_UNESCAPED_UNICODE));
+    return $clean;
+}
+// Libelle lisible genere depuis une config
+function athletesPresetLabel($config) {
+    $nbH = (int)($config['nb_hommes'] ?? 0);
+    $nbF = (int)($config['nb_femmes'] ?? 0);
+    $parts = [];
+    if ($nbH > 0 && $nbF > 0) $parts[] = 'H+F (' . $nbH . '/' . $nbF . ')';
+    elseif ($nbH > 0) $parts[] = 'Hommes (' . $nbH . ')';
+    elseif ($nbF > 0) $parts[] = 'Femmes (' . $nbF . ')';
+    // Epreuve / portee
+    if (!empty($config['filter_cible_enabled']) && trim((string)($config['epreuve_filter'] ?? '')) !== '') {
+        $parts[] = str_replace('|', ' / ', $config['epreuve_filter']);
+    } elseif (!empty($config['filter_cible_enabled']) && trim((string)($config['club_filter'] ?? '')) !== '') {
+        $parts[] = '🏟 ' . str_replace('|', ' / ', $config['club_filter']);
+    } elseif (!empty($config['all_epreuves'])) {
+        $parts[] = 'Toutes epreuves';
+    } else {
+        $parts[] = 'Sprint/Sauts';
+    }
+    $parts[] = implode(',', (array)($config['niveaux'] ?? []));
+    $parts[] = ((int)($config['annee'] ?? 0) === 0) ? 'Toutes annees' : (string)(int)$config['annee'];
+    return implode(' · ', array_filter($parts, 'strlen'));
 }
 
 // === EMAILS AUTORISES AU PANEL ===
@@ -233,9 +297,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_athletes_filter'
         $_POST['layout'] ?? 'magazine',
         $_POST['club_filter'] ?? '',
         $_POST['epreuve_filter'] ?? '',
-        !empty($_POST['filter_cible_enabled'])
+        !empty($_POST['filter_cible_enabled']),
+        !empty($_POST['all_epreuves'])
     );
     $newFilter = getAthletesFilter();
+
+    // Edition manuelle du filtre actif -> aucune selection enregistree n'est "active"
+    $__ps = getAthletesPresets();
+    if ($__ps['active_id'] !== '') { $__ps['active_id'] = ''; saveAthletesPresets($__ps); }
 
     // Sauvegarde simultanee de la mise en avant (champs presents dans le meme formulaire)
     if (isset($_POST['feat_ids']) || isset($_POST['feat_title']) || isset($_POST['feat_enabled'])) {
@@ -260,6 +329,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_athletes_filter'
         'club_filter'          => (string)($oldFilter['club_filter'] ?? ''),
         'epreuve_filter'       => (string)($oldFilter['epreuve_filter'] ?? ''),
         'filter_cible_enabled' => (bool)($oldFilter['filter_cible_enabled'] ?? false),
+        'all_epreuves'         => (bool)($oldFilter['all_epreuves'] ?? false),
     ];
     $newData = [
         'niveaux'              => array_values((array)($newFilter['niveaux'] ?? [])),
@@ -269,6 +339,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_athletes_filter'
         'club_filter'          => (string)($newFilter['club_filter'] ?? ''),
         'epreuve_filter'       => (string)($newFilter['epreuve_filter'] ?? ''),
         'filter_cible_enabled' => (bool)($newFilter['filter_cible_enabled'] ?? false),
+        'all_epreuves'         => (bool)($newFilter['all_epreuves'] ?? false),
     ];
     sort($oldData['niveaux']); sort($newData['niveaux']);
     $dataChanged = ($oldData !== $newData);
@@ -285,7 +356,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_athletes_filter'
     header('Location: panel.php?af=ok&cs=' . $cacheStatus . '#athletesFilter');
     exit;
 }
+
+// === Enregistrer la selection courante comme preset (depuis le formulaire filtre) ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_athletes_preset'])) {
+    $anneePost = !empty($_POST['annee_all']) ? 0 : ($_POST['annee'] ?? date('Y'));
+    $config = normalizeAthletesConfig(
+        $_POST['niveaux'] ?? [],
+        $anneePost,
+        $_POST['nb_hommes'] ?? 50,
+        $_POST['nb_femmes'] ?? 50,
+        $_POST['layout'] ?? 'magazine',
+        $_POST['club_filter'] ?? '',
+        $_POST['epreuve_filter'] ?? '',
+        !empty($_POST['filter_cible_enabled']),
+        !empty($_POST['all_epreuves'])
+    );
+    $store = getAthletesPresets();
+    $label = trim((string)($_POST['preset_label'] ?? ''));
+    if ($label === '') $label = athletesPresetLabel($config);
+    if (mb_strlen($label) > 120) $label = mb_substr($label, 0, 120);
+    $id = 'p' . time() . substr(md5(uniqid('', true)), 0, 5);
+    array_unshift($store['presets'], [
+        'id'         => $id,
+        'label'      => $label,
+        'config'     => $config,
+        'created_at' => date('Y-m-d H:i:s'),
+    ]);
+    // Plafond : 40 selections max
+    if (count($store['presets']) > 40) $store['presets'] = array_slice($store['presets'], 0, 40);
+    // Enregistrer = activer aussitot cette selection (une seule active)
+    $store['active_id'] = $id;
+    saveAthletesPresets($store);
+    writeAthletesFilterConfig($config);
+    // Les donnees changent -> vider le cache liste
+    $cacheDir = __DIR__ . '/../cache';
+    if (is_dir($cacheDir)) { foreach (glob($cacheDir . '/liste_*.json') as $cf) @unlink($cf); }
+    header('Location: panel.php?ap=saved#athletesPresets');
+    exit;
+}
+
+// === Activer une selection enregistree (une seule active a la fois) ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['activate_athletes_preset'])) {
+    $pid = (string)($_POST['preset_id'] ?? '');
+    $store = getAthletesPresets();
+    $found = null;
+    foreach ($store['presets'] as $p) { if (($p['id'] ?? '') === $pid) { $found = $p; break; } }
+    if ($found && is_array($found['config'] ?? null)) {
+        $store['active_id'] = $pid;
+        saveAthletesPresets($store);
+        writeAthletesFilterConfig($found['config']);
+        $cacheDir = __DIR__ . '/../cache';
+        if (is_dir($cacheDir)) { foreach (glob($cacheDir . '/liste_*.json') as $cf) @unlink($cf); }
+        header('Location: panel.php?ap=activated#athletesPresets');
+    } else {
+        header('Location: panel.php?ap=notfound#athletesPresets');
+    }
+    exit;
+}
+
+// === Supprimer une selection enregistree ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_athletes_preset'])) {
+    $pid = (string)($_POST['preset_id'] ?? '');
+    $store = getAthletesPresets();
+    $store['presets'] = array_values(array_filter($store['presets'], function($p) use ($pid) {
+        return ($p['id'] ?? '') !== $pid;
+    }));
+    if ($store['active_id'] === $pid) $store['active_id'] = '';
+    saveAthletesPresets($store);
+    header('Location: panel.php?ap=deleted#athletesPresets');
+    exit;
+}
+
 $currentAthletesFilter = getAthletesFilter();
+$athletesPresetsStore = getAthletesPresets();
+$apMsg = $_GET['ap'] ?? '';
 $afSaved = isset($_GET['af']) && $_GET['af'] === 'ok';
 $afCacheStatus = $_GET['cs'] ?? '';
 
@@ -1187,6 +1331,33 @@ foreach ($inscMonths as $m) {
 }
 $moisFrLong = ['', 'Janvier','Fevrier','Mars','Avril','Mai','Juin','Juillet','Aout','Septembre','Octobre','Novembre','Decembre'];
 
+// ============================================================
+// DATA — Abonnements premium (statut par utilisateur + stats)
+// ============================================================
+require_once __DIR__ . '/../core/stripe_config.php'; // $BK_PLANS (noms + couleurs)
+$subByUser = [];
+$subStats  = ['active' => 0, 'total' => 0, 'manuel' => 0, 'stripe' => 0,
+              'plans' => ['bronze' => 0, 'argent' => 0, 'or' => 0, 'platine' => 0]];
+$_chkSub = $conn->query("SHOW TABLES LIKE 'subscriptions'");
+if ($_chkSub && $_chkSub->num_rows > 0) {
+    $resSub = $conn->query("SELECT id_user, plan, status, billing_period, current_period_end, updated_at FROM subscriptions");
+    if ($resSub) {
+        $nowTs = time();
+        while ($s = $resSub->fetch_assoc()) {
+            $isActive = in_array($s['status'], ['active', 'trialing', 'past_due'], true)
+                && (empty($s['current_period_end']) || strtotime($s['current_period_end']) >= $nowTs);
+            $s['actif'] = $isActive;
+            $subByUser[(int)$s['id_user']] = $s;
+            $subStats['total']++;
+            if ($isActive) {
+                $subStats['active']++;
+                if (isset($subStats['plans'][$s['plan']])) $subStats['plans'][$s['plan']]++;
+                if (($s['billing_period'] ?? '') === 'manuel') $subStats['manuel']++; else $subStats['stripe']++;
+            }
+        }
+    }
+}
+
 // Liste de tous les inscrits triee par id_user DESC (plus recent en haut)
 $moisFr = ['', 'janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
 $allRecent = array_merge($usersGoogle, $usersEmail);
@@ -1207,6 +1378,8 @@ $maxUid = $allRecent ? (int)$allRecent[0]['id_user'] : 0;
 // MAILS REÇUS — confirmes (contact_messages) + non confirmes (contact_confirm_tokens)
 // ============================================================
 $msgsConfirmed = [];
+$msgsConfirmedUnread = [];
+$msgsConfirmedRead = [];
 $msgsUnconfirmed = [];
 $totalUnread = 0;
 
@@ -1214,9 +1387,15 @@ $resM = $conn->query("SELECT id_msg, ip, nom, email, message, lu, created_at FRO
 if ($resM) {
     while ($row = $resM->fetch_assoc()) {
         $msgsConfirmed[] = $row;
-        if ((int)$row['lu'] === 0) $totalUnread++;
+        if ((int)$row['lu'] === 0) {
+            $msgsConfirmedUnread[] = $row;
+            $totalUnread++;
+        } else {
+            $msgsConfirmedRead[] = $row;
+        }
     }
 }
+$totalRead = count($msgsConfirmedRead);
 
 $resT = $conn->query("SELECT id, ip, nom, email, message, expires_at, created_at FROM contact_confirm_tokens WHERE used = 0 ORDER BY created_at DESC LIMIT 200");
 if ($resT) {
@@ -1411,10 +1590,16 @@ h1 .badge {
 
 /* Onglets principaux */
 .tabs-main {
-    display: flex; gap: 4px;
+    display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
     border-bottom: 2px solid #30363d;
     margin-bottom: 20px;
 }
+/* Libellé de groupe + séparateur dans la barre d'onglets */
+.tab-group-label {
+    color: #6e7681; font-size: 10px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 1px; padding: 0 8px 0 14px; align-self: center;
+}
+.tab-group-label:first-child { padding-left: 0; }
 .tab-main {
     background: none; border: none;
     color: #8b949e; cursor: pointer;
@@ -1434,6 +1619,28 @@ h1 .badge {
 
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
+
+/* ── Accordéon : repli des grosses sections ───────────────────────── */
+.bk-acc-head {
+    cursor: pointer; position: relative; user-select: none;
+}
+.bk-acc-head .bk-chev {
+    display: inline-block; width: 18px; height: 18px; line-height: 18px;
+    text-align: center; margin-right: 8px; color: #8b949e;
+    transition: transform .2s ease; font-size: 11px; flex: 0 0 auto;
+}
+.bk-acc.collapsed .bk-acc-head .bk-chev { transform: rotate(-90deg); }
+.bk-acc.collapsed > *:not(.bk-acc-head) { display: none !important; }
+.bk-acc.collapsed { padding-bottom: 14px !important; }
+.bk-acc-head:hover .bk-chev { color: #58a6ff; }
+/* Barre "tout replier / déplier" en haut de chaque onglet */
+.bk-acc-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.bk-acc-toolbar button {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 7px;
+    cursor: pointer;
+}
+.bk-acc-toolbar button:hover { border-color: #58a6ff; color: #58a6ff; }
 
 /* Sous-onglets */
 .tabs-sub {
@@ -1541,6 +1748,24 @@ tr:hover td { background: #1c2128; }
 
 /* Messages */
 .msg-list { display: flex; flex-direction: column; gap: 12px; }
+.msg-group-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-bottom: 12px; padding-bottom: 6px;
+    border-bottom: 1px solid #30363d;
+}
+.msg-group-unread { color: #58a6ff; }
+.msg-group-read { color: #8b949e; }
+.msg-group-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #58a6ff; box-shadow: 0 0 6px #58a6ff;
+}
+.msg-group-cnt {
+    background: #21262d; color: inherit;
+    padding: 1px 9px; border-radius: 10px;
+    font-size: 11px; font-weight: 700;
+}
+.msg-group-unread .msg-group-cnt { background: #1f6feb33; }
 .msg-card {
     background: #161b22; border: 1px solid #30363d;
     border-radius: 10px; padding: 14px 18px;
@@ -1865,11 +2090,202 @@ tr:hover td { background: #1c2128; }
 <div class="wrap">
     <header>
         <h1>Panel 2 <span class="badge">v0.1 — Emails</span></h1>
-        <div style="display:flex;gap:10px;align-items:center;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <button type="button" id="bkCacheBtn" onclick="bkToggleCacheMenu(event)" style="padding:10px 20px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;border:2px solid #fb923c;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(249,115,22,0.4);text-transform:uppercase;letter-spacing:0.5px;transition:all 0.15s;position:relative;">
+                &#128465; Vider le cache &#9662;
+            </button>
             <a href="tools.php" style="padding:8px 16px;background:linear-gradient(135deg,#6c5ce7,#8b5cf6);color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">&#9881; Outils admin</a>
             <a href="?logout=1" class="logout">Deconnexion</a>
         </div>
     </header>
+
+    <!-- Menu deroulant cache (cache complet ou par categorie) -->
+    <div id="bkCacheMenu" style="display:none;position:absolute;background:#161b22;border:2px solid #fb923c;border-radius:14px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,0.7);z-index:9999;min-width:460px;max-width:520px;">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #30363d;">
+            <div>
+                <div style="font-size:14px;color:#fff;font-weight:800;">&#128465; Vider le cache</div>
+                <div style="font-size:11px;color:#8b949e;margin-top:2px;">Force la regeneration des donnees au prochain affichage</div>
+            </div>
+            <button onclick="document.getElementById('bkCacheMenu').style.display='none';" style="background:transparent;border:none;color:#7a869a;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1;">&times;</button>
+        </div>
+
+        <!-- ZONE 1 : Cache PROFILS (le plus utilise) -->
+        <div style="background:linear-gradient(135deg,rgba(16,185,129,0.08),rgba(16,185,129,0.02));border:1px solid #10b981;border-radius:10px;padding:12px;margin-bottom:10px;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <span style="font-size:18px;">&#127939;</span>
+                <b style="color:#10b981;font-size:14px;">Profils athletes</b>
+                <span style="background:#10b981;color:#000;font-size:9px;font-weight:800;padding:2px 7px;border-radius:10px;letter-spacing:0.5px;">RECOMMANDE APRES SCRAPE</span>
+            </div>
+            <div style="color:#8b949e;font-size:11.5px;line-height:1.5;margin-bottom:10px;">
+                Vide les fiches profil mises en cache (24h). Apres un scrape, force tous les profils a se recharger avec les nouvelles donnees au prochain affichage.
+            </div>
+            <button onclick="bkClearCache('athlete', 'tous les profils athletes')" class="bk-cc-btn-primary">
+                &#128293; Vider TOUS les profils athletes
+            </button>
+            <div style="margin-top:8px;display:flex;gap:6px;align-items:center;">
+                <span style="font-size:11px;color:#7a869a;">Ou cibler 1 athlete :</span>
+                <input type="number" id="bkCacheOneId" placeholder="ID athle.fr" style="flex:1;background:#0d1117;color:#fff;border:1px solid #30363d;padding:5px 8px;border-radius:5px;font-size:12px;min-width:0;">
+                <button onclick="bkClearCacheOne()" style="background:#10b981;color:#000;border:none;padding:5px 12px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;">OK</button>
+            </div>
+        </div>
+
+        <!-- ZONE 2 : Autres caches -->
+        <div style="font-size:10px;color:#7a869a;text-transform:uppercase;letter-spacing:0.7px;font-weight:700;margin:0 0 6px 4px;">Autres caches (par usage)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+            <button onclick="bkClearCache('search', 'cache des recherches')"     class="bk-cc-btn" title="api/search.php — resultats de recherche"><span>&#128270; Recherches</span><span class="bk-cc-sub">12 filtres</span></button>
+            <button onclick="bkClearCache('clubstats', 'cache des clubs')"        class="bk-cc-btn" title="api/club_stats.php — fiche club detaillee"><span>&#127942; Clubs</span><span class="bk-cc-sub">fiches clubs</span></button>
+            <button onclick="bkClearCache('villestats', 'cache des villes')"      class="bk-cc-btn" title="api/ville_stats.php — fiche ville"><span>&#127968; Villes</span><span class="bk-cc-sub">fiches villes</span></button>
+            <button onclick="bkClearCache('ep', 'cache des epreuves')"            class="bk-cc-btn" title="api/epreuve_stats.php — fiche epreuve"><span>&#127942; Epreuves</span><span class="bk-cc-sub">fiches epreuves</span></button>
+            <button onclick="bkClearCache('stats', 'stats globales accueil')"     class="bk-cc-btn" title="api/stats.php — KPIs accueil"><span>&#128202; Stats globales</span><span class="bk-cc-sub">accueil + top</span></button>
+            <button onclick="bkClearCache('liste', 'liste athletes paginee')"     class="bk-cc-btn" title="api/liste.php — page Athletes"><span>&#128203; Liste athletes</span><span class="bk-cc-sub">page /athletes</span></button>
+            <button onclick="bkClearCache('topsearched', 'top recherches accueil')" class="bk-cc-btn" title="api/top_searched.php — top clubs/athletes consultes"><span>&#128293; Top recherche</span><span class="bk-cc-sub">accueil consultes</span></button>
+            <button onclick="bkClearCache('athlete_similar', 'profils similaires')" class="bk-cc-btn" title="api/similar.php — athletes similaires"><span>&#128101; Similaires</span><span class="bk-cc-sub">profil similar</span></button>
+        </div>
+
+        <!-- ZONE 3 : Tout vider -->
+        <button onclick="bkClearCache('', 'TOUT le cache')" class="bk-cc-btn-all" style="margin-top:12px;width:100%;">
+            &#9888; TOUT vider d'un coup (tous prefixes)
+        </button>
+
+        <div id="bkCacheStatus" style="margin-top:10px;padding:8px 10px;border-radius:6px;font-size:12px;font-family:'JetBrains Mono',monospace;min-height:0;display:none;"></div>
+    </div>
+
+    <style>
+    #bkCacheBtn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(249,115,22,0.6); }
+    .bk-cc-btn {
+        background: #21262d; color: #d9e1ec; border: 1px solid #30363d;
+        padding: 9px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+        cursor: pointer; text-align: left; transition: all 0.15s;
+        font-family: inherit; display: flex; flex-direction: column; gap: 2px;
+    }
+    .bk-cc-btn:hover { background: #2d333b; border-color: #fb923c; color: #fff; transform: translateX(2px); }
+    .bk-cc-btn .bk-cc-sub { font-size: 9.5px; color: #7a869a; font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .bk-cc-btn-primary {
+        background: linear-gradient(135deg,#10b981,#059669); color: #000; border: none;
+        padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 800;
+        cursor: pointer; width: 100%; text-align: center; transition: all 0.15s;
+        font-family: inherit; box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .bk-cc-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.5); }
+    .bk-cc-btn-all {
+        background: linear-gradient(135deg,#dc2626,#991b1b); color: #fff; border: 2px solid #ef4444;
+        padding: 11px; border-radius: 8px; font-size: 13px; font-weight: 800;
+        cursor: pointer; font-family: inherit; transition: all 0.15s;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .bk-cc-btn-all:hover { transform: scale(1.02); box-shadow: 0 6px 18px rgba(239,68,68,0.6); }
+    </style>
+
+    <script>
+    function bkToggleCacheMenu(e) {
+        e.stopPropagation();
+        var menu = document.getElementById('bkCacheMenu');
+        var btn = document.getElementById('bkCacheBtn');
+        if (menu.style.display === 'block') {
+            menu.style.display = 'none';
+            return;
+        }
+        var rect = btn.getBoundingClientRect();
+        menu.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+        // Aligne le menu a droite du bouton pour ne pas deborder
+        menu.style.right = (window.innerWidth - rect.right) + 'px';
+        menu.style.left = 'auto';
+        menu.style.display = 'block';
+    }
+    document.addEventListener('click', function(e) {
+        var menu = document.getElementById('bkCacheMenu');
+        if (menu && menu.style.display === 'block' && !menu.contains(e.target) && e.target.id !== 'bkCacheBtn' && e.target.closest && !e.target.closest('#bkCacheBtn')) {
+            menu.style.display = 'none';
+        }
+    });
+
+    async function bkClearCache(prefix, humanLabel) {
+        if (!confirm('Vider ' + humanLabel + ' ?\n\nLes prochaines requetes regenereront les fichiers manquants automatiquement.\n\nAction irreversible mais sans danger.')) return;
+        var statusEl = document.getElementById('bkCacheStatus');
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'rgba(251,146,60,0.1)';
+        statusEl.style.border = '1px solid #fb923c';
+        statusEl.innerHTML = '<span style="color:#fb923c;">&#9203; Vidage en cours...</span>';
+        var url = '/BK/admin/clear_cache.php' + (prefix ? '?prefix=' + encodeURIComponent(prefix) : '');
+        if (window.location.hostname.indexOf('bokonzi') !== -1) {
+            url = '/admin/clear_cache.php' + (prefix ? '?prefix=' + encodeURIComponent(prefix) : '');
+        }
+        try {
+            var t0 = Date.now();
+            var r = await fetch(url, { method: 'GET' });
+            var d = null;
+            try { d = await r.json(); } catch (e) {}
+            var dur = ((Date.now() - t0) / 1000).toFixed(1);
+            if (d && d.success) {
+                statusEl.style.background = 'rgba(16,185,129,0.1)';
+                statusEl.style.border = '1px solid #10b981';
+                statusEl.innerHTML = '<b style="color:#10b981;">&#10003; Vidage OK</b><br>'
+                    + '<span style="color:#d9e1ec;">' + d.deleted + ' fichier' + (d.deleted > 1 ? 's' : '') + ' supprime' + (d.deleted > 1 ? 's' : '') + '</span> '
+                    + '<span style="color:#7a869a;">(prefixe : ' + (d.prefix || '*') + ' &mdash; ' + dur + 's)</span><br>'
+                    + '<span style="color:#a78bfa;font-size:11px;">Recharge la page concernee pour voir les nouvelles donnees.</span>';
+            } else {
+                statusEl.style.background = 'rgba(239,68,68,0.1)';
+                statusEl.style.border = '1px solid #ef4444';
+                statusEl.innerHTML = '<b style="color:#ef4444;">&#9888; Erreur</b> ' + (d && d.error ? d.error : 'Reponse inattendue');
+            }
+            setTimeout(function() {
+                statusEl.style.transition = 'opacity 0.5s';
+                statusEl.style.opacity = '0';
+                setTimeout(function() {
+                    statusEl.style.display = 'none';
+                    statusEl.style.opacity = '1';
+                }, 500);
+            }, 6000);
+        } catch (err) {
+            statusEl.style.background = 'rgba(239,68,68,0.1)';
+            statusEl.style.border = '1px solid #ef4444';
+            statusEl.innerHTML = '<b style="color:#ef4444;">&#9888; Erreur reseau :</b> ' + err.message;
+        }
+    }
+
+    // Vider le cache d'UN seul athlete (par athlete_id_externe)
+    async function bkClearCacheOne() {
+        var id = document.getElementById('bkCacheOneId').value.trim();
+        if (!id || !/^\d+$/.test(id)) {
+            alert('Saisis un ID athle.fr valide (chiffres uniquement).\nExemple : 2569767');
+            return;
+        }
+        // Le cache athlete.json est nomme avec un md5 → on ne peut pas cibler 1 athlete precis sans regenerer la liste.
+        // Strategie : on appelle directement l'API athlete avec ?_all=1 qui bypass le cache ET recree l'entry.
+        var statusEl = document.getElementById('bkCacheStatus');
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'rgba(251,146,60,0.1)';
+        statusEl.style.border = '1px solid #fb923c';
+        statusEl.innerHTML = '<span style="color:#fb923c;">&#9203; Regeneration du profil ' + id + '...</span>';
+
+        var base = window.location.hostname.indexOf('bokonzi') !== -1 ? '' : '/BK';
+        try {
+            var t0 = Date.now();
+            var r = await fetch(base + '/api/athlete.php?id=' + encodeURIComponent(id) + '&_all=1&_t=' + Date.now());
+            var d = await r.json();
+            var dur = ((Date.now() - t0) / 1000).toFixed(1);
+            if (d && d.success !== false && d.identite) {
+                statusEl.style.background = 'rgba(16,185,129,0.1)';
+                statusEl.style.border = '1px solid #10b981';
+                var nom = d.identite.nom_complet || ('ID ' + id);
+                statusEl.innerHTML = '<b style="color:#10b981;">&#10003; Profil regenere</b><br>'
+                    + '<span style="color:#d9e1ec;">' + nom + '</span> '
+                    + '<span style="color:#7a869a;">(' + dur + 's)</span><br>'
+                    + '<a href="' + base + '/recherche?page=profil&id=' + id + '&_t=' + Date.now() + '" target="_blank" style="color:#a78bfa;font-size:11px;">Ouvrir le profil &rarr;</a>';
+            } else {
+                statusEl.style.background = 'rgba(239,68,68,0.1)';
+                statusEl.style.border = '1px solid #ef4444';
+                statusEl.innerHTML = '<b style="color:#ef4444;">&#9888; Athlete introuvable</b> (ID ' + id + ')';
+            }
+        } catch (err) {
+            statusEl.style.background = 'rgba(239,68,68,0.1)';
+            statusEl.style.border = '1px solid #ef4444';
+            statusEl.innerHTML = '<b style="color:#ef4444;">&#9888; Erreur :</b> ' + err.message;
+        }
+    }
+    </script>
 
     <!-- Overlay loader XL pour formulaire athletes -->
     <div id="afLoaderOverlay" style="display:none;position:fixed;inset:0;background:radial-gradient(circle at center,rgba(13,17,23,0.96),rgba(0,0,0,0.99));z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(8px);">
@@ -1966,6 +2382,16 @@ tr:hover td { background: #1c2128; }
                 </div>
             </div>
             <?php endforeach; ?>
+        </div>
+
+        <!-- Toutes les epreuves -->
+        <div style="margin-bottom:18px;">
+            <?php $afAllEp = !empty($currentAthletesFilter['all_epreuves']); ?>
+            <label style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:<?= $afAllEp ? '#22d3ee30' : '#0d1117' ?>;border:1px solid <?= $afAllEp ? '#22d3ee' : '#30363d' ?>;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;color:<?= $afAllEp ? '#fff' : '#8b949e' ?>;">
+                <input type="checkbox" name="all_epreuves" id="afAllEpreuves" value="1" <?= $afAllEp ? 'checked' : '' ?> onchange="(function(cb){var l=cb.parentElement;var on=cb.checked;l.style.background=on?'#22d3ee30':'#0d1117';l.style.borderColor=on?'#22d3ee':'#30363d';l.style.color=on?'#fff':'#8b949e';})(this);" style="cursor:pointer;">
+                &#127939; Toutes les epreuves
+            </label>
+            <p style="color:#5a6580;font-size:11px;margin:6px 0 0;font-style:italic;line-height:1.5;">Par defaut, la page <code style="color:#a78bfa;">/?page=athletes</code> ne liste que les athletes ayant un record en 100m, 200m, haies, Longueur, Triple saut ou Perche. Coche cette case pour inclure <strong style="color:#22d3ee;">toutes les epreuves</strong> (400m, 800m, lancers, hauteur...). Ignore si un filtre cible epreuve est actif ci-dessous.</p>
         </div>
 
         <!-- Annee + Nombres -->
@@ -2466,13 +2892,25 @@ tr:hover td { background: #1c2128; }
             .af-layout-active { box-shadow: 0 0 0 1px #6c5ce740, 0 4px 12px rgba(108,92,231,0.2); }
         </style>
 
-        <button type="submit" name="save_athletes_filter" value="1" id="afSubmitBtn" style="background:#6c5ce7;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(108,92,231,0.35);">Enregistrer &amp; Apercu</button>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;">
+            <button type="submit" name="save_athletes_filter" value="1" id="afSubmitBtn" style="background:#6c5ce7;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(108,92,231,0.35);">Enregistrer &amp; Apercu</button>
+            <span style="color:#5a6580;font-size:12px;">ou</span>
+            <input type="text" name="preset_label" maxlength="120" placeholder="Nom de la selection (optionnel)" style="flex:1 1 220px;min-width:180px;background:#0d1117;border:1px solid #34d39940;border-radius:8px;padding:10px 14px;color:#f0f6fc;font-size:13px;box-sizing:border-box;">
+            <button type="submit" name="save_athletes_preset" value="1" title="Enregistre la selection courante dans le tableau ci-dessous et l'active" style="background:#10b981;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(16,185,129,0.3);">&#128190; Enregistrer comme selection</button>
+        </div>
 
         <?php if ($afSaved):
             $afEpreuvesDefault = '100m|200m|400m Haies (76)|400m Haies (91)|110m Haies (91)|110m Haies (99)|110m Haies (106)|Longueur|Triple saut|Perche';
             // Si l'admin a defini une epreuve cible ET que le toggle est actif → on l'utilise + mode strict
             $afStrictActive = !empty($currentAthletesFilter['filter_cible_enabled']) && trim((string)$currentAthletesFilter['epreuve_filter']) !== '';
-            $afEpreuvesPub = $afStrictActive ? trim((string)$currentAthletesFilter['epreuve_filter']) : $afEpreuvesDefault;
+            // Priorite : filtre cible epreuve > mode "toutes les epreuves" > liste figee par defaut
+            if ($afStrictActive) {
+                $afEpreuvesPub = trim((string)$currentAthletesFilter['epreuve_filter']);
+            } elseif (!empty($currentAthletesFilter['all_epreuves'])) {
+                $afEpreuvesPub = ''; // toutes les epreuves : aucun filtre epreuve
+            } else {
+                $afEpreuvesPub = $afEpreuvesDefault;
+            }
             $afClubPub = !empty($currentAthletesFilter['filter_cible_enabled']) ? trim((string)$currentAthletesFilter['club_filter']) : '';
             $afNivStr = implode(',', $currentAthletesFilter['niveaux']);
             $afYr = $currentAthletesFilter['annee'];
@@ -2547,6 +2985,109 @@ tr:hover td { background: #1c2128; }
         </div>
         <?php endif; ?>
     </form>
+
+    <!-- ============================================================ -->
+    <!-- SELECTIONS ENREGISTREES (presets activables, 1 seule active) -->
+    <!-- ============================================================ -->
+    <div id="athletesPresets" style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px 22px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
+            <h2 style="color:#f0f6fc;font-size:18px;font-weight:700;margin:0;">&#128190; Selections enregistrees</h2>
+            <?php
+            $apLabels = [
+                'saved'     => ['#10b98120','#34d399','&#10003; Selection enregistree et activee'],
+                'activated' => ['#10b98120','#34d399','&#10003; Selection activee — visible sur /athletes'],
+                'deleted'   => ['#f59e0b20','#fbbf24','&#128465; Selection supprimee'],
+                'notfound'  => ['#e11d4820','#fb7185','Selection introuvable'],
+            ];
+            if (isset($apLabels[$apMsg])): list($_bg,$_fg,$_txt) = $apLabels[$apMsg]; ?>
+            <span style="background:<?= $_bg ?>;color:<?= $_fg ?>;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;"><?= $_txt ?></span>
+            <?php endif; ?>
+        </div>
+        <p style="color:#8b949e;font-size:13px;margin:0 0 16px;line-height:1.5;">
+            Configure les criteres ci-dessus puis clique <strong style="color:#34d399;">Enregistrer comme selection</strong> pour la memoriser ici.
+            Tu peux <strong style="color:#a78bfa;">activer</strong> n'importe quelle selection : elle pilote alors ce qui s'affiche sur
+            <code style="color:#a78bfa;">/?page=athletes</code>. <strong>Une seule selection active a la fois.</strong>
+        </p>
+
+        <?php
+        $presets = $athletesPresetsStore['presets'] ?? [];
+        $activeId = $athletesPresetsStore['active_id'] ?? '';
+        if (empty($presets)): ?>
+            <div style="background:#0d1117;border:1px dashed #30363d;border-radius:10px;padding:22px;text-align:center;color:#6e7681;font-size:13px;">
+                Aucune selection enregistree pour l'instant. Configure un filtre ci-dessus et clique &laquo;&nbsp;Enregistrer comme selection&nbsp;&raquo;.
+            </div>
+        <?php else:
+            $nivCol = function($c){ $f=$c[0]??''; return $f==='I'?'#c026d3':($f==='N'?'#e11d48':($f==='R'?'#0891b2':'#f97316')); };
+        ?>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+                <tr style="text-align:left;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;">
+                    <th style="padding:8px 10px;border-bottom:1px solid #30363d;">Statut</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid #30363d;">Selection</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid #30363d;">Criteres</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid #30363d;">Creee le</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid #30363d;text-align:right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($presets as $p):
+                $pid = (string)($p['id'] ?? '');
+                $cfg = $p['config'] ?? [];
+                $isActive = ($pid !== '' && $pid === $activeId);
+                $nbH = (int)($cfg['nb_hommes'] ?? 0); $nbF = (int)($cfg['nb_femmes'] ?? 0);
+                $sexeTxt = ($nbH>0 && $nbF>0) ? ('&#9794; '.$nbH.' / &#9792; '.$nbF) : ($nbH>0 ? ('&#9794; '.$nbH) : ($nbF>0 ? ('&#9792; '.$nbF) : '—'));
+                if (!empty($cfg['filter_cible_enabled']) && trim((string)($cfg['epreuve_filter']??'')) !== '') $epTxt = htmlspecialchars(str_replace('|',' / ',$cfg['epreuve_filter']));
+                elseif (!empty($cfg['filter_cible_enabled']) && trim((string)($cfg['club_filter']??'')) !== '') $epTxt = '&#127963; '.htmlspecialchars(str_replace('|',' / ',$cfg['club_filter']));
+                elseif (!empty($cfg['all_epreuves'])) $epTxt = 'Toutes epreuves';
+                else $epTxt = 'Sprint/Sauts';
+                $yrTxt = ((int)($cfg['annee']??0)===0) ? 'Toutes annees' : (string)(int)$cfg['annee'];
+            ?>
+                <tr style="<?= $isActive ? 'background:#10b98112;' : '' ?>border-bottom:1px solid #21262d;">
+                    <td style="padding:10px;">
+                        <?php if ($isActive): ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;background:#10b98120;color:#34d399;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:800;"><span style="width:7px;height:7px;background:#34d399;border-radius:50%;box-shadow:0 0 6px #34d399;"></span>ACTIVE</span>
+                        <?php else: ?>
+                            <span style="color:#6e7681;font-size:11px;">Inactive</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="padding:10px;color:#f0f6fc;font-weight:600;max-width:240px;"><?= htmlspecialchars((string)($p['label'] ?? '')) ?></td>
+                    <td style="padding:10px;">
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                            <span style="color:#c9d1d9;"><?= $sexeTxt ?></span>
+                            <span style="color:#3d444d;">|</span>
+                            <span style="color:#22d3ee;"><?= $epTxt ?></span>
+                            <span style="color:#3d444d;">|</span>
+                            <?php foreach ((array)($cfg['niveaux'] ?? []) as $nv): ?>
+                                <span style="background:<?= $nivCol($nv) ?>20;border:1px solid <?= $nivCol($nv) ?>60;color:<?= $nivCol($nv) ?>;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:700;"><?= htmlspecialchars($nv) ?></span>
+                            <?php endforeach; ?>
+                            <span style="color:#3d444d;">|</span>
+                            <span style="color:#8b949e;font-size:11px;"><?= $yrTxt ?></span>
+                            <span style="color:#6e7681;font-size:10px;">(<?= htmlspecialchars((string)($cfg['layout'] ?? 'magazine')) ?>)</span>
+                        </div>
+                    </td>
+                    <td style="padding:10px;color:#6e7681;font-size:11px;white-space:nowrap;"><?= htmlspecialchars((string)($p['created_at'] ?? '')) ?></td>
+                    <td style="padding:10px;text-align:right;white-space:nowrap;">
+                        <?php if (!$isActive): ?>
+                        <form method="POST" action="panel.php" style="display:inline;">
+                            <input type="hidden" name="preset_id" value="<?= htmlspecialchars($pid, ENT_QUOTES) ?>">
+                            <button type="submit" name="activate_athletes_preset" value="1" style="background:#6c5ce7;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Activer</button>
+                        </form>
+                        <?php else: ?>
+                        <span style="color:#34d399;font-size:12px;font-weight:700;margin-right:6px;">&#10003; en ligne</span>
+                        <?php endif; ?>
+                        <form method="POST" action="panel.php" style="display:inline;" onsubmit="return confirm('Supprimer cette selection enregistree ?');">
+                            <input type="hidden" name="preset_id" value="<?= htmlspecialchars($pid, ENT_QUOTES) ?>">
+                            <button type="submit" name="delete_athletes_preset" value="1" title="Supprimer" style="background:transparent;color:#fb7185;border:1px solid #e11d4840;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">&#128465;</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
+    </div>
 
     <script>
     (function(){
@@ -2752,18 +3293,28 @@ tr:hover td { background: #1c2128; }
     </div>
     <?php endif; ?>
 
-    <!-- Onglets principaux -->
+    <!-- Onglets principaux (regroupés par domaine) -->
     <nav class="tabs-main">
+        <span class="tab-group-label">Contenu</span>
         <button class="tab-main active" data-tab="athletes-filter">&#127939; Page Athletes</button>
-        <button class="tab-main" data-tab="niveaux">&#128202; Niveaux athletes</button>
+        <button class="tab-main" data-tab="niveaux">&#128202; Niveaux</button>
+        <button class="tab-main" data-tab="athlete-edit">&#9999;&#65039; Editer athlete</button>
+
+        <span class="tab-group-label">Membres</span>
         <button class="tab-main" data-tab="inscription">Inscription <span class="cnt"><?= $totalUsers ?></span></button>
-        <button class="tab-main" data-tab="usernav">&#128270; Suivi navigation</button>
-        <button class="tab-main" data-tab="mails">Mails reçus <span class="cnt"><?= $totalMails ?></span><?= $totalUnread > 0 ? '<span class="cnt-alert">' . $totalUnread . '</span>' : '' ?></button>
+        <button class="tab-main" data-tab="abonnes">&#128142; Abonn&eacute;s <span class="cnt"><?= $subStats['active'] ?></span></button>
+        <button class="tab-main" data-tab="usernav">&#128270; Navigation</button>
+
+        <span class="tab-group-label">Messages</span>
+        <button class="tab-main" data-tab="mails">Mails <span class="cnt"><?= $totalMails ?></span><?= $totalUnread > 0 ? '<span class="cnt-alert">' . $totalUnread . '</span>' : '' ?></button>
         <button class="tab-main" data-tab="reports">Signalements <span class="cnt"><?= $totalReports ?></span><?= $totalReportsNew > 0 ? '<span class="cnt-alert">' . $totalReportsNew . '</span>' : '' ?></button>
+
+        <span class="tab-group-label">Système</span>
         <button class="tab-main" data-tab="tools">&#9881; Outils</button>
         <button class="tab-main" data-tab="paths">&#128193; Chemins</button>
         <button class="tab-main" data-tab="extract">&#128229; Extraction</button>
         <button class="tab-main" data-tab="routes">&#128279; Routes</button>
+        <button class="tab-main" data-tab="style-global">&#127912; Style global</button>
     </nav>
 
     <!-- Section Niveaux athletes -->
@@ -3063,6 +3614,160 @@ tr:hover td { background: #1c2128; }
         </div>
     </section>
 
+    <!-- Section Abonnés / Membres premium -->
+    <section class="tab-pane" data-pane="abonnes">
+
+        <!-- Mode test : aperçu en tant que… -->
+        <div style="background:#161b22;border:1px solid #f59e0b55;border-radius:12px;padding:20px 22px;margin-bottom:20px;">
+            <h2 style="color:#f0f6fc;font-size:18px;font-weight:700;margin:0 0 6px;">&#129514; Mode test &mdash; voir le site en tant que&hellip;</h2>
+            <p class="muted" style="margin:0 0 14px;font-size:13px;">Ouvre le site dans un nouvel onglet en simulant ce type d'utilisateur (paywall, limites de recherche, options premium). Une banni&egrave;re en bas permet de quitter le mode test.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <?php
+                $_testRoles = [
+                    'visitor' => ['Visiteur', '#8b949e'],
+                    'free'    => ['Membre gratuit', '#58a6ff'],
+                    'bronze'  => ['Bronze', $BK_PLANS['bronze']['color'] ?? '#cd7f32'],
+                    'argent'  => ['Argent', $BK_PLANS['argent']['color'] ?? '#9ca3af'],
+                    'or'      => ['Or', $BK_PLANS['or']['color'] ?? '#f59e0b'],
+                    'platine' => ['Platine', $BK_PLANS['platine']['color'] ?? '#6c5ce7'],
+                ];
+                foreach ($_testRoles as $rk => $ri): ?>
+                    <button type="button" onclick="bkSetTestRole('<?= $rk ?>')"
+                        style="background:<?= $ri[1] ?>22;border:1px solid <?= $ri[1] ?>;color:<?= $ri[1] ?>;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;">
+                        <?= htmlspecialchars($ri[0]) ?>
+                    </button>
+                <?php endforeach; ?>
+                <button type="button" onclick="bkClearTestRole()"
+                    style="background:transparent;border:1px solid #30363d;color:#8b949e;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;">
+                    &#10005; D&eacute;sactiver
+                </button>
+            </div>
+        </div>
+        <script>
+        function bkSetTestRole(r){
+            // Timer de "première visite" remis à zéro → la découverte 60 s repart à neuf
+            var now = Math.floor(Date.now() / 1000);
+            document.cookie = 'bk_test_role=' + r + ';path=/;max-age=86400';
+            document.cookie = 'bk_test_t0=' + now + ';path=/;max-age=86400';
+            window.open('../', '_blank');
+        }
+        function bkClearTestRole(){
+            document.cookie = 'bk_test_role=;path=/;max-age=0';
+            document.cookie = 'bk_test_t0=;path=/;max-age=0';
+            alert('Mode test désactivé. Recharge le site si un onglet est encore ouvert.');
+        }
+        </script>
+
+        <?php
+        // Index user par id pour enrichir les lignes d'abonnement
+        $userById = [];
+        foreach ($allRecent as $_u) $userById[(int)$_u['id_user']] = $_u;
+        $subRows = [];
+        foreach ($subByUser as $uid => $s) {
+            $u = $userById[$uid] ?? null;
+            $subRows[] = [
+                'uid'    => $uid,
+                'email'  => $u['email'] ?? ('compte #' . $uid),
+                'nom'    => $u ? trim(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? '')) : '',
+                'plan'   => $s['plan'],
+                'status' => $s['status'],
+                'actif'  => $s['actif'],
+                'source' => (($s['billing_period'] ?? '') === 'manuel') ? 'Manuel' : 'Stripe',
+                'fin'    => $s['current_period_end'],
+                'maj'    => $s['updated_at'] ?? null,
+            ];
+        }
+        usort($subRows, function ($a, $b) {
+            if ($a['actif'] !== $b['actif']) return ($b['actif'] ? 1 : 0) - ($a['actif'] ? 1 : 0);
+            return strcmp((string)$b['maj'], (string)$a['maj']);
+        });
+        ?>
+
+        <!-- KPI cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px;">
+            <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:18px;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#8b949e;">Abonnés actifs</div>
+                <div style="font-size:30px;font-weight:800;color:#10b981;margin-top:4px;"><?= $subStats['active'] ?></div>
+                <div style="font-size:12px;color:#8b949e;margin-top:2px;"><?= $subStats['stripe'] ?> Stripe · <?= $subStats['manuel'] ?> manuel</div>
+            </div>
+            <?php foreach (['bronze','argent','or','platine'] as $pk):
+                $pc = $BK_PLANS[$pk]['color'] ?? '#6c5ce7';
+                $pn = $BK_PLANS[$pk]['name'] ?? ucfirst($pk);
+            ?>
+            <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:18px;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:<?= $pc ?>;">&#127941; <?= htmlspecialchars($pn) ?></div>
+                <div style="font-size:30px;font-weight:800;color:#f0f6fc;margin-top:4px;"><?= (int)$subStats['plans'][$pk] ?></div>
+                <div style="font-size:12px;color:#8b949e;margin-top:2px;">abonné(s) actif(s)</div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px 22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+                <h2 style="color:#f0f6fc;font-size:18px;font-weight:700;margin:0;">&#128142; Membres abonnés (<?= count($subRows) ?>)</h2>
+                <a href="subscriptions.php" target="_blank" style="background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:9px 16px;border-radius:8px;">Gérer les accès &rarr;</a>
+            </div>
+            <input type="text" id="subFilter" class="search" placeholder="Filtrer par email, nom, offre..." onkeyup="bkSubFilter(this.value)">
+
+            <?php if (empty($subRows)): ?>
+                <p class="muted" style="text-align:center;padding:30px;">Aucun abonnement pour le moment.</p>
+            <?php else: ?>
+            <div style="margin-top:14px;overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;" id="subTable">
+                    <thead>
+                        <tr style="color:#8b949e;text-transform:uppercase;font-size:11px;letter-spacing:1px;">
+                            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #30363d;">Membre</th>
+                            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #30363d;">Offre</th>
+                            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #30363d;">Statut</th>
+                            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #30363d;">Source</th>
+                            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #30363d;">Échéance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($subRows as $r):
+                        $pc = $BK_PLANS[$r['plan']]['color'] ?? '#6c5ce7';
+                        $pn = $BK_PLANS[$r['plan']]['name'] ?? ucfirst((string)$r['plan']);
+                        $finTxt = $r['fin'] ? date('d/m/Y', strtotime($r['fin'])) : 'illimité';
+                        $searchKey = strtolower($r['email'] . ' ' . $r['nom'] . ' ' . $pn);
+                    ?>
+                        <tr data-search="<?= htmlspecialchars($searchKey) ?>" style="color:#e6edf3;">
+                            <td style="padding:9px 10px;border-bottom:1px solid #21262d;">
+                                <div style="font-weight:600;"><?= htmlspecialchars($r['nom'] ?: '—') ?></div>
+                                <div class="muted" style="font-size:12px;"><?= htmlspecialchars($r['email']) ?></div>
+                            </td>
+                            <td style="padding:9px 10px;border-bottom:1px solid #21262d;">
+                                <span style="display:inline-block;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:700;background:<?= $pc ?>22;color:<?= $pc ?>;border:1px solid <?= $pc ?>55;"><?= htmlspecialchars($pn) ?></span>
+                            </td>
+                            <td style="padding:9px 10px;border-bottom:1px solid #21262d;">
+                                <?php if ($r['actif']): ?>
+                                    <span style="display:inline-block;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:700;background:#10b98120;color:#34d399;">&#9679; Actif</span>
+                                <?php else: ?>
+                                    <span style="display:inline-block;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:700;background:#f8514920;color:#ff7b72;"><?= htmlspecialchars($r['status'] ?: 'inactif') ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="padding:9px 10px;border-bottom:1px solid #21262d;">
+                                <span style="color:<?= $r['source'] === 'Manuel' ? '#a78bfa' : '#79c0ff' ?>;font-weight:600;"><?= $r['source'] ?></span>
+                            </td>
+                            <td style="padding:9px 10px;border-bottom:1px solid #21262d;" class="muted"><?= $finTxt ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+        </div>
+        <script>
+        function bkSubFilter(q){
+            q = (q||'').toLowerCase().trim();
+            var rows = document.querySelectorAll('#subTable tbody tr');
+            rows.forEach(function(tr){
+                var k = tr.getAttribute('data-search') || '';
+                tr.style.display = (q === '' || k.indexOf(q) !== -1) ? '' : 'none';
+            });
+        }
+        </script>
+    </section>
+
     <!-- Section Suivi navigation — detail par utilisateur -->
     <section class="tab-pane" data-pane="usernav">
         <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px 22px;margin-bottom:20px;">
@@ -3143,9 +3848,9 @@ tr:hover td { background: #1c2128; }
                         <button class="btn-msg btn-reply" data-rep-act="resolve" data-id="<?= (int)$rp['id_report'] ?>">Marquer resolu</button>
                     <?php endif; ?>
                     <?php if ((int)$rp['athlete_visible'] === 1): ?>
-                        <button class="btn-msg btn-hide" data-rep-act="hide_athlete" data-athlete="<?= (int)$rp['athlete_id_ext'] ?>">Masquer profil</button>
+                        <button class="btn-msg btn-hide" data-rep-act="hide_athlete" data-athlete="<?= (int)$rp['athlete_id_ext'] ?>" style="background:#dc2626;border-color:#dc2626;">Supprimer definitivement</button>
                     <?php else: ?>
-                        <button class="btn-msg btn-show" data-rep-act="show_athlete" data-athlete="<?= (int)$rp['athlete_id_ext'] ?>">Rendre visible</button>
+                        <button class="btn-msg btn-show" data-rep-act="show_athlete" data-athlete="<?= (int)$rp['athlete_id_ext'] ?>">Retirer de la blacklist</button>
                     <?php endif; ?>
                     <?php if (!empty($rp['email'])): ?>
                         <button class="btn-msg btn-reply" data-rep-reply="<?= (int)$rp['id_report'] ?>">Repondre</button>
@@ -3242,11 +3947,10 @@ tr:hover td { background: #1c2128; }
 
         <!-- Sous-pane Confirme -->
         <div class="sub-pane" data-sub-mails-pane="confirmed">
-            <?php if ($totalConfirmed === 0): ?>
-                <p class="muted" style="text-align:center; padding:30px;">Aucun message confirme.</p>
-            <?php else: ?>
-                <div class="msg-list">
-                    <?php foreach ($msgsConfirmed as $m): ?>
+            <?php
+            // Closure de rendu d'une carte message confirme (reutilisee pour les 2 groupes)
+            $renderConfirmedCard = function($m) {
+            ?>
                         <div class="msg-card<?= (int)$m['lu'] === 0 ? ' msg-unread' : '' ?>" data-id="<?= (int)$m['id_msg'] ?>">
                             <div class="msg-head">
                                 <div class="msg-from">
@@ -3286,8 +3990,32 @@ tr:hover td { background: #1c2128; }
                                 </div>
                             </div>
                         </div>
-                    <?php endforeach; ?>
-                </div>
+            <?php
+            }; // fin closure
+            ?>
+            <?php if ($totalConfirmed === 0): ?>
+                <p class="muted" style="text-align:center; padding:30px;">Aucun message confirme.</p>
+            <?php else: ?>
+                <!-- Groupe NON LUS -->
+                <?php if ($totalUnread > 0): ?>
+                    <div class="msg-group-head msg-group-unread">
+                        <span class="msg-group-dot"></span>
+                        Non lus <span class="msg-group-cnt"><?= $totalUnread ?></span>
+                    </div>
+                    <div class="msg-list">
+                        <?php foreach ($msgsConfirmedUnread as $m) $renderConfirmedCard($m); ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Groupe LUS -->
+                <?php if ($totalRead > 0): ?>
+                    <div class="msg-group-head msg-group-read"<?= $totalUnread > 0 ? ' style="margin-top:26px;"' : '' ?>>
+                        Lus <span class="msg-group-cnt"><?= $totalRead ?></span>
+                    </div>
+                    <div class="msg-list">
+                        <?php foreach ($msgsConfirmedRead as $m) $renderConfirmedCard($m); ?>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
 
@@ -3377,6 +4105,16 @@ tr:hover td { background: #1c2128; }
                     <div class="tools-actions">
                         <a class="tools-btn" href="<?= $_toolsBase ?>/admin/db_archive.php?bk_key=<?= $_toolsKey ?>" target="_blank">Ouvrir</a>
                         <button class="tools-btn tools-btn-copy" onclick="toolsCopy('<?= $_toolsBase ?>/admin/db_archive.php?bk_key=<?= $_toolsKey ?>', this)">Copier</button>
+                    </div>
+                </div>
+
+                <div class="tools-card">
+                    <h4>Verification doublons archives <span class="tools-tag ok">INTEGRITE</span></h4>
+                    <p class="desc">Scanne tous les .jsonl et detecte les doublons par cle primaire. Rapport complet avec exemples.</p>
+                    <a class="url" href="<?= $_toolsBase ?>/admin/check_jsonl_duplicates.php?bk_key=<?= $_toolsKey ?>" target="_blank"><?= $_toolsBase ?>/admin/check_jsonl_duplicates.php?bk_key=...</a>
+                    <div class="tools-actions">
+                        <a class="tools-btn" href="<?= $_toolsBase ?>/admin/check_jsonl_duplicates.php?bk_key=<?= $_toolsKey ?>" target="_blank">Lancer scan</a>
+                        <button class="tools-btn tools-btn-copy" onclick="toolsCopy('<?= $_toolsBase ?>/admin/check_jsonl_duplicates.php?bk_key=<?= $_toolsKey ?>', this)">Copier</button>
                     </div>
                 </div>
 
@@ -3593,6 +4331,693 @@ tr:hover td { background: #1c2128; }
             setTimeout(() => { btn.textContent = orig; btn.style.background = ''; btn.style.color = ''; }, 1500);
         });
     }
+    </script>
+
+    <!-- Section Editer athlete -->
+    <section class="tab-pane" data-pane="athlete-edit">
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;margin-bottom:20px;">
+            <h2 style="color:#f0f6fc;font-size:20px;margin-bottom:8px;font-weight:700;">&#9999;&#65039; Editer un profil athlete</h2>
+            <p style="color:#8b949e;font-size:13px;margin-bottom:16px;">
+                Recherche par nom, prenom ou ID externe. Modifie nom, sexe, categorie, nationalite, lieu de naissance, visibilite,
+                <strong style="color:#a78bfa;">bio personnalisee</strong> (remplace la bio auto-generee) et <strong style="color:#fbbf24;">note admin</strong> (bandeau public sur le profil).
+            </p>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <input type="text" id="aeSearch" placeholder="Nom, prenom ou ID externe..." autocomplete="off" style="flex:1;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:11px 14px;color:#f0f6fc;font-size:14px;">
+                <button id="aeSearchBtn" class="btn-msg" style="background:#6c5ce7;color:#fff;border:none;padding:11px 18px;border-radius:8px;cursor:pointer;font-weight:600;">Rechercher</button>
+            </div>
+            <div id="aeResults" style="margin-top:14px;"></div>
+        </div>
+
+        <div id="aeFormCard" style="display:none;background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                <h3 id="aeFormTitle" style="color:#f0f6fc;font-size:18px;font-weight:700;margin:0;">&#128100; Athlete</h3>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <a id="aeFormProfile" href="#" target="_blank" style="color:#58a6ff;font-size:13px;text-decoration:none;border:1px solid #30363d;padding:6px 12px;border-radius:6px;">Voir le profil &#8599;</a>
+                    <button id="aeFormClose" style="background:transparent;border:none;color:#8b949e;font-size:26px;cursor:pointer;line-height:1;">&times;</button>
+                </div>
+            </div>
+
+            <div id="aeFormStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Nom complet (affiche)</label>
+                    <input type="text" id="ae_nom_complet" class="ae-inp" maxlength="200">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">ID externe (lecture seule)</label>
+                    <input type="text" id="ae_id_ext" class="ae-inp" readonly style="opacity:0.55;">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Nom 1</label>
+                    <input type="text" id="ae_nom_1" class="ae-inp" maxlength="100">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Nom 2</label>
+                    <input type="text" id="ae_nom_2" class="ae-inp" maxlength="100">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Nom 3</label>
+                    <input type="text" id="ae_nom_3" class="ae-inp" maxlength="100">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Nom 4</label>
+                    <input type="text" id="ae_nom_4" class="ae-inp" maxlength="100">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Sexe</label>
+                    <select id="ae_sexe" class="ae-inp">
+                        <option value="">-</option>
+                        <option value="M">M (Homme)</option>
+                        <option value="F">F (Femme)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Categorie</label>
+                    <select id="ae_categorie" class="ae-inp">
+                        <option value="">-</option>
+                        <option value="EA">EA - Eveil Athle</option>
+                        <option value="PO">PO - Poussin</option>
+                        <option value="BE">BE - Benjamin</option>
+                        <option value="MI">MI - Minime</option>
+                        <option value="CA">CA - Cadet</option>
+                        <option value="JU">JU - Junior</option>
+                        <option value="ES">ES - Espoir</option>
+                        <option value="SE">SE - Senior</option>
+                        <option value="V1">V1 - Veteran 1</option>
+                        <option value="V2">V2 - Veteran 2</option>
+                        <option value="V3">V3 - Veteran 3</option>
+                        <option value="V4">V4 - Veteran 4</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Nationalite (code 3 lettres)</label>
+                    <input type="text" id="ae_nationalite" class="ae-inp" maxlength="3" placeholder="FRA, MAR, ...">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Lieu de naissance</label>
+                    <input type="text" id="ae_lieu_naissance" class="ae-inp" maxlength="100" placeholder="Nom de la ville">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Taille (cm)</label>
+                    <input type="number" id="ae_taille_cm" class="ae-inp" min="0" max="300">
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Poids (kg)</label>
+                    <input type="number" id="ae_poids_kg" class="ae-inp" min="0" max="500">
+                </div>
+                <div style="grid-column:span 2;">
+                    <label style="display:flex;align-items:center;gap:10px;color:#f0f6fc;font-size:14px;font-weight:600;cursor:pointer;padding:10px 14px;background:#0d1117;border:1px solid #30363d;border-radius:8px;">
+                        <input type="checkbox" id="ae_visible" style="width:18px;height:18px;cursor:pointer;">
+                        Profil visible publiquement (si decoche &#8594; bandeau "Profil masque")
+                    </label>
+                </div>
+
+                <div style="grid-column:span 2;border-top:1px dashed #30363d;padding-top:14px;margin-top:6px;">
+                    <label style="display:block;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;font-weight:700;">&#128221; Note admin (bandeau public sur le profil)</label>
+                    <p style="color:#8b949e;font-size:12px;margin:0 0 8px 0;">Visible par tous les visiteurs sous l'entete du profil. Laisser vide = pas de bandeau.</p>
+                    <textarea id="ae_admin_note" rows="2" maxlength="5000" placeholder="Ex: Athlete double champion de France 2023, recordman national." class="ae-inp" style="resize:vertical;font-family:inherit;"></textarea>
+                </div>
+
+                <div style="grid-column:span 2;">
+                    <label style="display:block;color:#a78bfa;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;font-weight:700;">&#128196; Bio personnalisee (override)</label>
+                    <p style="color:#8b949e;font-size:12px;margin:0 0 8px 0;">Si rempli, remplace la bio auto-generee sur le profil. Laisser vide pour utiliser la bio automatique.</p>
+                    <textarea id="ae_bio_override" rows="10" maxlength="20000" placeholder="Texte de biographie personnalise..." class="ae-inp" style="resize:vertical;font-family:inherit;line-height:1.6;"></textarea>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:18px;padding-top:16px;border-top:1px solid #30363d;">
+                <button id="aeFormCancel" class="btn-msg">Annuler</button>
+                <button id="aeFormSave" class="btn-msg" style="background:#10b981;color:#fff;border:none;padding:11px 22px;border-radius:8px;cursor:pointer;font-weight:700;">&#128190; Enregistrer</button>
+            </div>
+        </div>
+    </section>
+
+    <style>
+    .ae-inp { width:100%; background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:9px 11px; color:#f0f6fc; font-size:14px; box-sizing:border-box; }
+    .ae-inp:focus { outline:none; border-color:#6c5ce7; box-shadow:0 0 0 2px rgba(108,92,231,0.18); }
+    .ae-result-row { display:flex; align-items:center; gap:12px; padding:10px 14px; background:#0d1117; border:1px solid #30363d; border-radius:8px; margin-bottom:6px; cursor:pointer; transition:all 0.15s; }
+    .ae-result-row:hover { border-color:#6c5ce7; background:#161b22; transform:translateX(2px); }
+    .ae-result-name { color:#f0f6fc; font-weight:600; font-size:14px; }
+    .ae-result-meta { color:#8b949e; font-size:12px; }
+    .ae-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+    </style>
+
+    <script>
+    (function(){
+        var dq = function(q){ return document.querySelector(q); };
+        var searchInp = dq('#aeSearch');
+        var searchBtn = dq('#aeSearchBtn');
+        var results = dq('#aeResults');
+        var formCard = dq('#aeFormCard');
+        var formTitle = dq('#aeFormTitle');
+        var formStatus = dq('#aeFormStatus');
+        var formProfile = dq('#aeFormProfile');
+        if (!searchInp) return;
+
+        var currentIdExt = 0;
+        var searchTimer = null;
+
+        function setStatus(msg, type) {
+            if (!msg) { formStatus.style.display = 'none'; return; }
+            formStatus.style.display = 'block';
+            formStatus.textContent = msg;
+            if (type === 'ok') {
+                formStatus.style.background = 'rgba(16,185,129,0.12)';
+                formStatus.style.color = '#6ee7b7';
+                formStatus.style.border = '1px solid rgba(16,185,129,0.35)';
+            } else if (type === 'err') {
+                formStatus.style.background = 'rgba(239,68,68,0.12)';
+                formStatus.style.color = '#fca5a5';
+                formStatus.style.border = '1px solid rgba(239,68,68,0.35)';
+            } else {
+                formStatus.style.background = 'rgba(108,92,231,0.12)';
+                formStatus.style.color = '#c4b5fd';
+                formStatus.style.border = '1px solid rgba(108,92,231,0.35)';
+            }
+        }
+
+        function runSearch() {
+            var q = searchInp.value.trim();
+            if (q === '') { results.innerHTML = ''; return; }
+            results.innerHTML = '<div style="color:#8b949e;font-size:13px;padding:8px;">Recherche...</div>';
+
+            // Si numerique = recherche directe par ID externe
+            if (/^\d+$/.test(q)) {
+                loadAthlete(parseInt(q, 10));
+                return;
+            }
+            fetch('../api/search.php?nom=' + encodeURIComponent(q) + '&limit=20&bk_key=bk_s3cr3t_2026_xK9mP', { credentials: 'same-origin' })
+                .then(function(r){ return r.json(); })
+                .then(function(d){
+                    if (!d || !d.success || !d.athletes || d.athletes.length === 0) {
+                        results.innerHTML = '<div style="color:#8b949e;font-size:13px;padding:8px;">Aucun resultat.</div>';
+                        return;
+                    }
+                    var html = '';
+                    d.athletes.slice(0, 20).forEach(function(a){
+                        var id = a.athlete_id || 0;
+                        var name = (a.nom_complet || ((a.nom_athlete||'') + ' ' + (a.prenom_athlete||''))).trim();
+                        var meta = [
+                            a.categorie || '',
+                            a.sexe ? (a.sexe === 'F' ? 'F' : 'M') : '',
+                            a.nationalite || '',
+                            a.club || ''
+                        ].filter(Boolean).join(' &middot; ');
+                        html += '<div class="ae-result-row" data-id="' + id + '">'
+                             +    '<div style="flex:1;">'
+                             +       '<div class="ae-result-name">' + escapeHtml(name) + '</div>'
+                             +       '<div class="ae-result-meta">#' + id + ' &middot; ' + meta + '</div>'
+                             +    '</div>'
+                             +    '<span class="ae-badge" style="background:#6c5ce720;color:#a78bfa;">Editer &#8594;</span>'
+                             + '</div>';
+                    });
+                    results.innerHTML = html;
+                    results.querySelectorAll('.ae-result-row').forEach(function(row){
+                        row.addEventListener('click', function(){
+                            loadAthlete(parseInt(row.dataset.id, 10));
+                        });
+                    });
+                })
+                .catch(function(e){
+                    results.innerHTML = '<div style="color:#fca5a5;font-size:13px;padding:8px;">Erreur de recherche.</div>';
+                });
+        }
+
+        function escapeHtml(s) {
+            return String(s||'').replace(/[&<>"']/g, function(c){
+                return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+            });
+        }
+
+        function loadAthlete(idExt) {
+            if (!idExt || idExt <= 0) return;
+            setStatus('Chargement...', 'info');
+            formCard.style.display = 'block';
+            fetch('../api/admin_athlete.php?id_ext=' + idExt, { credentials: 'same-origin' })
+                .then(function(r){ return r.json(); })
+                .then(function(d){
+                    if (!d || !d.success || !d.athlete) {
+                        setStatus('Athlete introuvable.', 'err');
+                        return;
+                    }
+                    var a = d.athlete;
+                    currentIdExt = a.id_ext;
+                    formTitle.innerHTML = '&#128100; ' + escapeHtml(a.nom_complet || (a.nom_1 + ' ' + a.nom_2));
+                    formProfile.href = '../index.php?page=profil&id=' + a.id_ext;
+                    dq('#ae_id_ext').value = a.id_ext;
+                    dq('#ae_nom_complet').value = a.nom_complet || '';
+                    dq('#ae_nom_1').value = a.nom_1 || '';
+                    dq('#ae_nom_2').value = a.nom_2 || '';
+                    dq('#ae_nom_3').value = a.nom_3 || '';
+                    dq('#ae_nom_4').value = a.nom_4 || '';
+                    dq('#ae_sexe').value = a.sexe || '';
+                    dq('#ae_categorie').value = a.categorie || '';
+                    dq('#ae_nationalite').value = a.nationalite || '';
+                    dq('#ae_lieu_naissance').value = a.lieu_naissance || '';
+                    dq('#ae_taille_cm').value = a.taille_cm || '';
+                    dq('#ae_poids_kg').value = a.poids_kg || '';
+                    dq('#ae_visible').checked = (a.visible === 1);
+                    dq('#ae_admin_note').value = a.admin_note || '';
+                    dq('#ae_bio_override').value = a.bio_override || '';
+                    setStatus('', '');
+                    formCard.scrollIntoView({ behavior:'smooth', block:'start' });
+                })
+                .catch(function(){ setStatus('Erreur de chargement.', 'err'); });
+        }
+
+        function saveAthlete() {
+            if (!currentIdExt) return;
+            var payload = {
+                id_ext: currentIdExt,
+                nom_complet: dq('#ae_nom_complet').value,
+                nom_1: dq('#ae_nom_1').value,
+                nom_2: dq('#ae_nom_2').value,
+                nom_3: dq('#ae_nom_3').value,
+                nom_4: dq('#ae_nom_4').value,
+                sexe: dq('#ae_sexe').value,
+                categorie: dq('#ae_categorie').value,
+                nationalite: dq('#ae_nationalite').value,
+                lieu_naissance: dq('#ae_lieu_naissance').value,
+                taille_cm: dq('#ae_taille_cm').value,
+                poids_kg: dq('#ae_poids_kg').value,
+                visible: dq('#ae_visible').checked ? 1 : 0,
+                admin_note: dq('#ae_admin_note').value,
+                bio_override: dq('#ae_bio_override').value
+            };
+            setStatus('Enregistrement en cours...', 'info');
+            fetch('../api/admin_athlete.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (d && d.success) {
+                    setStatus('&#10004; Profil enregistre. Cache vide.', 'ok');
+                    setTimeout(function(){ setStatus('', ''); }, 4000);
+                } else {
+                    setStatus('Erreur : ' + (d && d.error ? d.error : 'inconnue'), 'err');
+                }
+            })
+            .catch(function(){ setStatus('Erreur reseau.', 'err'); });
+        }
+
+        searchBtn.addEventListener('click', runSearch);
+        searchInp.addEventListener('keydown', function(e){
+            if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+        });
+        searchInp.addEventListener('input', function(){
+            clearTimeout(searchTimer);
+            var v = searchInp.value.trim();
+            if (v.length < 2) { results.innerHTML = ''; return; }
+            searchTimer = setTimeout(runSearch, 400);
+        });
+        dq('#aeFormSave').addEventListener('click', saveAthlete);
+        dq('#aeFormCancel').addEventListener('click', function(){ formCard.style.display = 'none'; });
+        dq('#aeFormClose').addEventListener('click', function(){ formCard.style.display = 'none'; });
+    })();
+    </script>
+
+    <!-- Section Style global -->
+    <section class="tab-pane" data-pane="style-global">
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;margin-bottom:20px;">
+            <h2 style="color:#f0f6fc;font-size:20px;margin-bottom:8px;font-weight:700;">&#127912; Style global du site</h2>
+            <p style="color:#8b949e;font-size:13px;margin-bottom:8px;">
+                Choisis un theme : police, couleurs, arrondis et entetes sont appliques sur tout le site (accueil, profils, listes...).
+            </p>
+            <div style="background:#0d1117;border:1px solid #f59e0b40;border-left:3px solid #f59e0b;padding:10px 14px;border-radius:8px;margin-bottom:12px;color:#fbbf24;font-size:12px;">
+                &#9888;&#65039; Apres avoir choisi un theme, fais <b>Ctrl+F5</b> (hard refresh) sur le site pour voir le changement, sinon le navigateur garde l'ancien HTML en cache.
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+                <a id="gsPreviewHome" href="../index.php" target="_blank" style="background:#10b981;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">&#128065; Apercu accueil (nouvelle fenetre)</a>
+                <a id="gsPreviewProfil" href="#" target="_blank" style="background:#6c5ce7;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">&#128100; Apercu profil exemple</a>
+            </div>
+            <div id="gsStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;"></div>
+            <div id="gsGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:14px;">
+                <div style="color:#8b949e;font-size:13px;padding:8px;">Chargement des themes...</div>
+            </div>
+        </div>
+
+        <!-- Editeur Personnalise -->
+        <div id="gsCustomEditor" style="display:none;background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                <h3 style="color:#f0f6fc;font-size:18px;font-weight:700;margin:0;">&#127912; Theme personnalise &mdash; configuration detaillee</h3>
+                <button id="gsCustomClose" style="background:transparent;border:none;color:#8b949e;font-size:26px;cursor:pointer;line-height:1;">&times;</button>
+            </div>
+            <p style="color:#8b949e;font-size:13px;margin:0 0 18px 0;">Active le mode personnalise pour modifier la police, les couleurs et les arrondis. Chaque champ a un apercu en temps reel ci-dessous.</p>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Police du texte (corps)</label>
+                    <select id="gsBodyFont" class="ae-inp"></select>
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Police des titres (H1, H2, ...)</label>
+                    <select id="gsHeadingFont" class="ae-inp"></select>
+                </div>
+
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Couleur principale (boutons, titres)</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="color" id="gsPrimary" value="#6c5ce7" style="width:60px;height:40px;border:1px solid #30363d;background:#0d1117;border-radius:6px;cursor:pointer;">
+                        <input type="text" id="gsPrimaryHex" class="ae-inp" maxlength="7" placeholder="#6c5ce7" style="flex:1;font-family:monospace;">
+                    </div>
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Couleur d'accent (liens, badges)</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="color" id="gsAccent" value="#a78bfa" style="width:60px;height:40px;border:1px solid #30363d;background:#0d1117;border-radius:6px;cursor:pointer;">
+                        <input type="text" id="gsAccentHex" class="ae-inp" maxlength="7" placeholder="#a78bfa" style="flex:1;font-family:monospace;">
+                    </div>
+                </div>
+
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Arrondi des cartes / boutons <span id="gsRadiusVal" style="color:#a78bfa;">10px</span></label>
+                    <input type="range" id="gsRadius" min="0" max="40" value="10" style="width:100%;cursor:pointer;">
+                    <div style="display:flex;justify-content:space-between;color:#5a6580;font-size:10px;margin-top:2px;"><span>Plat</span><span>Tres arrondi</span></div>
+                </div>
+                <div>
+                    <label style="display:block;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Taille du texte <span id="gsBodySizeVal" style="color:#a78bfa;">14px</span></label>
+                    <input type="range" id="gsBodySize" min="11" max="22" value="14" style="width:100%;cursor:pointer;">
+                    <div style="display:flex;justify-content:space-between;color:#5a6580;font-size:10px;margin-top:2px;"><span>Petit</span><span>Grand</span></div>
+                </div>
+            </div>
+
+            <!-- Apercu live -->
+            <div id="gsCustomPreview" style="margin-top:20px;background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:20px;transition:all .25s;">
+                <div id="gsPrevTitle" style="font-size:26px;font-weight:700;color:#6c5ce7;margin-bottom:6px;">Bokonzi Athletisme</div>
+                <div id="gsPrevSub" style="color:#8b949e;font-size:12px;margin-bottom:14px;letter-spacing:1px;text-transform:uppercase;">Apercu en temps reel</div>
+                <p id="gsPrevBody" style="color:#c9d1d9;font-size:14px;line-height:1.65;margin:0 0 14px;">
+                    L'athlete Jimmy Gressier a remporte 3 medailles d'or sur 5000m et 10000m en 2024. Son record personnel sur le 5000m est de 13'15"35, etabli aux championnats d'Europe.
+                </p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button id="gsPrevBtn" style="background:#6c5ce7;color:#fff;border:none;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">Bouton primary</button>
+                    <span id="gsPrevBadge" style="background:#a78bfa20;color:#a78bfa;border:1px solid #a78bfa55;padding:6px 14px;border-radius:10px;font-size:12px;font-weight:600;">Senior</span>
+                    <a id="gsPrevLink" href="#" onclick="return false;" style="color:#a78bfa;font-size:13px;font-weight:600;text-decoration:none;align-self:center;">Voir le profil &#8594;</a>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:18px;padding-top:16px;border-top:1px solid #30363d;">
+                <button id="gsCustomCancel" class="btn-msg">Annuler</button>
+                <button id="gsCustomSave" class="btn-msg" style="background:#10b981;color:#fff;border:none;padding:11px 22px;border-radius:8px;cursor:pointer;font-weight:700;">&#128190; Appliquer ce style</button>
+            </div>
+        </div>
+    </section>
+
+    <style>
+    .gs-card { background:#0d1117; border:2px solid #30363d; border-radius:10px; padding:16px; cursor:pointer; transition:all 0.2s; position:relative; }
+    .gs-card:hover { border-color:#6c5ce7; transform:translateY(-2px); box-shadow:0 8px 22px rgba(108,92,231,0.18); }
+    .gs-card.active { border-color:#10b981; background:#0d2a1d; box-shadow:0 0 0 3px rgba(16,185,129,0.15); }
+    .gs-card .gs-check { position:absolute; top:12px; right:12px; width:22px; height:22px; border-radius:50%; border:2px solid #30363d; background:#0d1117; display:flex; align-items:center; justify-content:center; }
+    .gs-card.active .gs-check { background:#10b981; border-color:#10b981; }
+    .gs-card.active .gs-check::after { content:'✓'; color:#fff; font-size:14px; font-weight:700; }
+    .gs-name { font-size:16px; font-weight:700; margin-bottom:4px; }
+    .gs-desc { color:#8b949e; font-size:12px; line-height:1.45; margin-bottom:12px; }
+    .gs-preview { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:12px; margin-top:10px; }
+    .gs-preview-title { font-size:18px; font-weight:700; margin-bottom:6px; }
+    .gs-preview-body { font-size:13px; color:#c9d1d9; line-height:1.55; }
+    .gs-palette { display:flex; gap:6px; margin-top:8px; align-items:center; }
+    .gs-swatch { width:22px; height:22px; border-radius:50%; border:2px solid #30363d; }
+    .gs-pill { display:inline-block; padding:3px 10px; font-size:11px; font-weight:600; color:#fff; }
+    </style>
+
+    <script>
+    (function(){
+        var grid = document.getElementById('gsGrid');
+        var status = document.getElementById('gsStatus');
+        if (!grid) return;
+
+        function setStatus(msg, type) {
+            if (!msg) { status.style.display='none'; return; }
+            status.style.display='block';
+            status.innerHTML = msg;
+            if (type === 'ok') {
+                status.style.background='rgba(16,185,129,0.12)';
+                status.style.color='#6ee7b7';
+                status.style.border='1px solid rgba(16,185,129,0.35)';
+            } else if (type === 'err') {
+                status.style.background='rgba(239,68,68,0.12)';
+                status.style.color='#fca5a5';
+                status.style.border='1px solid rgba(239,68,68,0.35)';
+            } else {
+                status.style.background='rgba(108,92,231,0.12)';
+                status.style.color='#c4b5fd';
+                status.style.border='1px solid rgba(108,92,231,0.35)';
+            }
+        }
+
+        function loadFont(url) {
+            if (!url) return;
+            if (document.querySelector('link[href="' + url + '"]')) return;
+            var l = document.createElement('link');
+            l.rel = 'stylesheet';
+            l.href = url;
+            document.head.appendChild(l);
+        }
+
+        var _fontsCatalog = [];
+        var _customCfg = {};
+
+        function render(data) {
+            if (!data || !data.themes) { grid.innerHTML = '<div style="color:#fca5a5;">Erreur chargement</div>'; return; }
+            var current = data.current || 'default';
+            _fontsCatalog = data.fonts || [];
+            _customCfg = data.custom || {};
+            var html = '';
+            data.themes.forEach(function(t){
+                loadFont(t.font_google);
+                var isActive = (t.id === current);
+                html += '<div class="gs-card' + (isActive ? ' active' : '') + '" data-theme="' + t.id + '">'
+                     +    '<div class="gs-check"></div>'
+                     +    '<div class="gs-name" style="font-family:' + t.heading_family + ';color:' + t.primary + ';">' + escapeHtml(t.nom) + '</div>'
+                     +    '<div class="gs-desc">' + escapeHtml(t.description) + '</div>'
+                     +    '<div class="gs-palette">'
+                     +       '<div class="gs-swatch" style="background:' + t.primary + ';"></div>'
+                     +       '<div class="gs-swatch" style="background:' + t.accent + ';"></div>'
+                     +       '<span class="gs-pill" style="background:' + t.primary + ';border-radius:' + t.radius + ';">' + t.id.toUpperCase() + '</span>'
+                     +    '</div>'
+                     +    '<div class="gs-preview" style="border-radius:' + t.radius + ';">'
+                     +       '<div class="gs-preview-title" style="font-family:' + t.heading_family + ';color:' + t.primary + ';">Bokonzi Athletisme</div>'
+                     +       '<div class="gs-preview-body" style="font-family:' + t.font_family + ';font-size:' + t.body_size + ';">L\'athlete a remporte 3 medailles d\'or sur 100m et 200m en 2024. Records nationaux egales en categorie senior.</div>'
+                     +    '</div>'
+                     + '</div>';
+            });
+            // Card "Personnalise"
+            var isCustom = (current === 'custom');
+            html += '<div class="gs-card gs-card-custom' + (isCustom ? ' active' : '') + '" data-theme="custom" style="border-style:dashed;background:linear-gradient(135deg,#1a1f2e,#0d1117);">'
+                 +    '<div class="gs-check"></div>'
+                 +    '<div class="gs-name" style="color:#fbbf24;">&#9999;&#65039; Personnalise</div>'
+                 +    '<div class="gs-desc">Configure manuellement : police, taille, couleurs, arrondi. Apercu temps reel.</div>'
+                 +    '<div class="gs-palette">'
+                 +       '<div class="gs-swatch" style="background:#fbbf24;"></div>'
+                 +       '<div class="gs-swatch" style="background:#a78bfa;"></div>'
+                 +       '<span class="gs-pill" style="background:#fbbf24;color:#000;border-radius:8px;">CUSTOM</span>'
+                 +    '</div>'
+                 +    '<div class="gs-preview" style="border-radius:8px;">'
+                 +       '<div class="gs-preview-title" style="color:#fbbf24;">A toi de jouer</div>'
+                 +       '<div class="gs-preview-body">Choisis ta police, tes couleurs et tes arrondis exactement comme tu le souhaites.</div>'
+                 +       '<button type="button" class="gs-custom-open-btn" style="margin-top:10px;background:#fbbf24;color:#000;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">&#9881;&#65039; Configurer / Editer</button>'
+                 +    '</div>'
+                 + '</div>';
+            grid.innerHTML = html;
+            grid.querySelectorAll('.gs-card').forEach(function(card){
+                card.addEventListener('click', function(e){
+                    var id = card.dataset.theme;
+                    if (id === 'custom') {
+                        openCustomEditor();
+                    } else {
+                        saveTheme(id);
+                    }
+                });
+            });
+        }
+
+        // --- Editeur Personnalise ---
+        var customEditor = document.getElementById('gsCustomEditor');
+
+        function buildFontOptions(selectEl, selectedId) {
+            selectEl.innerHTML = '';
+            _fontsCatalog.forEach(function(f){
+                var opt = document.createElement('option');
+                opt.value = f.id;
+                opt.textContent = f.label;
+                opt.style.fontFamily = f.font_family;
+                if (f.id === selectedId) opt.selected = true;
+                selectEl.appendChild(opt);
+            });
+        }
+
+        function openCustomEditor() {
+            customEditor.style.display = 'block';
+            customEditor.scrollIntoView({ behavior:'smooth', block:'start' });
+            var bodyFontId    = _customCfg.body_font || 'inter';
+            var headingFontId = _customCfg.heading_font || bodyFontId;
+            var primary  = _customCfg.primary || '#6c5ce7';
+            var accent   = _customCfg.accent  || '#a78bfa';
+            var radius   = (_customCfg.radius !== undefined) ? _customCfg.radius : 10;
+            var bodySize = (_customCfg.body_size !== undefined) ? _customCfg.body_size : 14;
+
+            buildFontOptions(document.getElementById('gsBodyFont'), bodyFontId);
+            buildFontOptions(document.getElementById('gsHeadingFont'), headingFontId);
+            document.getElementById('gsPrimary').value    = primary;
+            document.getElementById('gsPrimaryHex').value = primary;
+            document.getElementById('gsAccent').value     = accent;
+            document.getElementById('gsAccentHex').value  = accent;
+            document.getElementById('gsRadius').value     = radius;
+            document.getElementById('gsBodySize').value   = bodySize;
+
+            // Precharger les fonts pour preview
+            _fontsCatalog.forEach(function(f){ if (f.google) loadFont(f.google); });
+            updateCustomPreview();
+        }
+
+        function updateCustomPreview() {
+            var bodyFontId = document.getElementById('gsBodyFont').value;
+            var headFontId = document.getElementById('gsHeadingFont').value;
+            var bodyF = _fontsCatalog.find(function(f){ return f.id === bodyFontId; }) || _fontsCatalog[0];
+            var headF = _fontsCatalog.find(function(f){ return f.id === headFontId; }) || bodyF;
+            if (bodyF && bodyF.google) loadFont(bodyF.google);
+            if (headF && headF.google) loadFont(headF.google);
+
+            var pri = document.getElementById('gsPrimaryHex').value || '#6c5ce7';
+            var acc = document.getElementById('gsAccentHex').value || '#a78bfa';
+            var rad = document.getElementById('gsRadius').value + 'px';
+            var bs  = document.getElementById('gsBodySize').value + 'px';
+            document.getElementById('gsRadiusVal').textContent = rad;
+            document.getElementById('gsBodySizeVal').textContent = bs;
+
+            var prev   = document.getElementById('gsCustomPreview');
+            var pTit   = document.getElementById('gsPrevTitle');
+            var pBody  = document.getElementById('gsPrevBody');
+            var pBtn   = document.getElementById('gsPrevBtn');
+            var pBadge = document.getElementById('gsPrevBadge');
+            var pLink  = document.getElementById('gsPrevLink');
+            prev.style.borderRadius = rad;
+            pTit.style.fontFamily   = headF.font_family;
+            pTit.style.color        = pri;
+            pBody.style.fontFamily  = bodyF.font_family;
+            pBody.style.fontSize    = bs;
+            pBtn.style.background   = pri;
+            pBtn.style.borderRadius = rad;
+            pBtn.style.fontFamily   = bodyF.font_family;
+            pBadge.style.background = pri + '20';
+            pBadge.style.color      = acc;
+            pBadge.style.border     = '1px solid ' + pri + '55';
+            pBadge.style.borderRadius = rad;
+            pLink.style.color       = acc;
+        }
+
+        function syncColors() {
+            var p = document.getElementById('gsPrimary');
+            var ph = document.getElementById('gsPrimaryHex');
+            var a = document.getElementById('gsAccent');
+            var ah = document.getElementById('gsAccentHex');
+            p.addEventListener('input', function(){ ph.value = p.value; updateCustomPreview(); });
+            ph.addEventListener('input', function(){
+                if (/^#[0-9a-fA-F]{6}$/.test(ph.value)) { p.value = ph.value; updateCustomPreview(); }
+            });
+            a.addEventListener('input', function(){ ah.value = a.value; updateCustomPreview(); });
+            ah.addEventListener('input', function(){
+                if (/^#[0-9a-fA-F]{6}$/.test(ah.value)) { a.value = ah.value; updateCustomPreview(); }
+            });
+        }
+        syncColors();
+
+        ['gsBodyFont','gsHeadingFont','gsRadius','gsBodySize'].forEach(function(id){
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('input', updateCustomPreview);
+            if (el) el.addEventListener('change', updateCustomPreview);
+        });
+
+        document.getElementById('gsCustomClose').addEventListener('click', function(){ customEditor.style.display='none'; });
+        document.getElementById('gsCustomCancel').addEventListener('click', function(){ customEditor.style.display='none'; });
+        document.getElementById('gsCustomSave').addEventListener('click', function(){
+            var payload = {
+                theme: 'custom',
+                custom: {
+                    body_font:    document.getElementById('gsBodyFont').value,
+                    heading_font: document.getElementById('gsHeadingFont').value,
+                    primary:      document.getElementById('gsPrimaryHex').value || '#6c5ce7',
+                    accent:       document.getElementById('gsAccentHex').value || '#a78bfa',
+                    radius:       parseInt(document.getElementById('gsRadius').value, 10),
+                    body_size:    parseInt(document.getElementById('gsBodySize').value, 10)
+                }
+            };
+            _customCfg = payload.custom;
+            setStatus('Sauvegarde du style personnalise...', 'info');
+            fetch('../api/admin_style.php', {
+                method:'POST', credentials:'same-origin',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (d && d.success) {
+                    var ts = Date.now();
+                    var prevHome = document.getElementById('gsPreviewHome');
+                    if (prevHome) prevHome.href = '../index.php?_t=' + ts;
+                    setStatus('&#10004; Style personnalise applique. Clique <b>Apercu accueil</b> ou Ctrl+F5 sur le site.', 'ok');
+                    grid.querySelectorAll('.gs-card').forEach(function(c){
+                        c.classList.toggle('active', c.dataset.theme === 'custom');
+                    });
+                } else {
+                    setStatus('Erreur : ' + (d && d.error ? d.error : 'inconnue'), 'err');
+                }
+            })
+            .catch(function(){ setStatus('Erreur reseau.', 'err'); });
+        });
+
+        function escapeHtml(s) {
+            return String(s||'').replace(/[&<>"']/g, function(c){
+                return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+            });
+        }
+
+        function saveTheme(id) {
+            setStatus('Application du theme...', 'info');
+            fetch('../api/admin_style.php', {
+                method:'POST',
+                credentials:'same-origin',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ theme: id })
+            })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (d && d.success) {
+                    var ts = Date.now();
+                    var prevHome = document.getElementById('gsPreviewHome');
+                    var prevProf = document.getElementById('gsPreviewProfil');
+                    if (prevHome) prevHome.href = '../index.php?_t=' + ts;
+                    if (prevProf) prevProf.href = '../index.php?page=athletes&_t=' + ts;
+                    setStatus('&#10004; Theme <b>' + id + '</b> applique. Clique <b>Apercu accueil</b> ci-dessus, ou Ctrl+F5 sur le site pour voir partout.', 'ok');
+                    grid.querySelectorAll('.gs-card').forEach(function(c){
+                        c.classList.toggle('active', c.dataset.theme === id);
+                    });
+                } else {
+                    setStatus('Erreur : ' + (d && d.error ? d.error : 'inconnue'), 'err');
+                }
+            })
+            .catch(function(){ setStatus('Erreur reseau.', 'err'); });
+        }
+
+        function loadList() {
+            fetch('../api/admin_style.php', { credentials:'same-origin' })
+                .then(function(r){ return r.json(); })
+                .then(render)
+                .catch(function(){ grid.innerHTML = '<div style="color:#fca5a5;">Erreur reseau</div>'; });
+        }
+
+        // Charge la liste quand on clique sur l'onglet
+        var tabBtn = document.querySelector('.tab-main[data-tab="style-global"]');
+        if (tabBtn) {
+            var loaded = false;
+            tabBtn.addEventListener('click', function(){
+                if (!loaded) { loaded = true; loadList(); }
+            });
+        }
+    })();
     </script>
 
 </div>
@@ -4074,6 +5499,75 @@ document.querySelectorAll('.tab-main').forEach(function(t) {
     });
 });
 
+// ── Accordéon : rend chaque grosse section repliable (avec mémorisation) ──
+(function () {
+    var STORE = 'bk_panel_acc';
+    var state = {};
+    try { state = JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch (e) { state = {}; }
+    function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
+
+    function isInteractive(el) {
+        return !!(el.closest && el.closest('a, button, input, select, textarea, label'));
+    }
+    // Le "head" d'une carte = premier enfant qui est (ou contient) un h2/h3
+    function findHead(card) {
+        var kids = Array.prototype.slice.call(card.children);
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i];
+            if (/^H[23]$/.test(k.tagName) || (k.querySelector && k.querySelector('h2, h3'))) return k;
+        }
+        return null;
+    }
+
+    document.querySelectorAll('.tab-pane').forEach(function (pane) {
+        var paneKey = pane.getAttribute('data-pane') || 'x';
+        var cards = Array.prototype.slice.call(pane.children).filter(function (el) {
+            return el.nodeType === 1 && /^(DIV|FORM|SECTION)$/.test(el.tagName) && findHead(el);
+        });
+        if (!cards.length) return;
+
+        // Barre "tout replier / déplier"
+        var bar = document.createElement('div');
+        bar.className = 'bk-acc-toolbar';
+        bar.innerHTML = '<button type="button" data-act="all">&#9650;&#9660; Tout replier / déplier</button>';
+        pane.insertBefore(bar, pane.firstChild);
+
+        cards.forEach(function (card, idx) {
+            var head = findHead(card);
+            if (!head) return;
+            card.classList.add('bk-acc');
+            head.classList.add('bk-acc-head');
+
+            var chev = document.createElement('span');
+            chev.className = 'bk-chev';
+            chev.innerHTML = '&#9660;'; // ▼
+            head.insertBefore(chev, head.firstChild);
+
+            // Replié par défaut au 1er chargement (sections trop grandes),
+            // puis on respecte le choix mémorisé de l'admin.
+            var key = paneKey + ':' + idx;
+            var collapsed = (key in state) ? state[key] : true;
+            if (collapsed) card.classList.add('collapsed');
+
+            head.addEventListener('click', function (ev) {
+                if (isInteractive(ev.target) && ev.target !== chev) return; // ne pas replier en cliquant un bouton/lien
+                var collapsed = card.classList.toggle('collapsed');
+                state[key] = collapsed; save();
+            });
+        });
+
+        bar.querySelector('[data-act="all"]').addEventListener('click', function () {
+            // Si au moins une carte est ouverte → on replie tout, sinon on déplie tout
+            var anyOpen = cards.some(function (c) { return !c.classList.contains('collapsed'); });
+            cards.forEach(function (c, idx) {
+                c.classList.toggle('collapsed', anyOpen);
+                state[paneKey + ':' + idx] = anyOpen;
+            });
+            save();
+        });
+    });
+})();
+
 // Sous-onglets (Inscription : Google / Email)
 document.querySelectorAll('.tab-sub[data-sub]').forEach(function(t) {
     t.addEventListener('click', function() {
@@ -4117,8 +5611,8 @@ document.querySelectorAll('.btn-msg[data-rep-act]').forEach(function(btn) {
 
         var confirmMsg = '';
         if (act === 'delete') confirmMsg = 'Supprimer ce signalement ?';
-        else if (act === 'hide_athlete') confirmMsg = 'Masquer ce profil du site ?';
-        else if (act === 'show_athlete') confirmMsg = 'Rendre ce profil visible ?';
+        else if (act === 'hide_athlete') confirmMsg = '⚠ SUPPRESSION DEFINITIVE\n\nCette action va :\n- Supprimer l\'athlete et toutes ses donnees (records, progressions, resultats, medailles)\n- Supprimer son compte user lie si existe\n- Le blacklister pour empecher tout re-scraping\n\nIRREVERSIBLE. Continuer ?';
+        else if (act === 'show_athlete') confirmMsg = 'Retirer cet athlete de la blacklist ?\nIl sera re-scrapé au prochain passage du pipeline.';
         if (confirmMsg && !confirm(confirmMsg)) return;
 
         var param;
@@ -4172,6 +5666,7 @@ document.querySelectorAll('.btn-msg[data-act]').forEach(function(btn) {
                         var tags = card.querySelector('.msg-tags');
                         if (tags) tags.innerHTML = '<span class="msg-tag tag-gray">Lu</span>';
                         btn.outerHTML = '<button class="btn-msg btn-unread" data-act="mark_unread" data-id="' + id + '">Marquer non lu</button>';
+                        bkMoveConfirmedCard(card, true);
                         attachMsgActions();
                     }
                 } else if (act === 'mark_unread') {
@@ -4180,6 +5675,7 @@ document.querySelectorAll('.btn-msg[data-act]').forEach(function(btn) {
                         var tags = card.querySelector('.msg-tags');
                         if (tags) tags.innerHTML = '<span class="msg-tag tag-blue">Non lu</span>';
                         btn.outerHTML = '<button class="btn-msg btn-read" data-act="mark_read" data-id="' + id + '">Marquer comme lu</button>';
+                        bkMoveConfirmedCard(card, false);
                         attachMsgActions();
                     }
                 }
@@ -4190,6 +5686,63 @@ document.querySelectorAll('.btn-msg[data-act]').forEach(function(btn) {
             });
     });
 });
+// Deplace une carte confirmee vers le groupe Lus / Non lus et rafraichit les compteurs
+function bkMoveConfirmedCard(card, toRead) {
+    var pane = document.querySelector('[data-sub-mails-pane="confirmed"]');
+    if (!pane || !card) return;
+    var headClass = toRead ? 'msg-group-read' : 'msg-group-unread';
+    var head = pane.querySelector('.' + headClass);
+    var list = head ? head.nextElementSibling : null;
+    if (list && !list.classList.contains('msg-list')) list = null;
+    if (!head || !list) {
+        head = document.createElement('div');
+        head.className = 'msg-group-head ' + headClass;
+        head.innerHTML = toRead
+            ? 'Lus <span class="msg-group-cnt">0</span>'
+            : '<span class="msg-group-dot"></span>Non lus <span class="msg-group-cnt">0</span>';
+        list = document.createElement('div');
+        list.className = 'msg-list';
+        if (toRead) { pane.appendChild(head); pane.appendChild(list); }
+        else { pane.insertBefore(head, pane.firstChild); pane.insertBefore(list, head.nextSibling); }
+    }
+    list.appendChild(card);
+    bkRefreshConfirmedGroups();
+}
+// Recalcule les compteurs de groupes + badges d'onglets, supprime les groupes vides
+function bkRefreshConfirmedGroups() {
+    var pane = document.querySelector('[data-sub-mails-pane="confirmed"]');
+    if (!pane) return;
+    var unreadHead = pane.querySelector('.msg-group-unread');
+    var readHead = pane.querySelector('.msg-group-read');
+    var nUnread = 0, nRead = 0;
+    [unreadHead, readHead].forEach(function(head) {
+        if (!head) return;
+        var list = head.nextElementSibling;
+        var n = (list && list.classList.contains('msg-list')) ? list.querySelectorAll('.msg-card').length : 0;
+        var cnt = head.querySelector('.msg-group-cnt');
+        if (cnt) cnt.textContent = n;
+        if (head.classList.contains('msg-group-unread')) nUnread = n; else nRead = n;
+        if (n === 0) { if (list) list.remove(); head.remove(); }
+    });
+    // Badge sous-onglet "Confirme"
+    var subBtn = document.querySelector('[data-sub-mails="confirmed"]');
+    if (subBtn) {
+        var alert = subBtn.querySelector('.cnt-alert');
+        if (nUnread > 0) {
+            if (!alert) { alert = document.createElement('span'); alert.className = 'cnt-alert'; subBtn.appendChild(alert); }
+            alert.textContent = nUnread + ' non lu';
+        } else if (alert) { alert.remove(); }
+    }
+    // Badge onglet principal "Mails recus"
+    var mainBtn = document.querySelector('[data-tab="mails"]');
+    if (mainBtn) {
+        var mAlert = mainBtn.querySelector('.cnt-alert');
+        if (nUnread > 0) {
+            if (!mAlert) { mAlert = document.createElement('span'); mAlert.className = 'cnt-alert'; mainBtn.appendChild(mAlert); }
+            mAlert.textContent = nUnread;
+        } else if (mAlert) { mAlert.remove(); }
+    }
+}
 function attachMsgActions() {
     document.querySelectorAll('.btn-msg[data-act]:not([data-bound])').forEach(function(btn) {
         btn.dataset.bound = '1';
@@ -4213,12 +5766,14 @@ function attachMsgActions() {
                         var tags = card.querySelector('.msg-tags');
                         if (tags) tags.innerHTML = '<span class="msg-tag tag-gray">Lu</span>';
                         btn.outerHTML = '<button class="btn-msg btn-unread" data-act="mark_unread" data-id="' + id + '">Marquer non lu</button>';
+                        bkMoveConfirmedCard(card, true);
                         attachMsgActions();
                     } else if (act === 'mark_unread') {
                         card.classList.add('msg-unread');
                         var tags = card.querySelector('.msg-tags');
                         if (tags) tags.innerHTML = '<span class="msg-tag tag-blue">Non lu</span>';
                         btn.outerHTML = '<button class="btn-msg btn-read" data-act="mark_read" data-id="' + id + '">Marquer comme lu</button>';
+                        bkMoveConfirmedCard(card, false);
                         attachMsgActions();
                     }
                 });

@@ -207,13 +207,10 @@ $id = (int)$athlete['id_athlete'];
 $_sx = strtoupper(trim($athlete['sexe_athlete'] ?? 'M'));
 if ($_sx !== 'F') $_sx = 'M';
 
-// Profil masque : bloque uniquement les non-connectes
+// Profil masque (visible=0) : bloque pour TOUT LE MONDE, plus de bypass _all=1 ni connecte/admin
 $_athleteHidden = (isset($athlete['visible']) && (int)$athlete['visible'] === 0);
-if ($_athleteHidden && !isset($_GET['_all'])) {
-    $currentUser = getCurrentUser($conn);
-    if (!$currentUser) {
-        jsonResponse(['success' => false, 'visible' => false, 'error' => 'Profil non disponible'], 404);
-    }
+if ($_athleteHidden) {
+    jsonResponse(['success' => false, 'visible' => false, 'error' => 'Profil non disponible'], 410);
 }
 
 // 2. Ville de naissance
@@ -240,6 +237,8 @@ $identite = [
     'taille_cm'        => $athlete['taille_cm_athlete'] ? (int)$athlete['taille_cm_athlete'] : null,
     'poids_kg'         => $athlete['poids_kg_athlete'] ? (int)$athlete['poids_kg_athlete'] : null,
     'licence'          => null,
+    'bio_override'     => isset($athlete['bio_override']) && $athlete['bio_override'] !== null ? (string)$athlete['bio_override'] : '',
+    'admin_note'       => isset($athlete['admin_note']) && $athlete['admin_note'] !== null ? (string)$athlete['admin_note'] : '',
 ];
 
 // 3. Clubs
@@ -315,13 +314,28 @@ if ($res) while ($row = $res->fetch_assoc()) {
     _fillNiveau($selections[count($selections)-1], 'performance', 'epreuve', $_sx);
 }
 
+// Pools de niveaux pour le calcul du meilleur niveau global :
+// - $_officialNivPool : niveaux OFFICIELS (athlete_niveaux + niveau_resultat stocke en BDD)
+// - $_baremeNivPool   : niveaux ESTIMES via le bareme FFA (perfs brutes sans niveau stocke)
+// Le meilleur niveau affiche privilegie l'officiel ; le bareme n'est qu'un secours
+// quand l'athlete n'a aucun niveau officiel (evite la survalorisation type IA fantome).
+$_officialNivPool = [];
+$_baremeNivPool = [];
+
 // 6. Progressions — depuis store fichier si active, sinon BDD
 $progressions = [];
 require_once __DIR__ . '/../core/progressions_store.php';
 if (progStoreEnabled()) {
     $rawRows = progStoreLoadForAthlete((int)$id);
     $progressions = progStoreEnrichForProfile($conn, (int)$id, $rawRows);
-    foreach ($progressions as &$_p) _fillNiveau($_p, 'performance', 'epreuve', $_sx);
+    foreach ($progressions as &$_p) {
+        $_storedNiv = $_p['niveaux'] ?? [];
+        foreach ($_storedNiv as $_c) $_officialNivPool[] = $_c;
+        _fillNiveau($_p, 'performance', 'epreuve', $_sx);
+        if (empty($_storedNiv) && !empty($_p['niveaux'])) {
+            foreach ($_p['niveaux'] as $_c) $_baremeNivPool[] = $_c;
+        }
+    }
     unset($_p);
 } else {
     $res = $conn->query("
@@ -343,6 +357,7 @@ if (progStoreEnabled()) {
     ");
     if ($res) while ($row = $res->fetch_assoc()) {
         $nivList = array_filter(explode(',', $row['niveaux'] ?? ''));
+        foreach ($nivList as $_c) $_officialNivPool[] = $_c;
         $progressions[] = [
             'epreuve'          => $row['nom_epreuve'] ?? '',
             'annee'            => (int)$row['annee_progression'],
@@ -356,7 +371,11 @@ if (progStoreEnabled()) {
             'ligue_dept'       => $row['ligue_dept_progression'],
             'niveaux'          => array_values($nivList),
         ];
-        _fillNiveau($progressions[count($progressions)-1], 'performance', 'epreuve', $_sx);
+        $_pi = count($progressions)-1;
+        _fillNiveau($progressions[$_pi], 'performance', 'epreuve', $_sx);
+        if (empty($nivList) && !empty($progressions[$_pi]['niveaux'])) {
+            foreach ($progressions[$_pi]['niveaux'] as $_c) $_baremeNivPool[] = $_c;
+        }
     }
 }
 
@@ -378,6 +397,7 @@ $res = $conn->query("
 ");
 if ($res) while ($row = $res->fetch_assoc()) {
     $nivList = array_filter(explode(',', $row['niveaux'] ?? ''));
+    foreach ($nivList as $_c) $_officialNivPool[] = $_c;
     $records[] = [
         'epreuve'          => $row['nom_epreuve'] ?? '',
         'performance'      => $row['performance_record'] ? (int)$row['performance_record'] : null,
@@ -389,7 +409,11 @@ if ($res) while ($row = $res->fetch_assoc()) {
         'ligue_dept'       => $row['ligue_dept_record'],
         'niveaux'          => array_values($nivList),
     ];
-    _fillNiveau($records[count($records)-1], 'performance', 'epreuve', $_sx);
+    $_ri = count($records)-1;
+    _fillNiveau($records[$_ri], 'performance', 'epreuve', $_sx);
+    if (empty($nivList) && !empty($records[$_ri]['niveaux'])) {
+        foreach ($records[$_ri]['niveaux'] as $_c) $_baremeNivPool[] = $_c;
+    }
 }
 
 // 8. Podiums
@@ -432,6 +456,8 @@ $res = $conn->query("
     ORDER BY r.date_resultat DESC
 ");
 if ($res) while ($row = $res->fetch_assoc()) {
+    $_storedNivRes = trim((string)($row['niveau_resultat'] ?? ''));
+    if ($_storedNivRes !== '') $_officialNivPool[] = $_storedNivRes;
     $resultats[] = [
         'annee'            => (int)$row['annee_resultat'],
         'date'             => $row['date_resultat'],
@@ -445,7 +471,11 @@ if ($res) while ($row = $res->fetch_assoc()) {
         'points'           => $row['points_resultat'] ? (int)$row['points_resultat'] : null,
         'lieu'             => $row['nom_ville'] ?? '',
     ];
-    _fillNiveauResultat($resultats[count($resultats)-1], $_sx);
+    $_xi = count($resultats)-1;
+    _fillNiveauResultat($resultats[$_xi], $_sx);
+    if ($_storedNivRes === '' && !empty($resultats[$_xi]['niveau'])) {
+        $_baremeNivPool[] = $resultats[$_xi]['niveau'];
+    }
 }
 
 // 10. Niveaux + perfs
@@ -486,29 +516,34 @@ if ($res) while ($row = $res->fetch_assoc()) {
     $niveaux[] = $niv;
 }
 
-// Calculer le meilleur niveau global (BDD + bareme sur tous les records/progressions)
+// Calculer le meilleur niveau global.
+// PRINCIPE (fix 2026-06-01) : le niveau OFFICIEL prime toujours. Le bareme FFA
+// (estimation depuis les perfs brutes) n'est utilise QU'EN SECOURS, lorsque
+// l'athlete n'a aucun niveau officiel. Cela evite qu'une perf brute borderline
+// (ex: 200m 20''41 -> IA via bareme) n'ecrase le vrai meilleur niveau officiel (IB).
 $_nivOrder = ['IA'=>40,'IB'=>35,'N1'=>30,'N2'=>28,'N3'=>26,'N4'=>24,'IR1'=>21,'IR2'=>20,'IR3'=>19,'IR4'=>18,'R1'=>15,'R2'=>14,'R3'=>13,'R4'=>12,'R5'=>11,'R6'=>10,'D1'=>8,'D2'=>7,'D3'=>6,'D4'=>5,'D5'=>4,'D6'=>3,'D7'=>2];
-$_bestNivPts = 0;
-$_bestNivCode = '';
-// 1) Depuis niveaux BDD
+
+// Les niveaux officiels de athlete_niveaux rejoignent le pool officiel
 foreach ($niveaux as $n) {
     $code = $n['code_niveau'] ?? '';
-    $pts = $_nivOrder[$code] ?? 0;
-    if ($pts > $_bestNivPts) { $_bestNivPts = $pts; $_bestNivCode = $code; }
+    if ($code !== '' && $code !== null) $_officialNivPool[] = $code;
 }
-// 2) Depuis records (calcules via bareme)
-foreach ($records as $r) {
-    foreach ($r['niveaux'] ?? [] as $code) {
+
+// Helper : meilleur code (= plus de points) d'un pool de codes
+$_bestOfPool = function($pool) use ($_nivOrder) {
+    $bestPts = 0; $bestCode = '';
+    foreach ($pool as $code) {
         $pts = $_nivOrder[$code] ?? 0;
-        if ($pts > $_bestNivPts) { $_bestNivPts = $pts; $_bestNivCode = $code; }
+        if ($pts > $bestPts) { $bestPts = $pts; $bestCode = $code; }
     }
-}
-// 3) Depuis progressions (calcules via bareme)
-foreach ($progressions as $p) {
-    foreach ($p['niveaux'] ?? [] as $code) {
-        $pts = $_nivOrder[$code] ?? 0;
-        if ($pts > $_bestNivPts) { $_bestNivPts = $pts; $_bestNivCode = $code; }
-    }
+    return $bestCode;
+};
+
+// 1) Officiel prioritaire (athlete_niveaux + niveau_resultat stocke)
+$_bestNivCode = $_bestOfPool($_officialNivPool);
+// 2) Secours : bareme uniquement si aucun niveau officiel exploitable
+if ($_bestNivCode === '') {
+    $_bestNivCode = $_bestOfPool($_baremeNivPool);
 }
 $identite['meilleur_niveau'] = $_bestNivCode;
 

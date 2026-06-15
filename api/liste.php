@@ -81,6 +81,15 @@ switch ($ordre) {
 $nivJoin = '';
 $epJoin = '';
 
+// Hierarchie complete FFA (du meilleur au pire) — partagee filtre + affichage.
+// DOIT rester identique au $nivOrder de l'enrichissement, sinon le niveau filtre
+// peut differer du niveau affiche sur la fiche.
+$hierarchy = ['IA','IB','IE','N1','N2','N3','N4','IR','IR1','IR2','IR3','IR4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
+$hierarchyList = "'" . implode("','", $hierarchy) . "'";
+// Mode strict : fragment SELECT qui capture le niveau REELLEMENT atteint sur
+// l'epreuve filtree. Reste vide en mode normal.
+$strictNivSelect = '';
+
 // MODE STRICT : niveau X SUR epreuve Y
 // On utilise athlete_niv_perfs.code_perf_niveau (le niveau SPECIFIQUE a chaque perf/epreuve)
 // au lieu de athlete_niveaux.code_niveau (le niveau GLOBAL/annuel)
@@ -114,6 +123,9 @@ if ($niveauStrictEp && $niveau !== '' && $epreuve !== '') {
             INNER JOIN athlete_niv_perfs anp_strict ON anp_strict.id_niveau = an_strict.id_niveau AND anp_strict.code_perf_niveau IN ($nivList)
             INNER JOIN epreuves ep_strict ON ep_strict.id_epreuve = anp_strict.id_epreuve AND $epLikeWhere";
         // epJoin reste vide — le filtre epreuve est integre dans le strict join
+        // Le niveau AFFICHE doit etre celui atteint SUR l'epreuve filtree (code_perf_niveau),
+        // pas le niveau global. MIN(FIELD()) = le meilleur si plusieurs niveaux demandes.
+        $strictNivSelect = ", MIN(FIELD(anp_strict.code_perf_niveau, $hierarchyList)) AS strict_niv_rank";
     }
 } else {
     // MODE NORMAL — filtres niveau et epreuve INDEPENDANTS
@@ -122,8 +134,8 @@ if ($niveauStrictEp && $niveau !== '' && $epreuve !== '') {
     //   - 'best' (defaut) : best level global de l'athlete IN (filtres)
     //   - 'any'           : l'athlete a EU au moins un de ces niveaux dans son historique
     if ($niveau !== '') {
-        $hierarchy = ['IA','IB','IE','IR','IR2','N1','N2','N3','N4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
-        $hierarchyList = "'" . implode("','", $hierarchy) . "'";
+        // $hierarchy / $hierarchyList definis plus haut (partages strict + normal,
+        // alignes sur $nivOrder pour que niveau filtre == niveau affiche).
         $filterRanks = [];
         $nivCodesQuoted = [];
         foreach (explode(',', $niveau) as $n) {
@@ -229,7 +241,7 @@ $sql = "SELECT DISTINCT a.id_athlete, a.athlete_id_externe, a.nom_complet_athlet
                (SELECT COUNT(*) FROM athlete_podiums ap WHERE ap.id_athlete = a.id_athlete) as nb_podiums,
                (SELECT COUNT(*) FROM athlete_selections asel WHERE asel.id_athlete = a.id_athlete) as nb_selections,
                (SELECT COUNT(*) FROM athlete_resultats ares WHERE ares.id_athlete = a.id_athlete) as nb_resultats,
-               (SELECT COUNT(*) FROM athlete_progressions aprog WHERE aprog.id_athlete = a.id_athlete) as nb_progressions
+               (SELECT COUNT(*) FROM athlete_progressions aprog WHERE aprog.id_athlete = a.id_athlete) as nb_progressions$strictNivSelect
         FROM athletes a
         $nivJoin
         $epJoin
@@ -269,6 +281,7 @@ if ($res) while ($row = $res->fetch_assoc()) {
         'top_epreuve'      => null,
         'max_points'       => null,
         'meilleur_niveau'  => null,
+        '_strict_rank'     => isset($row['strict_niv_rank']) ? (int)$row['strict_niv_rank'] : 0,
     ];
 }
 
@@ -287,8 +300,8 @@ if (!empty($athletes)) {
     $nivMap = [];
     $pointsMap = [];
     $bestNivMap = [];
-    // Hierarchie complete (du meilleur au pire). IR1-IR4 = sous-niveaux d'International Releve.
-    $nivOrder = ['IA'=>1,'IB'=>2,'IE'=>3,'IR'=>4,'IR1'=>5,'IR2'=>6,'IR3'=>7,'IR4'=>8,'N1'=>9,'N2'=>10,'N3'=>11,'N4'=>12,'R1'=>13,'R2'=>14,'R3'=>15,'R4'=>16,'R5'=>17,'R6'=>18,'D1'=>19,'D2'=>20,'D3'=>21,'D4'=>22,'D5'=>23,'D6'=>24,'D7'=>25,'D8'=>26];
+    // Hierarchie complete FFA (du meilleur au pire). Doit rester identique au $hierarchy du filtre niveau.
+    $nivOrder = ['IA'=>1,'IB'=>2,'IE'=>3,'N1'=>4,'N2'=>5,'N3'=>6,'N4'=>7,'IR'=>8,'IR1'=>9,'IR2'=>10,'IR3'=>11,'IR4'=>12,'R1'=>13,'R2'=>14,'R3'=>15,'R4'=>16,'R5'=>17,'R6'=>18,'D1'=>19,'D2'=>20,'D3'=>21,'D4'=>22,'D5'=>23,'D6'=>24,'D7'=>25,'D8'=>26];
     if ($nRes) while ($nr = $nRes->fetch_assoc()) {
         $aid = (int)$nr['id_athlete'];
         $nivMap[$aid][] = $nr['code_niveau'];
@@ -356,6 +369,20 @@ if (!empty($athletes)) {
         $a['medailles'] = $medMap[$aid] ?? ['or'=>0,'argent'=>0,'bronze'=>0];
         $a['club'] = $clubMap[$aid] ?? null;
         $a['top_epreuve'] = $epMap[$aid] ?? null;
+    }
+    unset($a);
+
+    // MODE STRICT : forcer le niveau affiche = niveau atteint SUR l'epreuve filtree.
+    // Garantit que demander "IA" ne fasse jamais s'afficher un autre niveau.
+    foreach ($athletes as &$a) {
+        if ($strictNivSelect !== '') {
+            $sr = (int)($a['_strict_rank'] ?? 0);
+            if ($sr > 0 && isset($hierarchy[$sr - 1])) {
+                $a['meilleur_niveau'] = $hierarchy[$sr - 1];
+                $a['niveaux']         = [$hierarchy[$sr - 1]];
+            }
+        }
+        unset($a['_strict_rank']);
     }
     unset($a);
 }

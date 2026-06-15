@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOKONZI — Recettes de code (patterns récurrents)</title>
+<link rel="stylesheet" href="doc_style.css">
+</head>
+<body>
+<div class="backbar">
+  <a href="documentation_technique.html">← Sommaire</a>
+  <span class="crumb">Documentation détaillée · Recettes de code</span>
+</div>
+<div class="wrap">
+
+<h1>Recettes de code — les patterns récurrents</h1>
+<div class="subtitle">Les 10 motifs qu'on retrouve partout. Les reconnaître = lire le code beaucoup plus vite.</div>
+
+<div class="lead">
+Le projet n'a pas de framework, mais il a des <strong>conventions maison</strong> répétées dans presque tous les
+fichiers. Voici les 10 plus importantes, avec un extrait réel et l'endroit où la trouver. Quand tu reprends un
+fichier, tu reconnaîtras ces motifs immédiatement.
+</div>
+
+<div class="localtoc">
+  <a href="#cache">1 · Cache fichier (MD5 + TTL)</a>
+  <a href="#pagination">2 · Pagination</a>
+  <a href="#batch">3 · Batch query (anti N+1)</a>
+  <a href="#athfilter">4 · Filtre universel $athFilter</a>
+  <a href="#distance">5 · Temps vs distance</a>
+  <a href="#chartjs">6 · Chart.js</a>
+  <a href="#ip">7 · IP réelle (CloudFlare)</a>
+  <a href="#protect">8 · Protection des fichiers de logs</a>
+  <a href="#niveaux">9 · Hiérarchie des niveaux</a>
+  <a href="#bareme">10 · Barème FFA (perf → niveau)</a>
+</div>
+
+<section id="cache">
+<h2>1 · Cache fichier (MD5 + TTL 24 h)</h2>
+<p class="crumb">Ex. : <code>api/club_stats.php:36-45</code> — présent dans presque tous les endpoints.</p>
+<pre><code><span class="nu">$cacheKey</span>  = <span class="st">'clubstats_'</span> . md5(<span class="nu">$idClub</span>.<span class="st">'_'</span>.<span class="nu">$nomClub</span>.<span class="st">'_'</span>.<span class="nu">$annee</span>. … );
+<span class="nu">$cacheFile</span> = <span class="nu">$cacheDir</span> . <span class="st">'/'</span> . <span class="nu">$cacheKey</span> . <span class="st">'.json'</span>;
+<span class="kw">if</span> (!<span class="nu">$noCache</span> && file_exists(<span class="nu">$cacheFile</span>) && (time() - filemtime(<span class="nu">$cacheFile</span>)) &lt; <span class="nu">86400</span>) {
+    <span class="kw">echo</span> file_get_contents(<span class="nu">$cacheFile</span>); <span class="nu">$conn</span>->close(); <span class="kw">exit</span>;   <span class="cm">// CACHE HIT</span>
+}
+<span class="cm">// … sinon on calcule, puis :</span>
+@file_put_contents(<span class="nu">$cacheFile</span>, <span class="nu">$json</span>, LOCK_EX);</code></pre>
+<p>Une empreinte MD5 unique par combinaison de paramètres. Si le fichier existe et a moins de 24 h, on le renvoie
+sans toucher la base.</p>
+</section>
+
+<section id="pagination">
+<h2>2 · Pagination</h2>
+<p class="crumb">Ex. : <code>api/club_stats.php:16-24</code></p>
+<pre><code><span class="nu">$recPage</span>   = max(<span class="nu">1</span>, (int)(<span class="nu">$_GET</span>[<span class="st">'rp'</span>] ?? <span class="nu">1</span>));
+<span class="nu">$recLimit</span>  = <span class="nu">10</span>;
+<span class="nu">$recOffset</span> = (<span class="nu">$recPage</span> - <span class="nu">1</span>) * <span class="nu">$recLimit</span>;   <span class="cm">// → SQL LIMIT $recLimit OFFSET $recOffset</span></code></pre>
+<p>Toujours le même calcul : <code>offset = (page − 1) × limit</code>. Chaque section (records, épreuves…) a sa
+propre pagination indépendante.</p>
+</section>
+
+<section id="batch">
+<h2>3 · Batch query — éviter le N+1</h2>
+<p class="crumb">Ex. : <code>api/similar.php:521-526</code></p>
+<pre><code><span class="cm">// Au lieu d'une requête PAR athlète (le « problème N+1 »), une seule avec IN()</span>
+<span class="nu">$finIds</span> = implode(<span class="st">','</span>, array_map(<span class="kw">fn</span>(<span class="nu">$c</span>) => (int)<span class="nu">$c</span>[<span class="st">'id_athlete'</span>], <span class="nu">$candidates</span>));
+<span class="nu">$nivRes</span> = <span class="nu">$conn</span>->query(<span class="st">"SELECT id_athlete, GROUP_CONCAT(DISTINCT code_niveau) AS niveaux
+                       FROM athlete_niveaux WHERE id_athlete IN (<span class="nu">$finIds</span>) GROUP BY id_athlete"</span>);
+<span class="kw">while</span> (<span class="nu">$nr</span> = <span class="nu">$nivRes</span>->fetch_assoc()) <span class="nu">$nivMap</span>[(int)<span class="nu">$nr</span>[<span class="st">'id_athlete'</span>]] = <span class="nu">$nr</span>[<span class="st">'niveaux'</span>];</code></pre>
+<div class="box tip"><div class="box-t">✅ Pourquoi</div>Charger les niveaux de 50 athlètes en boucle = 50 requêtes. Avec <code>IN(...)</code> + <code>GROUP_CONCAT</code> = 1 seule requête. Sur 300k athlètes, c'est la différence entre 1 s et un timeout.</div>
+</section>
+
+<section id="athfilter">
+<h2>4 · Filtre universel <code>$athFilter</code></h2>
+<p class="crumb">Ex. : <code>api/club_stats.php:66-75</code> — réutilisé dans ~30 requêtes du même fichier</p>
+<pre><code><span class="nu">$athFilter</span> = <span class="st">''</span>;
+<span class="kw">if</span> (<span class="nu">$filterNat</span> !== <span class="st">''</span> || <span class="nu">$filterSexe</span> !== <span class="st">''</span> || <span class="nu">$filterCat</span> !== <span class="st">''</span>) {
+    <span class="nu">$afConds</span> = [];
+    <span class="kw">if</span> (<span class="nu">$filterNat</span>  !== <span class="st">''</span>) <span class="nu">$afConds</span>[] = <span class="st">"_af.nationalite_athlete = '"</span>.<span class="nu">$conn</span>->real_escape_string(strtoupper(<span class="nu">$filterNat</span>)).<span class="st">"'"</span>;
+    <span class="kw">if</span> (<span class="nu">$filterSexe</span> !== <span class="st">''</span>) <span class="nu">$afConds</span>[] = <span class="st">"_af.sexe_athlete = '"</span>.…;
+    <span class="nu">$athFilter</span> = <span class="st">" AND ac.id_athlete IN (SELECT _af.id_athlete FROM athletes _af WHERE "</span>.implode(<span class="st">' AND '</span>, <span class="nu">$afConds</span>).<span class="st">")"</span>;
+}
+<span class="cm">// Puis on colle $athFilter dans le WHERE de chaque requête du fichier</span></code></pre>
+<p>Une seule chaîne construite une fois, injectée dans toutes les requêtes pour appliquer le même filtre
+(nationalité/sexe/catégorie) sans dupliquer la logique.</p>
+</section>
+
+<section id="distance">
+<h2>5 · Détection temps vs distance</h2>
+<p class="crumb">Ex. : <code>api/athlete.php:39-41</code></p>
+<pre><code><span class="kw">function</span> <span class="fn">_isDistEp</span>(<span class="nu">$nom</span>) {
+    <span class="kw">return</span> (bool)preg_match(<span class="st">'/(poids|disque|javelot|marteau|hauteur|perche|longueur|triple|decathlon|heptathlon|pentathlon)/i'</span>, <span class="nu">$nom</span>);
+}</code></pre>
+<p>Détermine si une épreuve est un <strong>lancer/saut</strong> (plus grand = meilleur, tri DESC) ou une
+<strong>course</strong> (plus petit = meilleur, tri ASC). Indispensable pour trier les perfs et interpoler le barème
+dans le bon sens.</p>
+</section>
+
+<section id="chartjs">
+<h2>6 · Création d'un graphique Chart.js</h2>
+<p class="crumb">Ex. : <code>public/assets/js/club-panel.js:698+</code> — partout dans les panneaux</p>
+<pre><code><span class="kw">new</span> <span class="fn">Chart</span>(<span class="nu">canvasEl</span>, {
+  type: <span class="st">'bar'</span>,                       <span class="cm">// ou 'line', 'doughnut', 'radar'</span>
+  data: { labels: […], datasets: […].map(<span class="kw">function</span>(ds){ <span class="kw">return</span> { label: ds.label, data: […], backgroundColor: … }; }) },
+  options: { responsive: <span class="kw">true</span>, plugins:{ legend:{ labels:{ color:<span class="st">'#8b949e'</span> } } },
+             scales:{ y:{ grid:{ color:<span class="st">'#1e2a3a'</span> }, ticks:{ color:<span class="st">'#8b949e'</span> } } } }
+});</code></pre>
+<div class="box warn"><div class="box-t">⚠️</div>Le graphique est créé <strong>après</strong> l'insertion du HTML (post-render). Sinon le canvas n'existe pas encore.</div>
+</section>
+
+<section id="ip">
+<h2>7 · Détection de l'IP réelle (CloudFlare / proxy)</h2>
+<p class="crumb">Ex. : <code>core/ip_logger.php</code>, <code>core/search_limit.php:42</code>, <code>index.php:24</code></p>
+<pre><code><span class="nu">$ip</span> = <span class="nu">$_SERVER</span>[<span class="st">'HTTP_CF_CONNECTING_IP'</span>]      <span class="cm">// CloudFlare en priorité</span>
+   ?? <span class="nu">$_SERVER</span>[<span class="st">'HTTP_X_FORWARDED_FOR'</span>]       <span class="cm">// puis proxy</span>
+   ?? <span class="nu">$_SERVER</span>[<span class="st">'REMOTE_ADDR'</span>] ?? <span class="st">''</span>;          <span class="cm">// enfin direct</span>
+<span class="nu">$ip</span> = trim(explode(<span class="st">','</span>, <span class="nu">$ip</span>)[<span class="nu">0</span>]);                <span class="cm">// 1er IP si liste séparée par virgules</span></code></pre>
+<p>Derrière CloudFlare, <code>REMOTE_ADDR</code> est l'IP de CloudFlare, pas du visiteur. On lit donc d'abord
+<code>HTTP_CF_CONNECTING_IP</code>. Ce même ordre est répété partout (quotas, logs, anti-scraping).</p>
+</section>
+
+<section id="protect">
+<h2>8 · Protection des fichiers de logs JSON</h2>
+<p class="crumb">Ex. : tous les fichiers <code>logs/.xxx.php</code></p>
+<pre><code><span class="cm">// Écriture : on préfixe TOUJOURS par un die() PHP</span>
+@file_put_contents(<span class="nu">$file</span>, <span class="st">"&lt;?php die('Acces interdit'); ?&gt;\n"</span> . json_encode(<span class="nu">$data</span>), LOCK_EX);
+
+<span class="cm">// Lecture : on saute la 1re ligne avant de décoder</span>
+<span class="nu">$raw</span> = file_get_contents(<span class="nu">$file</span>);
+<span class="nu">$pos</span> = strpos(<span class="nu">$raw</span>, <span class="st">"\n"</span>);
+<span class="nu">$data</span> = json_decode(substr(<span class="nu">$raw</span>, <span class="nu">$pos</span> + <span class="nu">1</span>), <span class="kw">true</span>);</code></pre>
+<div class="box tip"><div class="box-t">✅ Astuce de sécurité</div>Le fichier a l'extension <code>.php</code> et commence par <code>&lt;?php die(); ?&gt;</code>. Si quelqu'un l'ouvre par URL, PHP l'exécute, voit le <code>die()</code> et s'arrête → le contenu JSON n'est jamais exposé.</div>
+</section>
+
+<section id="niveaux">
+<h2>9 · Hiérarchie des niveaux (JS + PHP)</h2>
+<p class="crumb">JS : <code>public/assets/js/utils.js</code> · PHP : <code>api/club_stats.php:93</code>, <code>index.php:73</code></p>
+<pre><code><span class="cm">// Le "score" de chaque code (plus haut = meilleur)</span>
+<span class="nu">$order</span> = [<span class="st">'IE'</span>=>100, <span class="st">'IR'</span>=>99];
+<span class="kw">foreach</span> ([<span class="st">'N'</span>=>90, <span class="st">'R'</span>=>80, <span class="st">'D'</span>=>70] <span class="kw">as</span> <span class="nu">$p</span>=>$b)
+    <span class="kw">for</span> (<span class="nu">$i</span>=1; <span class="nu">$i</span>&lt;=8; <span class="nu">$i</span>++) <span class="nu">$order</span>[<span class="nu">$p</span>.<span class="nu">$i</span>] = <span class="nu">$b</span> - <span class="nu">$i</span>;
+<span class="cm">// → IE(100) > IR(99) > N1(89)…N4(86) > R1(79)…R6(74) > D1(69)…D8(62)</span></code></pre>
+<p>La couleur du badge dépend de la <strong>première lettre</strong> : I = fuchsia, N = rose, R = cyan, D = orange.
+<code>highestNiveau(arr)</code> renvoie le code au score le plus élevé d'une liste.</p>
+</section>
+
+<section id="bareme">
+<h2>10 · Barème FFA — performance → points → niveau</h2>
+<p class="crumb">Ex. : <code>api/athlete.php:43-93</code> (répliqué dans <code>nom.php</code> et <code>similar.php</code>)</p>
+<p>Le barème (<code>config/bareme_hommes.php</code>) contient, par épreuve, des points de repère
+<code>[points, performance]</code>. <code>_perfToFfaPts()</code> trouve où se situe la perf et fait une
+<strong>interpolation linéaire</strong> entre deux repères (en tenant compte du sens temps/distance). Puis
+<code>_ffaPtsToLevel()</code> traduit les points en code :</p>
+<pre><code><span class="kw">function</span> <span class="fn">_ffaPtsToLevel</span>(<span class="nu">$pts</span>) {
+  <span class="kw">if</span> (<span class="nu">$pts</span> &gt;= <span class="nu">40</span>) <span class="kw">return</span> <span class="st">'IA'</span>;  <span class="kw">if</span> (<span class="nu">$pts</span> &gt;= <span class="nu">35</span>) <span class="kw">return</span> <span class="st">'IB'</span>;
+  <span class="kw">if</span> (<span class="nu">$pts</span> &gt;= <span class="nu">30</span>) <span class="kw">return</span> <span class="st">'N1'</span>;  <span class="kw">if</span> (<span class="nu">$pts</span> &gt;= <span class="nu">28</span>) <span class="kw">return</span> <span class="st">'N2'</span>;
+  <span class="cm">// … jusqu'à D5</span>
+}</code></pre>
+<div class="box info"><div class="box-t">ℹ️ Pourquoi calculer le niveau ?</div>Certains athlètes élite n'ont pas la qualification formelle en base, mais leur perf le mérite. Ce calcul permet d'afficher le bon niveau (ex. un athlète sans niveau enregistré mais qui court le 100 m en 10''2 sera affiché IB).</div>
+</section>
+
+<div style="text-align:center;color:#6e7681;font-size:13px;padding:24px 0;border-top:1px solid var(--border)">
+  <a class="link" href="documentation_technique.html">← Retour au sommaire</a>
+</div>
+</div>
+</body>
+</html>

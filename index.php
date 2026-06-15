@@ -13,10 +13,12 @@ require_once __DIR__ . '/core/db.php';
 require_once __DIR__ . '/core/ip_logger.php';
 logIp();
 
-// === Anti-scraping : 20 pages/jour max pour les visiteurs anonymes ===
+// === Anti-scraping : pages/jour max pour les visiteurs anonymes ===
 // Au-dela, redirection vers login.php (oblige a se connecter). Connectes / super
 // admin / whitelist (Google, Hostinger, localhost) : illimite.
 // Compteur journalier par IP dans logs/.page_limits.php (reset auto au changement de date).
+// Pour changer la limite, modifier UNIQUEMENT la valeur ci-dessous.
+if (!defined('BK_PAGE_DAILY_LIMIT')) define('BK_PAGE_DAILY_LIMIT', 200);
 (function () {
     if (!empty($_COOKIE['bk_token']) || !empty($_COOKIE['bk_sa_token'])) return; // connecte = illimite
     $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
@@ -38,7 +40,7 @@ logIp();
     $count = ($data[$ip] ?? 0) + 1;
     $data[$ip] = $count;
     @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data), LOCK_EX);
-    if ($count > 20) {
+    if ($count > BK_PAGE_DAILY_LIMIT) {
         header('Location: ' . BK_URL('/login.php?limit=1'));
         exit;
     }
@@ -60,6 +62,9 @@ if (empty($_COOKIE['bk_token']) && empty($_COOKIE['bk_sa_token']) && empty($_COO
 // === Auth : detecter si utilisateur connecte ===
 require_once __DIR__ . '/core/auth.php';
 $currentUser = getCurrentUser($conn);
+
+// === Paywall : apercu floute du contenu premium pour les non-abonnes ===
+require_once __DIR__ . '/core/paywall.php';
 
 function dateFR($d) {
     if (!$d || $d === '-') return '-';
@@ -316,11 +321,19 @@ function apiCall($url) {
             $epF = $params['epreuve'] ?? '';
             $clb = $params['club'] ?? '';
             $sxF = $params['sexe'] ?? '';
-            $ryM = $params['recent_year_min'] ?? '';
-            $strict = $params['niveau_strict_ep'] ?? '';
-            $cacheFile = $cacheDir . '/liste_' . md5($pg . '_' . $lim . '_' . $ord . '_' . $niv . '_' . $epF . '_' . $clb . '_' . $sxF . '_' . $ryM . '_' . $strict) . '.json';
+            $ryM = (int)($params['recent_year_min'] ?? 0);
+            $strict = !empty($params['niveau_strict_ep']) ? 1 : 0;
+            $nm = (isset($params['niveau_match']) && $params['niveau_match'] === 'any') ? 'any' : 'best';
+            $yE = (int)($params['annee_exact'] ?? 0);
+            // Clef alignee sur le hash interne d'api/liste.php pour matcher son cache
+            $cacheFile = $cacheDir . '/liste_' . md5($pg . '_' . $lim . '_' . $ord . '_' . $niv . '_' . $epF . '_' . $clb . '_' . $sxF . '_' . $ryM . '_strict' . $strict . '_nm' . $nm . '_yE' . $yE) . '.json';
         } elseif ($apiName === 'search') {
             $cacheFile = $cacheDir . '/search_' . md5($query) . '.json';
+        } elseif ($apiName === 'nom') {
+            $q = trim($params['q'] ?? '');
+            $lim = (int)($params['limit'] ?? 100);
+            $det = !isset($params['detail']) || $params['detail'] !== '0';
+            $cacheFile = $cacheDir . '/nom_' . md5(strtolower($q) . '_' . $lim . '_' . ($det ? 1 : 0)) . '.json';
         }
 
         if ($cacheFile && file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
@@ -569,32 +582,27 @@ if ($page === 'clubs') {
 } elseif ($page === 'athletes') {
     $seoTitle = 'Tous les athlètes — Bokonzi';
     $seoDesc  = 'Liste complète des athlètes français d\'athlétisme avec records, clubs et statistiques.';
+} elseif ($page === 'noms') {
+    $nomQseo = trim($_GET['q'] ?? '');
+    if ($nomQseo !== '') {
+        $nomQseo = strtoupper($nomQseo);
+        $seoTitle = htmlspecialchars($nomQseo) . ' — Tous les athlètes portant ce nom | Bokonzi';
+        $seoDesc  = 'Découvrez tous les athlètes portant le nom de famille ' . htmlspecialchars($nomQseo) . ' : club, âge, catégorie, niveau, records, médailles.';
+    } else {
+        $seoTitle = 'Recherche par nom de famille — Bokonzi';
+        $seoDesc  = 'Trouvez toutes les personnes partageant un nom de famille en athlétisme français : statistiques par âge, sexe, club, niveau.';
+    }
 } elseif (($page === 'profil' || $page === 'profil2') && $id) {
     $_profNom = '';
     $_profRes = $conn->query("SELECT nom_complet_athlete, categorie_athlete, sexe_athlete, visible FROM athletes WHERE athlete_id_externe = " . intval($id) . " LIMIT 1");
     if ($_profRes && $_profRow = $_profRes->fetch_assoc()) {
         if (isset($_profRow['visible']) && (int)$_profRow['visible'] === 0) {
-            // Detection admin early (avant inclusion nav.php) : cookie super admin OU email dans .panel_access.php
-            $_isAdminEarly = !empty($_COOKIE['bk_sa_token']);
-            if (!$_isAdminEarly && $currentUser) {
-                $_paFile = __DIR__ . '/logs/.panel_access.php';
-                if (file_exists($_paFile)) {
-                    $_paRaw = @file_get_contents($_paFile);
-                    $_paPos = strpos($_paRaw, "\n");
-                    if ($_paPos !== false) {
-                        $_paList = json_decode(substr($_paRaw, $_paPos + 1), true) ?: [];
-                        $_isAdminEarly = isset($_paList[strtolower($currentUser['email'] ?? '')]);
-                    }
-                }
-            }
-            if (!$_isAdminEarly) {
-                // Profil masque + visiteur non-admin : 404 Not Found + headers anti-indexation
-                http_response_code(404);
-                header('X-Robots-Tag: noindex, nofollow, noarchive');
-                $seoNoFollow = true;
-            }
-            $seoTitle = 'Profil non disponible — Bokonzi';
-            $seoDesc  = 'Ce profil n\'est plus disponible.';
+            // Profil masque : 410 Gone pour TOUT LE MONDE (admin inclus, plus de bypass)
+            http_response_code(410);
+            header('X-Robots-Tag: noindex, nofollow, noarchive');
+            $seoNoFollow = true;
+            $seoTitle = 'Profil inexistant — Bokonzi';
+            $seoDesc  = 'Ce profil n\'existe pas.';
             $seoNoIndex = true;
         } else {
             $_profNom = $_profRow['nom_complet_athlete'];
@@ -602,8 +610,24 @@ if ($page === 'clubs') {
             $seoDesc  = 'Fiche de ' . $_profNom . ' (' . $_profRow['sexe_athlete'] . ', ' . $_profRow['categorie_athlete'] . ') : records, progressions, résultats, clubs, médailles sur Bokonzi.';
         }
     } else {
-        $seoTitle = 'Profil athlète — Bokonzi';
-        $seoDesc  = 'Fiche complète de l\'athlète : records, progressions, résultats, clubs, médailles.';
+        // Athlete absent de la BDD : verifier la blacklist (athlete purge volontairement)
+        require_once __DIR__ . '/core/athlete_purge.php';
+        if (isAthleteBlacklisted($conn, (int)$id)) {
+            // 410 Gone : signal a Google que la ressource a ete supprimee definitivement
+            // Google desindexe 410 beaucoup plus vite que 404
+            http_response_code(410);
+            header('X-Robots-Tag: noindex, nofollow, noarchive');
+            $seoNoFollow = true;
+            $seoTitle = 'Profil inexistant — Bokonzi';
+            $seoDesc  = 'Ce profil n\'existe pas.';
+        } else {
+            // Athlete inconnu (404 classique : URL invalide ou jamais existe)
+            http_response_code(404);
+            header('X-Robots-Tag: noindex, nofollow, noarchive');
+            $seoNoFollow = true;
+            $seoTitle = 'Profil inexistant — Bokonzi';
+            $seoDesc  = 'Ce profil n\'existe pas.';
+        }
         $seoNoIndex = true;
     }
 } elseif ($page === 'comparer') {
@@ -756,6 +780,9 @@ if ($page === 'athletes') {
 } elseif ($page === 'villes') {
     $_bcItems[] = ['name' => 'Villes', 'url' => $_canonBase . '/villes'];
     if (!empty($_GET['open'])) $_bcItems[] = ['name' => htmlspecialchars($_GET['open'])];
+} elseif ($page === 'noms') {
+    $_bcItems[] = ['name' => 'Noms', 'url' => $_canonBase . '/noms'];
+    if (!empty($_GET['q'])) $_bcItems[] = ['name' => strtoupper(htmlspecialchars($_GET['q']))];
 } elseif (($page === 'profil' || $page === 'profil2') && $id) {
     $_bcItems[] = ['name' => 'Athlètes', 'url' => $_canonBase . '/athletes'];
     $_bcItems[] = ['name' => !empty($_profNom) ? htmlspecialchars($_profNom) : 'Profil athlète'];
@@ -868,6 +895,16 @@ if (count($_bcItems) > 1):
         box-shadow: 0 2px 8px #05966940;
     }
     .btn-detail-raw:hover { transform: scale(1.08); box-shadow: 0 4px 16px #34d39960; }
+    /* Bouton Fiche FFA (lien externe athle.fr) */
+    .btn-ffa {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 6px 16px; border-radius: 8px;
+        background: linear-gradient(135deg, #1e3a8a, #3b82f6); border: none; color: #fff;
+        font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+        text-decoration: none; line-height: 1.4; vertical-align: middle;
+        box-shadow: 0 2px 8px #1e3a8a40;
+    }
+    .btn-ffa:hover { transform: scale(1.08); box-shadow: 0 4px 16px #3b82f660; color: #fff; text-decoration: none; }
     /* Bouton Signaler profil */
     .btn-report {
         display: inline-flex; align-items: center; gap: 4px;
@@ -1050,8 +1087,11 @@ if (count($_bcItems) > 1):
         .hide-mobile { display: none !important; }
     }
     </style>
+    <?php require_once __DIR__ . '/core/theme.php'; bkRenderThemeHead(); ?>
+    <?php bkPaywallAssets($conn); ?>
 </head>
 <body>
+<?php if (function_exists('bkTestBanner')) echo bkTestBanner(); ?>
 <!-- Anti-flash : applique le theme (clair/sombre/auto) avant tout rendu -->
 <script>
 (function(){ try {
@@ -1206,6 +1246,120 @@ body.p2-light #profilDisclaimer > div { background: var(--bg-card) !important; c
 
 /* Stade 3D / podium 3D — gardent leur fond sombre interne legerement attenue */
 body.p2-light .stade-3d, body.p2-light .podium-3d { filter: brightness(0.95); }
+
+/* ============================================================
+   FILET DE SECURITE THEME CLAIR
+   Remappe l'ancienne palette "GitHub-dark" codee en dur
+   (#0d1117, #161b22, #21262d, #30363d, #1e2a3a, #c9d1d9,
+   #8b949e, #f0f6fc...) vers la palette creme.
+   N'affecte QUE le mode clair -> le mode sombre est inchange.
+   Couvre a la fois les styles inline ([style*=]) et les
+   composants partages definis en <style> (modales, barres).
+   ============================================================ */
+
+/* --- Fonds sombres inline -> surfaces claires --- */
+body.p2-light [style*="background:#0d1117"],
+body.p2-light [style*="background: #0d1117"],
+body.p2-light [style*="background-color:#0d1117"],
+body.p2-light [style*="background-color: #0d1117"],
+body.p2-light [style*="background:#0e1325"],
+body.p2-light [style*="background: #0e1325"] { background-color: var(--bg-input) !important; }
+
+body.p2-light [style*="background:#161b22"],
+body.p2-light [style*="background: #161b22"],
+body.p2-light [style*="background-color:#161b22"],
+body.p2-light [style*="background-color: #161b22"] { background-color: var(--bg-card) !important; }
+
+body.p2-light [style*="background:#21262d"],
+body.p2-light [style*="background: #21262d"],
+body.p2-light [style*="background:#1c2333"],
+body.p2-light [style*="background:#1a1f2e"] { background-color: var(--bg-surface) !important; }
+
+/* --- Textes clairs inline -> textes fonces --- */
+body.p2-light [style*="color:#c9d1d9"],
+body.p2-light [style*="color: #c9d1d9"],
+body.p2-light [style*="color:#f0f6fc"],
+body.p2-light [style*="color: #f0f6fc"],
+body.p2-light [style*="color:#e6edf3"],
+body.p2-light [style*="color: #e6edf3"] { color: var(--text-primary) !important; }
+
+body.p2-light [style*="color:#8b949e"],
+body.p2-light [style*="color: #8b949e"],
+body.p2-light [style*="color:#6e7681"],
+body.p2-light [style*="color: #6e7681"],
+body.p2-light [style*="color:#5a6580"],
+body.p2-light [style*="color: #5a6580"] { color: var(--text-secondary) !important; }
+
+body.p2-light [style*="color:#484f58"],
+body.p2-light [style*="color: #484f58"],
+body.p2-light [style*="color:#56606a"],
+body.p2-light [style*="color: #56606a"] { color: var(--text-muted) !important; }
+
+/* --- Bordures accent violet inline -> cognac (le filet 'color' ne couvrait pas les bordures) --- */
+body.p2-light [style*="solid #a78bfa"],
+body.p2-light [style*="solid #a29bfe"],
+body.p2-light [style*="solid #6c5ce7"],
+body.p2-light [style*="border-color:#a78bfa"],
+body.p2-light [style*="border-color: #a78bfa"] { border-color: var(--brand) !important; }
+
+/* --- Bouton "Recherche approfondie" : garanti aux couleurs de la charte selon le theme --- */
+body.p2-light #bkDeepToggle { border-color: var(--brand) !important; color: var(--brand) !important; }
+
+/* --- Bouton toggle "Recherche approfondie" (recherche) : fond degrade sombre -> surface claire --- */
+body.p2-light #advFiltersToggle {
+    background: var(--bg-surface) !important;
+    color: var(--brand) !important;
+    border-color: var(--border) !important;
+}
+body.p2-light #advFiltersToggle span[style*="background:#a78bfa"] { color: #fff !important; }
+
+/* --- Bordures grises inline -> bordure beige --- */
+body.p2-light [style*="#30363d"],
+body.p2-light [style*="#1e2a3a"],
+body.p2-light [style*="#21262d"],
+body.p2-light [style*="#2d3a4a"],
+body.p2-light [style*="#484f58"] { border-color: var(--border) !important; }
+
+/* --- Composants partages (regles <style>, non inline) --- */
+body.p2-light .report-modal,
+body.p2-light .follow-modal { background: var(--bg-card); border-color: var(--border); }
+body.p2-light .report-modal h3,
+body.p2-light .follow-modal h3,
+body.p2-light .report-modal label { color: var(--text-primary); }
+body.p2-light .report-modal p,
+body.p2-light .follow-modal p { color: var(--text-secondary); }
+body.p2-light .report-modal select,
+body.p2-light .report-modal textarea,
+body.p2-light .report-modal input[type="email"],
+body.p2-light .follow-modal input { background: var(--bg-input); border-color: var(--border); color: var(--text-primary); }
+body.p2-light .btn-report { background: var(--bg-surface); border-color: var(--border); color: var(--text-secondary); }
+body.p2-light .newsletter-bar { background: var(--bg-card); border-top-color: var(--border); }
+body.p2-light .newsletter-bar .nl-text { color: var(--text-primary); }
+body.p2-light .newsletter-bar .nl-sub { color: var(--text-secondary); }
+body.p2-light .newsletter-bar input { background: var(--bg-input); border-color: var(--border); color: var(--text-primary); }
+body.p2-light .newsletter-bar .nl-close { color: var(--text-muted); }
+
+/* --- Panneau detail CLUB + EPREUVE (.club-detail-panel, partage) --- */
+body.p2-light .club-detail-panel {
+    background: var(--bg-card) !important;
+    border-color: var(--border);
+}
+body.p2-light .club-detail-header h2 { color: var(--brand); }
+body.p2-light .club-detail-header .meta-info { color: var(--text-secondary); }
+body.p2-light .club-detail-header .btn-close-detail {
+    background: var(--bg-surface); color: var(--text-primary); border-color: var(--border);
+}
+body.p2-light .club-detail-tabs { border-bottom-color: var(--border); }
+body.p2-light .club-detail-tab { color: var(--text-secondary); }
+body.p2-light .club-detail-tab:hover { color: var(--text-primary); }
+body.p2-light .club-detail-tab.active { background: var(--bg-surface); color: var(--brand); border-color: var(--border); }
+body.p2-light .club-detail-content .loading-msg { color: var(--text-secondary); }
+body.p2-light .club-detail-chip { background: var(--bg-surface); border-color: var(--border); color: var(--text-primary); }
+body.p2-light .club-detail-chip .chip-count { background: var(--brand-subtle); color: var(--brand); }
+body.p2-light .club-detail-content th { color: var(--text-secondary); border-bottom-color: var(--border); }
+body.p2-light .club-detail-content td { border-bottom-color: var(--border); }
+body.p2-light .club-detail-content tr:hover { background: var(--bg-card-hover); }
+body.p2-light .club-detail-content .perf-val { color: var(--green); }
 
 /* === MODE CLAIR — composants profil magazine (.p2-*) avec couleurs codees === */
 body.p2-light .p2-cover { color: #1a1814; }
@@ -1783,7 +1937,7 @@ document.addEventListener('DOMContentLoaded', updateAllCmpButtons);
 <?php
 // Badge "quota recherches" de la nav. Logique centralisee dans core/search_limit.php.
 //   - anonyme             : decouverte gratuite de 60 s puis blocage (incite a s'inscrire)
-//   - connecte sans abo   : N/5 + cooldown de 30 min
+//   - connecte sans abo   : N/15 (quota journalier sans cooldown)
 //   - abonne / SA / local : illimite
 $_slMode              = 'limited';   // 'unlimited' | 'trial' | 'limited'
 $_slUsed              = 0;
@@ -1792,10 +1946,10 @@ $_slCooldownRemaining = 0;
 $_slCooldownTotal     = 0;
 $_slTrialRemaining    = 0;
 $_slTrialTotal        = 0;
+require_once __DIR__ . '/core/search_limit.php'; // toujours charger : expose BK_SEARCH_LIMIT_FREE pour l'affichage
 if (BK_IS_LOCAL) {
     $_slMode = 'unlimited'; // developpement local : illimite
 } else {
-    require_once __DIR__ . '/core/search_limit.php';
     $_slInfo = bkSearchLimit($conn, false); // lecture seule, ne consomme pas le quota
     if ($_slInfo['unlimited']) {
         $_slMode = 'unlimited';
@@ -1819,7 +1973,8 @@ if (BK_IS_LOCAL) {
     <a href="<?= $_canonBase ?>/solutions" class="<?= $page === 'solutions' ? 'active' : '' ?>">Solutions</a>
     <a href="<?= $_canonBase ?>/tarifs" class="<?= $page === 'tarifs' ? 'active' : '' ?>" style="color:#fbbf24;font-weight:700;">Tarifs</a>
     <a href="<?= $_canonBase ?>/concept" class="<?= $page === 'concept' ? 'active' : '' ?>">Concept</a>
-    <a href="<?= $_canonBase ?>/athletes" class="<?= $page === 'athletes' ? 'active' : '' ?>">Athlètes</a>
+    <a href="<?= $_canonBase ?>/athletes" class="nav-athletes-cta <?= $page === 'athletes' ? 'active' : '' ?>" style="color:#fff;background:linear-gradient(135deg,#6c5ce7,#a29bfe);font-weight:800;font-size:16px;padding:10px 18px;border-radius:8px;letter-spacing:0.04em;text-transform:uppercase;box-shadow:0 4px 14px rgba(108,92,231,0.4);display:inline-flex;align-items:center;gap:6px;">&#127939; Athlètes</a>
+    <a href="<?= $_canonBase ?>/noms" class="<?= $page === 'noms' ? 'active' : '' ?>" style="color:#a78bfa;font-weight:600;">Noms</a>
     <a href="<?= $_canonBase ?>/recherche" class="nav-recherche-cta <?= $page === 'recherche' ? 'active' : '' ?>" style="color:#000;background:linear-gradient(135deg,#ffd700,#fbbf24);font-weight:800;font-size:16px;padding:10px 18px;border-radius:8px;letter-spacing:0.04em;text-transform:uppercase;box-shadow:0 4px 14px rgba(255,215,0,0.35);animation:bkGoldBlink 1.6s ease-in-out infinite;display:inline-flex;align-items:center;gap:6px;">&#128270; Recherche</a><?php
         if ($_slMode === 'unlimited') {
             echo '<span id="searchQuota" title="Recherches illimitees" style="display:inline-block;font-size:11px;padding:3px 9px;border-radius:10px;margin-left:4px;font-weight:800;cursor:default;background:#10b98125;color:#34d399;border:1px solid #10b98160;white-space:nowrap;">&infin;</span>';
@@ -2497,7 +2652,7 @@ if ($page === 'accueil'):
                     <li>Fiches athletes</li>
                     <li>Recherche simple</li>
                     <li>Consultation clubs</li>
-                    <li>5 recherches/jour</li>
+                    <li><?= BK_SEARCH_LIMIT_FREE ?> recherches/jour</li>
                 </ul>
                 <a href="<?= BK_BASE ?>/athletes" class="bk-prix-cta free">Commencer</a>
             </div>
@@ -2580,6 +2735,7 @@ elseif ($page === 'athletes'):
     $afClubFilter = '';
     $afEpreuveFilter = '';
     $afFilterCibleEnabled = false;
+    $afAllEpreuves = false;
     $allowedLayouts = ['magazine','grid','list','flex'];
     if (file_exists($afFile)) {
         $afRaw = @file_get_contents($afFile);
@@ -2595,6 +2751,7 @@ elseif ($page === 'athletes'):
                 if (!empty($afData['club_filter'])) $afClubFilter = trim((string)$afData['club_filter']);
                 if (!empty($afData['epreuve_filter'])) $afEpreuveFilter = trim((string)$afData['epreuve_filter']);
                 $afFilterCibleEnabled = !empty($afData['filter_cible_enabled']);
+                if (isset($afData['all_epreuves'])) $afAllEpreuves = !empty($afData['all_epreuves']);
             }
         }
     }
@@ -2610,10 +2767,13 @@ elseif ($page === 'athletes'):
 
     // Si l'admin a defini une epreuve specifique, on remplace la liste hardcoded
     // ET on active le mode strict : niveau filtre = niveau ATTEINT SUR cette epreuve
+    // Priorite : filtre cible epreuve > mode "toutes les epreuves" > liste figee par defaut
     $strictMode = false;
     if ($afEpreuveFilter !== '') {
         $epreuves = $afEpreuveFilter;
         $strictMode = true;
+    } elseif ($afAllEpreuves) {
+        $epreuves = ''; // toutes les epreuves : aucun filtre epreuve transmis a liste.php
     }
     $epUrl = urlencode($epreuves);
     $clubUrlParam = $afClubFilter !== '' ? '&club=' . urlencode($afClubFilter) : '';
@@ -2622,6 +2782,20 @@ elseif ($page === 'athletes'):
     // Repartition equilibree : si 50 hommes et 2 niveaux → 25 par niveau
     $perLvlH = (int)ceil($afNbH / $nbLvls);
     $perLvlF = (int)ceil($afNbF / $nbLvls);
+
+    // Phrase decrivant la portee des criteres choisis — reutilisee dans la
+    // description adaptative ET le chapeau du magazine.
+    if ($afClubFilter !== '') {
+        $_scopeLbls = array_filter(array_map('trim', explode('|', $afClubFilter)), 'strlen');
+        $_athScopeText = 'au sein ' . (count($_scopeLbls) > 1 ? 'des clubs ' : 'du club ') . implode(' / ', $_scopeLbls);
+    } elseif ($afEpreuveFilter !== '') {
+        $_scopeLbls = array_filter(array_map('trim', explode('|', $afEpreuveFilter)), 'strlen');
+        $_athScopeText = 'sur ' . implode(' / ', $_scopeLbls);
+    } elseif ($afAllEpreuves) {
+        $_athScopeText = 'toutes disciplines confondues';
+    } else {
+        $_athScopeText = 'sur les disciplines du sprint et des sauts';
+    }
 
     $athsM = [];
     $athsF = [];
@@ -2709,6 +2883,124 @@ elseif ($page === 'athletes'):
     &nbsp;&middot;&nbsp; Activité en <strong style="color:#34d399;"><?= $afAnnee ?></strong>
     &nbsp;&middot;&nbsp; <?= count($data['athletes']) ?> athlète<?= count($data['athletes']) > 1 ? 's' : '' ?> trouvé<?= count($data['athletes']) > 1 ? 's' : '' ?>
 </div>
+
+<?php
+// ====== GRAPHIQUES DES ATHLETES SELECTIONNES (selon les criteres du panel) ======
+$_selAth = $data['athletes'] ?? [];
+if (!empty($_selAth)):
+    // --- Description adaptative ---
+    $_dTotal = count($_selAth);
+    $_dM = count(array_filter($_selAth, function($a){ return ($a['sexe'] ?? '') === 'M'; }));
+    $_dF = $_dTotal - $_dM;
+    $_dNivStr = htmlspecialchars(implode(' & ', $afNiveaux));
+    $_dAnnee = $afAnnee > 0
+        ? 'actif' . ($_dTotal > 1 ? 's' : '') . ' en <strong>' . $afAnnee . '</strong>'
+        : 'toutes années confondues';
+    $_dDesc = 'Sélection de <strong>' . $_dTotal . '</strong> athlète' . ($_dTotal > 1 ? 's' : '')
+            . ' (' . $_dM . ' homme' . ($_dM > 1 ? 's' : '') . ' &middot; ' . $_dF . ' femme' . ($_dF > 1 ? 's' : '') . ')'
+            . ' de niveau <strong>' . $_dNivStr . '</strong>, ' . $_dAnnee . ', '
+            . htmlspecialchars($_athScopeText) . '.';
+
+    // --- Score d'activite par athlete (medailles*5 + podiums*3 + selections*4 + records) ---
+    $_scored = [];
+    foreach ($_selAth as $_sa) {
+        $_sc = (int)($_sa['nb_medailles'] ?? 0) * 5
+             + (int)($_sa['nb_podiums'] ?? 0) * 3
+             + (int)($_sa['nb_selections'] ?? 0) * 4
+             + (int)($_sa['nb_records'] ?? 0);
+        $_scored[] = ['a' => $_sa, 'score' => $_sc];
+    }
+    usort($_scored, function($x, $y){ return $y['score'] - $x['score']; });
+    $_top = array_slice($_scored, 0, 25);
+    $_maxScore = (!empty($_top) && $_top[0]['score'] > 0) ? $_top[0]['score'] : 1;
+
+    // --- Repartition par niveau des athletes affiches ---
+    $_nivHier = ['IA','IB','IE','N1','N2','N3','N4','IR','IR1','IR2','IR3','IR4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
+    $_nivCount = [];
+    foreach ($_selAth as $_sa) {
+        $_nv = $_sa['meilleur_niveau'] ?? '';
+        if ($_nv === '' || $_nv === null) $_nv = '—';
+        $_nivCount[$_nv] = ($_nivCount[$_nv] ?? 0) + 1;
+    }
+    $_nivMax = !empty($_nivCount) ? max($_nivCount) : 1;
+    $_orderedNiv = [];
+    foreach ($_nivHier as $_h) { if (isset($_nivCount[$_h])) $_orderedNiv[$_h] = $_nivCount[$_h]; }
+    foreach ($_nivCount as $_k => $_v) { if (!isset($_orderedNiv[$_k])) $_orderedNiv[$_k] = $_v; }
+    $_nivColor = function($c) {
+        $f = isset($c[0]) ? $c[0] : '';
+        if ($f === 'I') return '#c026d3';
+        if ($f === 'N') return '#e11d48';
+        if ($f === 'R') return '#0891b2';
+        if ($f === 'D') return '#f97316';
+        return '#6e7681';
+    };
+?>
+<section style="background:linear-gradient(135deg,#1a1340 0%,#0d1117 100%);border:1px solid #6c5ce740;border-radius:14px;padding:22px 24px;margin-bottom:24px;">
+    <div style="font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#a78bfa;margin-bottom:8px;">&#128202; Les athlètes sélectionnés</div>
+    <p style="color:#c9d1d9;font-size:14px;line-height:1.65;margin:0 0 22px;"><?= $_dDesc ?></p>
+
+    <!-- Graphique 1 : Top 25 par score d'activite -->
+    <div style="color:#f0f6fc;font-size:13px;font-weight:700;margin-bottom:4px;">Top <?= count($_top) ?> &mdash; classement par activité</div>
+    <div style="color:#8b949e;font-size:11px;margin-bottom:12px;">Score = médailles&times;5 + podiums&times;3 + sélections&times;4 + records</div>
+    <div style="margin-bottom:26px;">
+    <?php foreach ($_top as $_i => $_row):
+        $_a = $_row['a'];
+        $_w = $_row['score'] > 0 ? max(7, $_row['score'] / $_maxScore * 100) : 7;
+        $_rk = $_i + 1;
+        $_barCol = $_rk === 1 ? 'linear-gradient(90deg,#ffd700,#ffaa00)'
+                 : ($_rk === 2 ? 'linear-gradient(90deg,#c0c0c0,#9aa0a8)'
+                 : ($_rk === 3 ? 'linear-gradient(90deg,#cd7f32,#a0622e)'
+                 : 'linear-gradient(90deg,#6c5ce7,#8b7bf0)'));
+    ?>
+        <div style="display:grid;grid-template-columns:190px 1fr;gap:10px;align-items:center;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;">
+                <a href="?page=profil&id=<?= (int)$_a['athlete_id'] ?>" style="color:#c9d1d9;text-decoration:none;">#<?= $_rk ?> <?= htmlspecialchars($_a['nom_complet']) ?></a>
+            </div>
+            <div style="background:#0d1117;border-radius:6px;height:22px;overflow:hidden;">
+                <div class="ath-mbar" style="--bar-w:<?= number_format($_w, 1, '.', '') ?>%;height:100%;background:<?= $_barCol ?>;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:11px;font-weight:700;color:#fff;box-sizing:border-box;min-width:46px;"><?= (int)$_row['score'] ?> pts</div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+    </div>
+
+    <!-- Graphique 2 : repartition par niveau des athletes affiches -->
+    <div style="color:#f0f6fc;font-size:13px;font-weight:700;margin-bottom:12px;">Répartition par niveau (athlètes affichés)</div>
+    <div>
+    <?php foreach ($_orderedNiv as $_code => $_nb):
+        $_w2 = max(7, $_nb / $_nivMax * 100);
+        $_c2 = $_nivColor($_code);
+    ?>
+        <div style="display:grid;grid-template-columns:56px 1fr;gap:10px;align-items:center;margin-bottom:6px;">
+            <div style="color:<?= $_c2 ?>;font-size:12px;font-weight:800;text-align:right;"><?= htmlspecialchars($_code) ?></div>
+            <div style="background:#0d1117;border-radius:6px;height:20px;overflow:hidden;">
+                <div class="ath-mbar" style="--bar-w:<?= number_format($_w2, 1, '.', '') ?>%;height:100%;background:<?= $_c2 ?>;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:11px;font-weight:700;color:#fff;box-sizing:border-box;min-width:38px;"><?= (int)$_nb ?></div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+    </div>
+</section>
+<script>
+(function(){
+    var bars = document.querySelectorAll('.ath-mbar');
+    if (!bars.length) return;
+    if (!('IntersectionObserver' in window)) {
+        bars.forEach(function(b){ b.classList.add('is-grown'); });
+        return;
+    }
+    var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+            if (e.isIntersecting) {
+                var b = e.target;
+                var d = parseInt(b.getAttribute('data-bi') || '0', 10);
+                setTimeout(function(){ b.classList.add('is-grown'); }, d * 25);
+                io.unobserve(b);
+            }
+        });
+    }, { threshold: 0.2 });
+    bars.forEach(function(b, i){ b.setAttribute('data-bi', i % 25); io.observe(b); });
+})();
+</script>
+<?php endif; ?>
 
 <?php if ($nivStats && !empty($nivStats['par_niveau'])):
     $_totalAth = (int)($nivStats['total_athletes'] ?? 0);
@@ -3001,15 +3293,204 @@ $viewBtns = [
     'flex'     => ['icon' => '⊞',  'label' => 'Flexbox'],
 ];
 ?>
-<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-    <?php foreach ($viewBtns as $vKey => $vInfo):
-        $sel = ($afLayout === $vKey);
-    ?>
-    <button id="view-<?= $vKey ?>" class="ath-view-btn<?= $sel ? ' ath-view-active' : '' ?>" data-view="<?= $vKey ?>" onclick="_athSwitchView('<?= $vKey ?>')" style="background:<?= $sel ? '#6c5ce7' : 'transparent' ?>;color:<?= $sel ? '#fff' : '#8b949e' ?>;border:<?= $sel ? 'none' : '1px solid #30363d' ?>;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:<?= $sel ? '700' : '600' ?>;cursor:pointer;transition:all .15s;">
-        <?= $vInfo['icon'] ?> <?= $vInfo['label'] ?>
-    </button>
-    <?php endforeach; ?>
+<!-- Barre d'outils sticky : recherche live + filtres rapides + vues -->
+<div id="athToolbar" class="ath-toolbar">
+    <div class="ath-toolbar-row">
+        <!-- Recherche live -->
+        <div class="ath-search-wrap">
+            <span class="ath-search-ico">&#128269;</span>
+            <input type="text" id="athFilterInput" autocomplete="off" placeholder="Filtrer par nom ou club&hellip;" oninput="_athApplyFilter()">
+            <button type="button" id="athFilterClear" class="ath-search-clear" onclick="_athClearFilter()" title="Effacer" style="display:none;">&times;</button>
+        </div>
+        <!-- Vues -->
+        <div class="ath-view-group">
+            <?php foreach ($viewBtns as $vKey => $vInfo):
+                $sel = ($afLayout === $vKey);
+            ?>
+            <button id="view-<?= $vKey ?>" class="ath-view-btn<?= $sel ? ' ath-view-active' : '' ?>" data-view="<?= $vKey ?>" onclick="_athSwitchView('<?= $vKey ?>')" title="<?= $vInfo['label'] ?>">
+                <?= $vInfo['icon'] ?> <span class="ath-view-lbl"><?= $vInfo['label'] ?></span>
+            </button>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <div class="ath-toolbar-row ath-chips-row">
+        <div class="ath-chips" id="athChips">
+            <button type="button" class="ath-chip is-on" data-filter="all" onclick="_athChip(this,'all')">Tous</button>
+            <button type="button" class="ath-chip" data-filter="sexe:M" onclick="_athChip(this,'sexe:M')">&#9794; Hommes</button>
+            <button type="button" class="ath-chip" data-filter="sexe:F" onclick="_athChip(this,'sexe:F')">&#9792; Femmes</button>
+            <button type="button" class="ath-chip" data-filter="med:1" onclick="_athChip(this,'med:1')">&#127941; M&eacute;daill&eacute;s</button>
+            <span class="ath-chip-sep"></span>
+            <button type="button" class="ath-chip chip-niv-i" data-filter="niv:I" onclick="_athChip(this,'niv:I')">International</button>
+            <button type="button" class="ath-chip chip-niv-n" data-filter="niv:N" onclick="_athChip(this,'niv:N')">National</button>
+            <button type="button" class="ath-chip chip-niv-r" data-filter="niv:R" onclick="_athChip(this,'niv:R')">R&eacute;gional</button>
+            <button type="button" class="ath-chip chip-niv-d" data-filter="niv:D" onclick="_athChip(this,'niv:D')">D&eacute;partemental</button>
+        </div>
+        <div class="ath-count" id="athFilterCount"></div>
+    </div>
+    <div class="ath-empty" id="athFilterEmpty" style="display:none;">
+        &#128543; Aucun athl&egrave;te ne correspond &agrave; ces filtres. <button type="button" onclick="_athResetFilters()" class="ath-empty-reset">Tout afficher</button>
+    </div>
 </div>
+
+<style>
+/* ===== Barre d'outils sticky page Athletes ===== */
+.ath-toolbar {
+    position: sticky;
+    top: var(--ath-sticky-top, 116px);
+    z-index: 49;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(13,17,23,0.82);
+    border: 1px solid #21262d;
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+}
+.ath-toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.ath-chips-row { margin-top: 10px; justify-content: space-between; }
+
+/* Recherche */
+.ath-search-wrap {
+    position: relative;
+    flex: 1 1 260px;
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+}
+.ath-search-ico {
+    position: absolute; left: 13px; font-size: 14px; opacity: .6; pointer-events: none;
+}
+#athFilterInput {
+    width: 100%;
+    padding: 11px 38px 11px 38px;
+    border-radius: 100px;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #f0f6fc;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+}
+#athFilterInput::placeholder { color: #6e7681; }
+#athFilterInput:focus {
+    border-color: #6c5ce7;
+    box-shadow: 0 0 0 3px rgba(108,92,231,0.18);
+}
+.ath-search-clear {
+    position: absolute; right: 8px;
+    width: 24px; height: 24px; line-height: 1;
+    border: none; border-radius: 50%;
+    background: #21262d; color: #c9d1d9;
+    font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s;
+}
+.ath-search-clear:hover { background: #6c5ce7; color: #fff; }
+
+/* Boutons de vue */
+.ath-view-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.ath-view-btn {
+    background: transparent;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .18s cubic-bezier(.2,.8,.2,1);
+    white-space: nowrap;
+}
+.ath-view-btn:hover { border-color: #6c5ce7; color: #fff; transform: translateY(-1px); }
+.ath-view-btn.ath-view-active {
+    background: linear-gradient(135deg,#6c5ce7,#a29bfe);
+    color: #fff;
+    border-color: transparent;
+    font-weight: 700;
+    box-shadow: 0 3px 12px rgba(108,92,231,0.45);
+}
+
+/* Chips de filtre */
+.ath-chips { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.ath-chip {
+    background: #0d1117;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    padding: 6px 13px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+}
+.ath-chip:hover { color: #f0f6fc; border-color: #6c5ce7; }
+.ath-chip.is-on {
+    background: #6c5ce7; color: #fff; border-color: transparent;
+    box-shadow: 0 2px 8px rgba(108,92,231,0.4);
+}
+.ath-chip.chip-niv-i.is-on { background:#c026d3; box-shadow:0 2px 8px rgba(192,38,211,.45); }
+.ath-chip.chip-niv-n.is-on { background:#e11d48; box-shadow:0 2px 8px rgba(225,29,72,.45); }
+.ath-chip.chip-niv-r.is-on { background:#0891b2; box-shadow:0 2px 8px rgba(8,145,178,.45); }
+.ath-chip.chip-niv-d.is-on { background:#f97316; box-shadow:0 2px 8px rgba(249,115,22,.45); }
+.ath-chip-sep { width: 1px; height: 18px; background: #30363d; margin: 0 3px; }
+.ath-count { font-size: 13px; color: #8b949e; white-space: nowrap; }
+.ath-count strong { color: #f0f6fc; font-size: 15px; }
+
+/* Etat vide */
+.ath-empty {
+    margin-top: 12px; padding: 14px 16px;
+    background: #1a1340; border: 1px solid #6c5ce740; border-radius: 10px;
+    color: #c9d1d9; font-size: 13px; text-align: center;
+}
+.ath-empty-reset {
+    background: #6c5ce7; color: #fff; border: none;
+    padding: 5px 14px; border-radius: 8px; font-size: 12px; font-weight: 700;
+    cursor: pointer; margin-left: 6px;
+}
+
+/* ===== Animation d'apparition des cards ===== */
+@keyframes athFadeUp {
+    from { opacity: 0; transform: translateY(16px) scale(.985); }
+    to   { opacity: 1; transform: none; }
+}
+.ath-anim.ath-in {
+    animation: athFadeUp .5s cubic-bezier(.2,.8,.2,1) both;
+    animation-delay: calc(var(--ath-i, 0) * 35ms);
+}
+@media (prefers-reduced-motion: reduce) {
+    .ath-anim.ath-in { animation: none !important; }
+}
+
+/* ===== Barres animees (section "athletes selectionnes") ===== */
+.ath-mbar { width: 0 !important; transition: width .9s cubic-bezier(.2,.8,.2,1); }
+.ath-mbar.is-grown { width: var(--bar-w) !important; }
+
+/* ===== Mode clair : toolbar ===== */
+body.p2-light .ath-toolbar {
+    background: rgba(255,255,255,0.78);
+    border-color: #d8cdb1;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+}
+body.p2-light #athFilterInput { background:#fff; border-color:#d8cdb1; color:#1a1814; }
+body.p2-light .ath-view-btn { color:#6b5e4a; border-color:#d8cdb1; }
+body.p2-light .ath-chip { background:#fff; color:#6b5e4a; border-color:#d8cdb1; }
+body.p2-light .ath-chip-sep { background:#d8cdb1; }
+body.p2-light .ath-count { color:#6b5e4a; }
+body.p2-light .ath-count strong { color:#1a1814; }
+body.p2-light .ath-search-clear { background:#e8e0cf; color:#6b5e4a; }
+
+@media (max-width: 640px) {
+    .ath-view-lbl { display: none; }
+    .ath-chips-row { flex-direction: column; align-items: flex-start; }
+}
+</style>
 
 <!-- VUE MAGAZINE -->
 <style>
@@ -3083,7 +3564,7 @@ body.p2-light .ath-mag .mag-name:hover { border-bottom: 2px solid #6c5ce7 !impor
     ?>
     <div class="mag-lead" style="max-width:680px;margin:0 auto 38px;text-align:justify;font-size:17px;line-height:1.75;font-family:Georgia,serif;">
         <span class="mag-drop" style="float:left;font-size:60px;font-weight:900;line-height:0.9;margin:6px 10px 0 0;font-family:Georgia,serif;">À</span>
-        l'aube de la saison <?= $afAnnee ?>, Bokonzi met en lumière les athlètes français de niveau <strong><?= htmlspecialchars($nivLabel) ?></strong> qui marquent l'année. Sur les disciplines reines du sprint et des sauts (100m, 200m, haies, longueur, triple, perche), <strong><?= $totalAth ?></strong> profils retenus &mdash; <strong><?= $nbM ?> hommes</strong> et <strong><?= $nbF ?> femmes</strong> &mdash; composent ce panorama. Tour d'horizon de celles et ceux qui font vibrer la piste cette saison.
+        l'aube de la saison <?= $afAnnee ?>, Bokonzi met en lumière les athlètes français de niveau <strong><?= htmlspecialchars($nivLabel) ?></strong> qui marquent l'année, <?= htmlspecialchars($_athScopeText) ?>. <strong><?= $totalAth ?></strong> profils retenus &mdash; <strong><?= $nbM ?> hommes</strong> et <strong><?= $nbF ?> femmes</strong> &mdash; composent ce panorama. Tour d'horizon de celles et ceux qui font vibrer la piste cette saison.
     </div>
 
     <hr class="mag-rule" style="border-style:solid;border-width:0 0 1px 0;width:80px;margin:0 auto 32px;">
@@ -3095,8 +3576,16 @@ body.p2-light .ath-mag .mag-name:hover { border-bottom: 2px solid #6c5ce7 !impor
         $narrative = _athNarrative($a, $athAge);
         $sexeIcon = ($a['sexe'] ?? '') === 'F' ? '&#9792;' : '&#9794;';
         $sexeColor = ($a['sexe'] ?? '') === 'F' ? '#ec4899' : '#3b82f6';
+        $_magNivFam = !empty($a['meilleur_niveau']) ? strtoupper(substr($a['meilleur_niveau'], 0, 1)) : '';
+        $_magMed = (($a['medailles']['or'] ?? 0) + ($a['medailles']['argent'] ?? 0) + ($a['medailles']['bronze'] ?? 0)) > 0 ? '1' : '0';
+        $_magName = strtolower($a['nom_complet'] . ' ' . rtrim((string)($a['club'] ?? ''), '* '));
     ?>
-        <div class="mag-card" style="break-inside:avoid;margin-bottom:28px;padding-bottom:18px;border-bottom-style:dotted;border-bottom-width:1px;">
+        <div class="mag-card"
+             data-name="<?= htmlspecialchars($_magName, ENT_QUOTES) ?>"
+             data-sexe="<?= htmlspecialchars($a['sexe'] ?? '', ENT_QUOTES) ?>"
+             data-niv="<?= $_magNivFam ?>"
+             data-med="<?= $_magMed ?>"
+             style="break-inside:avoid;margin-bottom:28px;padding-bottom:18px;border-bottom-style:dotted;border-bottom-width:1px;">
             <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
                 <span class="mag-num" style="font-size:22px;font-weight:900;font-family:Georgia,serif;line-height:1;">N°<?= $idx + 1 ?></span>
                 <span style="color:<?= $sexeColor ?>;font-size:14px;"><?= $sexeIcon ?></span>
@@ -3144,37 +3633,36 @@ body.p2-light .ath-mag .mag-name:hover { border-bottom: 2px solid #6c5ce7 !impor
     .ath-grid.layout-grid { grid-template-columns: 1fr; }
     .ath-grid.layout-flex .ath-card { flex: 1 1 100%; max-width: 100%; }
 }
+
+/* ===== Accent de niveau par card (bord gauche + halo au survol) ===== */
+.ath-card[data-niv] { border-left: 3px solid #30363d; }
+.ath-card[data-niv="I"] { border-left-color: #c026d3; }
+.ath-card[data-niv="N"] { border-left-color: #e11d48; }
+.ath-card[data-niv="R"] { border-left-color: #0891b2; }
+.ath-card[data-niv="D"] { border-left-color: #f97316; }
+.ath-card[data-niv="I"]:hover { box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 0 1px rgba(192,38,211,.25), 0 0 28px rgba(192,38,211,.18); }
+.ath-card[data-niv="N"]:hover { box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 0 1px rgba(225,29,72,.25), 0 0 28px rgba(225,29,72,.18); }
+.ath-card[data-niv="R"]:hover { box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 0 1px rgba(8,145,178,.25), 0 0 28px rgba(8,145,178,.18); }
+.ath-card[data-niv="D"]:hover { box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 0 1px rgba(249,115,22,.25), 0 0 28px rgba(249,115,22,.18); }
+/* En vue liste, l'accent gauche est plus marque */
+.ath-grid.layout-list .ath-card[data-niv] { border-left-width: 4px; }
 </style>
 <script>
+window._athCurrentView = '<?= $afLayout ?>';
+
 function _athSwitchView(v) {
     var mag = document.getElementById('athMagazine');
     var grid = document.getElementById('athGrid');
-    var allBtns = document.querySelectorAll('.ath-view-btn');
 
-    // Reset tous les boutons
-    allBtns.forEach(function(b) {
-        b.style.background = 'transparent';
-        b.style.color = '#8b949e';
-        b.style.border = '1px solid #30363d';
-        b.style.fontWeight = '600';
-        b.classList.remove('ath-view-active');
+    // Boutons : la classe .ath-view-active porte tout le style (gere par le CSS)
+    document.querySelectorAll('.ath-view-btn').forEach(function(b) {
+        b.classList.toggle('ath-view-active', b.dataset.view === v);
     });
-    var activeBtn = document.getElementById('view-' + v);
-    if (activeBtn) {
-        activeBtn.style.background = '#6c5ce7';
-        activeBtn.style.color = '#fff';
-        activeBtn.style.border = 'none';
-        activeBtn.style.fontWeight = '700';
-        activeBtn.classList.add('ath-view-active');
-    }
 
-    // Reset class layout sur la grille
-    if (grid) {
-        grid.classList.remove('layout-grid','layout-list','layout-flex');
-    }
+    if (grid) grid.classList.remove('layout-grid','layout-list','layout-flex');
 
     if (v === 'magazine') {
-        if (mag) mag.style.display = 'block';
+        if (mag) { mag.style.display = 'block'; }
         if (grid) grid.style.display = 'none';
     } else {
         if (mag) mag.style.display = 'none';
@@ -3183,12 +3671,149 @@ function _athSwitchView(v) {
             grid.classList.add('layout-' + v);
         }
     }
+
+    window._athCurrentView = v;
+    try { localStorage.setItem('bk_ath_view', v); } catch(e){}
+
+    // Rejouer l'animation d'apparition sur la vue desormais visible
+    _athReplayAnim();
+    // Reappliquer le filtre courant (le compteur depend de la vue active)
+    _athApplyFilter();
 }
-// Appliquer le layout par defaut au chargement
+
+// ---- Animation d'apparition (fondu + montee, decale) ----
+function _athReplayAnim() {
+    var cont = (window._athCurrentView === 'magazine')
+        ? document.querySelector('#athMagazine .mag-cols')
+        : document.getElementById('athGrid');
+    if (!cont) return;
+    var items = cont.querySelectorAll(window._athCurrentView === 'magazine' ? '.mag-card' : '.ath-card');
+    items.forEach(function(el){ el.classList.remove('ath-in'); });
+    void cont.offsetWidth; // un seul reflow pour relancer les animations
+    items.forEach(function(el, i){
+        el.style.setProperty('--ath-i', (i % 30));
+        el.classList.add('ath-in');
+    });
+}
+
+// ---- Filtre live (recherche + chips) ----
+window._athFilterText = '';
+window._athFilterChips = { sexe:'', med:'', niv:'' };
+
+function _athActiveCards() {
+    if (window._athCurrentView === 'magazine') {
+        return document.querySelectorAll('#athMagazine .mag-card');
+    }
+    return document.querySelectorAll('#athGrid .ath-card');
+}
+
+function _athCardMatches(el) {
+    var f = window._athFilterChips;
+    if (f.sexe && (el.dataset.sexe || '') !== f.sexe) return false;
+    if (f.med === '1' && (el.dataset.med || '0') !== '1') return false;
+    if (f.niv && (el.dataset.niv || '') !== f.niv) return false;
+    if (window._athFilterText) {
+        var n = (el.dataset.name || '');
+        if (n.indexOf(window._athFilterText) === -1) return false;
+    }
+    return true;
+}
+
+function _athApplyFilter() {
+    var input = document.getElementById('athFilterInput');
+    window._athFilterText = input ? input.value.trim().toLowerCase() : '';
+    var clearBtn = document.getElementById('athFilterClear');
+    if (clearBtn) clearBtn.style.display = window._athFilterText ? '' : 'none';
+
+    var cards = _athActiveCards();
+    var shown = 0, total = cards.length;
+    cards.forEach(function(el){
+        if (_athCardMatches(el)) { el.style.display = ''; shown++; }
+        else { el.style.display = 'none'; }
+    });
+
+    var cnt = document.getElementById('athFilterCount');
+    var empty = document.getElementById('athFilterEmpty');
+    var hasFilter = window._athFilterText || window._athFilterChips.sexe || window._athFilterChips.med || window._athFilterChips.niv;
+    if (cnt) {
+        if (hasFilter) {
+            cnt.innerHTML = '<strong>' + shown + '</strong> / ' + total + ' athl&egrave;te' + (total>1?'s':'');
+            cnt.style.display = '';
+        } else {
+            cnt.innerHTML = '<strong>' + total + '</strong> athl&egrave;te' + (total>1?'s':'');
+            cnt.style.display = '';
+        }
+    }
+    if (empty) empty.style.display = (shown === 0 && total > 0) ? '' : 'none';
+    _athSyncChips();
+}
+
+function _athChip(btn, filter) {
+    var parts = filter.split(':');
+    var key = parts[0], val = parts[1] || '';
+    if (key === 'all') {
+        _athResetFilters();
+        return;
+    }
+    // Toggle : si deja actif, on enleve
+    var current = window._athFilterChips[key === 'sexe' ? 'sexe' : key === 'med' ? 'med' : 'niv'];
+    var slot = key === 'sexe' ? 'sexe' : key === 'med' ? 'med' : 'niv';
+    if (current === val) {
+        window._athFilterChips[slot] = '';
+    } else {
+        window._athFilterChips[slot] = val;
+    }
+    _athSyncChips();
+    _athApplyFilter();
+}
+
+function _athSyncChips() {
+    var f = window._athFilterChips;
+    var any = f.sexe || f.med || f.niv || window._athFilterText;
+    document.querySelectorAll('#athChips .ath-chip').forEach(function(b){
+        var fl = b.dataset.filter;
+        if (fl === 'all') { b.classList.toggle('is-on', !any); return; }
+        var p = fl.split(':'), key = p[0], val = p[1] || '';
+        var slot = key === 'sexe' ? 'sexe' : key === 'med' ? 'med' : 'niv';
+        b.classList.toggle('is-on', f[slot] === val);
+    });
+}
+
+function _athClearFilter() {
+    var input = document.getElementById('athFilterInput');
+    if (input) input.value = '';
+    _athApplyFilter();
+    _athSyncChips();
+    if (input) input.focus();
+}
+
+function _athResetFilters() {
+    window._athFilterChips = { sexe:'', med:'', niv:'' };
+    var input = document.getElementById('athFilterInput');
+    if (input) input.value = '';
+    _athSyncChips();
+    _athApplyFilter();
+}
+
+// Caler la barre sticky juste sous la nav principale (hauteur mesuree)
+function _athStickTop() {
+    var nav = document.querySelector('nav[aria-label="Navigation principale"]');
+    if (!nav) return;
+    var navTop = parseFloat(getComputedStyle(nav).top) || 0;
+    var top = navTop + nav.offsetHeight + 8;
+    document.documentElement.style.setProperty('--ath-sticky-top', top + 'px');
+}
+
+// Appliquer le layout au chargement : preference utilisateur > defaut admin
 document.addEventListener('DOMContentLoaded', function() {
-    var defaultV = '<?= $afLayout ?>';
-    _athSwitchView(defaultV);
+    _athStickTop();
+    var saved = null;
+    try { saved = localStorage.getItem('bk_ath_view'); } catch(e){}
+    var allowed = ['magazine','grid','list','flex'];
+    var v = (saved && allowed.indexOf(saved) !== -1) ? saved : '<?= $afLayout ?>';
+    _athSwitchView(v);
 });
+window.addEventListener('resize', _athStickTop);
 </script>
 
 <div class="ath-grid layout-<?= $afLayout === 'magazine' ? 'grid' : $afLayout ?>" id="athGrid" style="display:<?= $afLayout === 'magazine' ? 'none' : '' ?>;">
@@ -3200,8 +3825,17 @@ document.addEventListener('DOMContentLoaded', function() {
         $athAge = _athComputeAge($a['date_naissance'] ?? null);
         $isOld = isset($a['is_recent']) && !$a['is_recent'];
         $latestYear = $a['latest_year'] ?? null;
+        $_nivFam = !empty($a['meilleur_niveau']) ? strtoupper(substr($a['meilleur_niveau'], 0, 1)) : '';
+        $_hasMed = $totalMedA > 0 ? '1' : '0';
+        $_filterName = strtolower($a['nom_complet'] . ' ' . rtrim((string)($a['club'] ?? ''), '* '));
     ?>
-    <div class="ath-card<?= $isOld ? ' ath-old' : '' ?> ath-<?= strtolower($a['sexe'] ?? '') ?>" <?php if ($latestYear): ?>title="Derniere activite : <?= $latestYear ?>"<?php endif; ?>>
+    <div class="ath-card ath-anim<?= $isOld ? ' ath-old' : '' ?> ath-<?= strtolower($a['sexe'] ?? '') ?>"
+         data-name="<?= htmlspecialchars($_filterName, ENT_QUOTES) ?>"
+         data-sexe="<?= htmlspecialchars($a['sexe'] ?? '', ENT_QUOTES) ?>"
+         data-niv="<?= $_nivFam ?>"
+         data-med="<?= $_hasMed ?>"
+         style="--ath-i:<?= $idx ?>;"
+         <?php if ($latestYear): ?>title="Derniere activite : <?= $latestYear ?>"<?php endif; ?>>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
             <span style="color:var(--text-muted);font-size:12px;font-weight:700;">#<?= $idx + 1 ?></span>
             <a class="ath-name" href="?page=profil&id=<?= $a['athlete_id'] ?>" style="margin:0;"><?= htmlspecialchars($a['nom_complet']) ?></a>
@@ -3340,7 +3974,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (med.bronze > 0) medHTML += ' 🥉'+med.bronze;
         } else { medHTML = '—'; }
 
-        var html = '<div class="ath-card ath-' + (a.sexe || '').toLowerCase() + '">';
+        var nivFam = (a.meilleur_niveau || '').charAt(0).toUpperCase();
+        var filterName = ((a.nom_complet || '') + ' ' + clubName).toLowerCase();
+        var html = '<div class="ath-card ath-anim ath-' + (a.sexe || '').toLowerCase() + '"'
+            + ' data-name="' + _esc(filterName) + '"'
+            + ' data-sexe="' + _esc(a.sexe || '') + '"'
+            + ' data-niv="' + nivFam + '"'
+            + ' data-med="' + (totalMed > 0 ? '1' : '0') + '"'
+            + ' style="--ath-i:' + (idx % 30) + ';">';
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">';
         html += '<span style="color:var(--text-muted);font-size:12px;font-weight:700;">#'+(idx+1)+'</span>';
         html += '<a class="ath-name" href="?page=profil&id='+a.athlete_id+'" style="margin:0;">'+_esc(a.nom_complet)+'</a>';
@@ -3442,24 +4083,24 @@ document.addEventListener('DOMContentLoaded', function() {
             window._athPage = 1;
             window._athDone = false;
 
-            // Reset bouton "Voir plus"
+            // Reset bouton "Voir plus" (elements optionnels — null-safe)
             var btn = document.getElementById('athMoreBtn');
             var lbl = document.getElementById('athMoreLabel');
-            btn.disabled = false;
-            btn.style.opacity = '';
-            btn.style.cursor = 'pointer';
-            lbl.textContent = "+ Voir plus d'athletes IA / IB";
-            moreWrap.style.display = '';
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer'; }
+            if (lbl) lbl.textContent = "+ Voir plus d'athletes IA / IB";
+            if (moreWrap) moreWrap.style.display = '';
 
             var totalAvail = data.total || 0;
-            info.textContent = data.athletes.length + ' affich&eacute;s' + (totalAvail ? ' sur '+totalAvail : '');
+            if (info) info.innerHTML = data.athletes.length + ' affich&eacute;s' + (totalAvail ? ' sur '+totalAvail : '');
             if (data.athletes.length < 100 || (totalAvail && data.athletes.length >= totalAvail)){
                 window._athDone = true;
-                lbl.textContent = 'Tous les athletes IA/IB sont charges';
-                btn.disabled = true;
-                btn.style.opacity = '0.6';
-                btn.style.cursor = 'default';
+                if (lbl) lbl.textContent = 'Tous les athletes IA/IB sont charges';
+                if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'default'; }
             }
+
+            // Reappliquer animation d'apparition + filtre live aux nouvelles cards
+            if (typeof _athReplayAnim === 'function') _athReplayAnim();
+            if (typeof _athApplyFilter === 'function') _athApplyFilter();
 
             // Maj URL sans reload
             try {
@@ -3473,7 +4114,7 @@ document.addEventListener('DOMContentLoaded', function() {
             grid.style.opacity = '';
             grid.style.pointerEvents = '';
             grid.style.filter = '';
-            info.textContent = 'Erreur reseau, reessayez.';
+            if (info) info.textContent = 'Erreur reseau, reessayez.';
         });
     };
 
@@ -3578,6 +4219,10 @@ elseif ($page === 'recherche'):
     </span>
     <?php endif; ?>
 </h1>
+<a href="<?= BK_URL('/pages/club.php') ?>?club=<?= urlencode($_GET['club']) ?>"
+   style="display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;padding:11px 22px;background:linear-gradient(135deg,#6c5ce7,#a855f7);color:#fff;border-radius:10px;font-size:14px;font-weight:800;text-decoration:none;box-shadow:0 4px 16px rgba(108,92,231,.35);">
+   &#127967;&#65039; Espace Club Pro &mdash; tous les licenciés depuis le début &amp; leur niveau &rarr;
+</a>
 <?php else: ?>
 <h1>Recherche</h1>
 <?php endif; ?>
@@ -4119,6 +4764,7 @@ if ($clubFilter !== ''):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
+        <button class="club-detail-tab" data-tab="generations" onclick="switchClubTab('generations')" style="color:#a78bfa;">&#127874; N&eacute;s</button>
         <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTab('sprint')" style="color:#ff6b6b;">Sprint</button>
     </div>
     <div class="club-search-bar" id="clubSearchBar" style="display:none;padding:8px 16px;">
@@ -4152,32 +4798,6 @@ document.addEventListener('DOMContentLoaded', function() {
 <?php endif; ?>
 
 <p class="subtitle"><?= number_format($data['total'], 0, ',', ' ') ?> résultats — page <?= $data['page'] ?>/<?= $data['total_pages'] ?></p>
-
-<!-- Graphiques recherche -->
-<div class="charts-row" style="margin-bottom:20px;">
-    <div class="chart-card"><h3><span class="chart-icon" style="background:#3b82f620;color:#60a5fa;">M/F</span> Sexe (résultats)</h3><canvas id="rchChartSexe"></canvas></div>
-    <div class="chart-card"><h3><span class="chart-icon" style="background:#10b98120;color:#34d399;">Cat</span> Catégories (résultats)</h3><canvas id="rchChartCat"></canvas></div>
-</div>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    new Chart(document.getElementById('rchChartSexe'), {
-        type: 'doughnut',
-        data: {
-            labels: [<?php foreach ($rchSexe as $k => $v) echo "'" . ($k==='M'?'Hommes':($k==='F'?'Femmes':$k)) . "',"; ?>],
-            datasets: [{ data: [<?= implode(',', array_values($rchSexe)) ?>], backgroundColor: ['#3b82f6','#ec4899','#8b5cf6','#64748b'], borderWidth: 0 }]
-        },
-        options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, font: { size: 11 } } } } }
-    });
-    new Chart(document.getElementById('rchChartCat'), {
-        type: 'bar',
-        data: {
-            labels: [<?php foreach ($rchCat as $k => $v) echo "'$k',"; ?>],
-            datasets: [{ data: [<?= implode(',', array_values($rchCat)) ?>], backgroundColor: '#34d399', borderRadius: 4, barThickness: 16 }]
-        },
-        options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e2a3a' } }, y: { grid: { display: false } } } }
-    });
-});
-</script>
 
 <div class="table-wrap">
 <table class="bk-table"><tr><th>#</th><th>Nom complet</th><th>Cat</th><th class="hide-mobile">Sexe</th><th class="hide-mobile">NAT</th><th>Niveaux</th><th>Records (top 5)</th><th></th><th></th></tr></table>
@@ -4288,9 +4908,9 @@ elseif ($page === 'profil2' && $id):
     if ($_isProfileHidden && !$_isAdmin):
 ?>
 <div style="text-align:center;padding:60px 24px;">
-    <div style="font-size:56px;margin-bottom:20px;">&#128683;</div>
-    <h2 style="color:#ef4444;font-size:22px;margin:0 0 12px;border:none;">Ce profil n'est plus disponible</h2>
-    <p style="color:#5a6580;font-size:14px;max-width:400px;margin:0 auto;line-height:1.6;">Ce profil a ete retire a la demande de l'interesse(e) ou suite a un signalement.</p>
+    <div style="font-size:56px;margin-bottom:20px;">&#10067;</div>
+    <h2 style="color:#ef4444;font-size:22px;margin:0 0 12px;border:none;">Profil inexistant</h2>
+    <p style="color:#5a6580;font-size:14px;max-width:400px;margin:0 auto;line-height:1.6;">Ce profil n'existe pas sur Bokonzi.</p>
     <a href="<?= $_canonBase ?>/?page=accueil" style="display:inline-block;margin-top:24px;padding:10px 24px;background:#1e2a3a;border:1px solid #2a3560;border-radius:8px;color:#a29bfe;text-decoration:none;font-size:14px;font-weight:600;">Retour a l'accueil</a>
 </div>
 
@@ -4381,6 +5001,14 @@ elseif ($page === 'profil2' && $id):
     try { navigator.sendBeacon(<?= json_encode($BASE_API . '/search_track.php') ?>, JSON.stringify(d)); } catch(e){}
 })();
 </script>
+
+<?php if (!empty($i['admin_note'])): ?>
+<div style="background:linear-gradient(135deg,#fbbf2415,#f59e0b18);border:1px solid #f59e0b;border-left:4px solid #fbbf24;border-radius:10px;padding:12px 18px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;">
+    <span style="font-size:22px;line-height:1;">&#128221;</span>
+    <div style="color:#fbbf24;font-size:14px;line-height:1.55;font-weight:500;white-space:pre-line;"><?= htmlspecialchars($i['admin_note']) ?></div>
+</div>
+<?php endif; ?>
+
 <div class="profil-header">
     <div>
         <div class="name"><?= htmlspecialchars($i['nom_complet']) ?>
@@ -4388,6 +5016,21 @@ elseif ($page === 'profil2' && $id):
             <button class="btn-follow" id="btnFollow" onclick="toggleFollow(<?= $id ?>)" style="margin-left:8px;vertical-align:middle;">&#9825; Suivre</button>
             <button class="btn-pdf" id="btnPdf" onclick="downloadPdf(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" style="margin-left:8px;vertical-align:middle;">&#128196; PDF</button>
             <button class="btn-report" id="btnReport" onclick="openReportModal(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" style="margin-left:8px;vertical-align:middle;" title="Signaler ce profil">&#9888; Signaler</button>
+            <?php
+            require_once __DIR__ . '/core/athlete_purge.php';
+            if (bkUserCanPurge($conn)):
+                $_admVisRes2 = $conn->query("SELECT visible FROM athletes WHERE athlete_id_externe = " . (int)$id);
+                $_admIsHidden2 = false;
+                if ($_admVisRes2 && $_admVisRow2 = $_admVisRes2->fetch_assoc()) {
+                    $_admIsHidden2 = ((int)$_admVisRow2['visible'] === 0);
+                }
+                if (!$_admIsHidden2): ?>
+            <button onclick="adminSoftHideProfile(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" style="margin-left:8px;vertical-align:middle;background:linear-gradient(135deg,#f59e0b,#b45309);color:#fff;border:1px solid #fbbf24;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;" title="ADMIN : Effacer du referencement (reversible)">&#128584; Masquer (admin)</button>
+                <?php else: ?>
+            <button onclick="adminRestoreProfile(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" style="margin-left:8px;vertical-align:middle;background:linear-gradient(135deg,#10b981,#047857);color:#fff;border:1px solid #34d399;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;" title="ADMIN : Restaurer">&#128274; Restaurer (admin)</button>
+                <?php endif; ?>
+            <button class="btn-admin-purge" onclick="adminPurgeProfile(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" style="margin-left:8px;vertical-align:middle;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:1px solid #ef4444;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;" title="ADMIN : DETRUIRE definitivement (irreversible)">&#128465; Detruire (admin)</button>
+            <?php endif; ?>
         </div>
         <div class="meta">
             <a href="?page=recherche&sexe=<?= urlencode($i['sexe']) ?>" style="text-decoration:none;"><span class="badge badge-<?= strtolower($i['sexe']) ?>"><?= $i['sexe'] === 'M' ? 'Homme' : 'Femme' ?></span></a>
@@ -4403,6 +5046,9 @@ elseif ($page === 'profil2' && $id):
                 echo '<span style="display:inline-block;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;margin-left:4px;background:'.$__bg.';border:1px solid '.$__bc.'40;color:'.$__tc.';">'.htmlspecialchars($__mn).'</span>';
             endif; ?>
             <br>
+            <?php if (!empty($i['nom_1'])): ?>
+                <b>Nom de famille :</b> <a href="?page=noms&q=<?= urlencode($i['nom_1']) ?>" style="color:#a29bfe;text-decoration:none;" title="Voir toutes les personnes nommees <?= htmlspecialchars($i['nom_1'], ENT_QUOTES) ?>"><?= htmlspecialchars($i['nom_1']) ?></a><br>
+            <?php endif; ?>
             <?php if ($i['lieu_naissance']): ?>
                 <b>Lieu de naissance :</b> <a href="?page=villes&open=<?= urlencode($i['lieu_naissance']) ?>" style="color:#a29bfe;text-decoration:none;"><?= htmlspecialchars($i['lieu_naissance']) ?></a><br>
             <?php endif; ?>
@@ -4463,7 +5109,7 @@ function _bioToggleYear(y){
     else{if(_bioSelectedYears.length>=6){alert('Maximum 6 ann\u00e9es');return;}_bioSelectedYears.push(y);_bioSelectedYears.sort(function(a,b){return a-b;});}
     _bioRenderYearSelector();_bioRebuild();
 }
-function _bioRebuild(){var el=document.getElementById('bioText');if(el)el.textContent=buildAthleteBio(ATHLETE_DATA,_bioSelectedYears);}
+function _bioRebuild(){var el=document.getElementById('bioText');if(!el)return;var ov=(ATHLETE_DATA&&ATHLETE_DATA.identite&&ATHLETE_DATA.identite.bio_override)?String(ATHLETE_DATA.identite.bio_override).trim():'';if(ov!==''){window.bkMaskBio(el,ov);var sel=document.getElementById('bioYearSelector');if(sel)sel.style.display='none';return;}window.bkMaskBio(el,buildAthleteBio(ATHLETE_DATA,_bioSelectedYears));}
 
 function buildAthleteBio(data, selectedYears) {
     var filterByYear = selectedYears.length > 0;
@@ -4572,7 +5218,7 @@ function buildAthleteBio(data, selectedYears) {
     var recordsToUse = filterByYear ? fRecords : (data.records||[]);
     if(recordsToUse.length>0){
         var recsByEp={};
-        recordsToUse.forEach(function(r){if(r.epreuve&&r.performance_brut)recsByEp[r.epreuve]=r;});
+        recordsToUse.forEach(function(r){if(!r.epreuve||!r.performance_brut)return;var pi=parseInt(r.performance,10)||0;if(pi<=0)return;var ex=recsByEp[r.epreuve];if(!ex){recsByEp[r.epreuve]=r;return;}var isDist=/Longueur|Triple|Hauteur|Perche|Poids|Disque|Marteau|Javelot/i.test(r.epreuve);var ei=parseInt(ex.performance,10)||0;if((isDist&&pi>ei)||(!isDist&&pi<ei))recsByEp[r.epreuve]=r;});
         var epNames=Object.keys(recsByEp), nbEp=epNames.length;
         if(nbEp>0){
             var pr;
@@ -4660,7 +5306,7 @@ function buildAthleteBio(data, selectedYears) {
         var progEpNames=Object.keys(progByEp);
         if(progEpNames.length>0){
             var bestPerfs=[];
-            progEpNames.forEach(function(ep){var perfs=progByEp[ep];var best=perfs[0];perfs.forEach(function(p){if(p.performance&&p.performance<best.performance)best=p;});bestPerfs.push({epreuve:ep,perf:best.performance_brut,lieu:best.lieu});});
+            progEpNames.forEach(function(ep){var perfs=progByEp[ep];var isDist=/Longueur|Triple|Hauteur|Perche|Poids|Disque|Marteau|Javelot/i.test(ep);var best=null;perfs.forEach(function(p){var pi=parseInt(p.performance,10)||0;if(pi<=0)return;if(!best){best=p;return;}var bi=parseInt(best.performance,10)||0;if((isDist&&pi>bi)||(!isDist&&pi<bi))best=p;});if(best)bestPerfs.push({epreuve:ep,perf:best.performance_brut,lieu:best.lieu});});
             if(bestPerfs.length<=4){var pp=bestPerfs.map(function(bp){return bp.perf+' au '+bp.epreuve+(bp.lieu?' \u00e0 '+bp.lieu:'');});bio.push('Ses meilleures performances incluent '+pp.join(', ')+'.');}
             else{var pp=bestPerfs.slice(0,4).map(function(bp){return bp.perf+' au '+bp.epreuve;});bio.push('Parmi ses meilleures performances, on note '+pp.join(', ')+', sur un total de '+progEpNames.length+' \u00e9preuves.');}
         }
@@ -5604,26 +6250,29 @@ elseif ($page === 'profil' && $id):
     $_chkVis = $conn->query("SELECT visible FROM athletes WHERE athlete_id_externe = " . (int)$id);
     if ($_chkVis && $_chkRow = $_chkVis->fetch_assoc()) {
         $_isProfileHidden = ((int)$_chkRow['visible'] === 0);
+    } else {
+        // Athlete absent de la BDD : verifier blacklist (purge volontaire) -> traiter comme masque
+        require_once __DIR__ . '/core/athlete_purge.php';
+        if (isAthleteBlacklisted($conn, (int)$id)) {
+            $_isProfileHidden = true;
+        }
     }
 
-    if ($_isProfileHidden && $_isAdmin) {
-        $data = apiCall("$BASE_API/athlete.php?id=$id&_all=1");
-    } else {
-        $data = apiCall("$BASE_API/athlete.php?id=$id");
-    }
+    // Plus de bypass admin : profil masque/supprime = invisible pour TOUT LE MONDE
+    $data = $_isProfileHidden ? null : apiCall("$BASE_API/athlete.php?id=$id");
 
     // --- Limite offre gratuite : 1 fiche profil par jour + minuteur 2 min ---
     require_once __DIR__ . '/core/profile_gate.php';
-    $_pGate = ($_isProfileHidden && !$_isAdmin)
+    $_pGate = $_isProfileHidden
         ? ['allowed' => true, 'exempt' => true, 'reason' => 'hidden', 'remaining' => 0]
         : bkProfileGateStatus($conn, (int)$id);
 
-    if ($_isProfileHidden && !$_isAdmin):
+    if ($_isProfileHidden):
 ?>
 <div style="text-align:center;padding:60px 24px;">
-    <div style="font-size:56px;margin-bottom:20px;">&#128683;</div>
-    <h2 style="color:#ef4444;font-size:22px;margin:0 0 12px;border:none;">Ce profil n'est plus disponible</h2>
-    <p style="color:#5a6580;font-size:14px;max-width:400px;margin:0 auto;line-height:1.6;">Ce profil a ete retire a la demande de l'interesse(e) ou suite a un signalement.</p>
+    <div style="font-size:56px;margin-bottom:20px;">&#10067;</div>
+    <h2 style="color:#ef4444;font-size:22px;margin:0 0 12px;border:none;">Profil inexistant</h2>
+    <p style="color:#5a6580;font-size:14px;max-width:400px;margin:0 auto;line-height:1.6;">Ce profil n'existe pas sur Bokonzi.</p>
     <a href="<?= $_canonBase ?>/?page=accueil" style="display:inline-block;margin-top:24px;padding:10px 24px;background:#1e2a3a;border:1px solid #2a3560;border-radius:8px;color:#a29bfe;text-decoration:none;font-size:14px;font-weight:600;">Retour a l'accueil</a>
 </div>
 
@@ -6412,6 +7061,41 @@ body.p2-light .p2-actions .btn-soc-add:hover { background: #5a4222 !important; }
     border-color: #dc2626 !important;
     letter-spacing: 0.32em !important;
     box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4) !important;
+}
+.p2-actions .btn-unlock-premium {
+    background: linear-gradient(135deg, #ffd700 0%, #fbbf24 50%, #f59e0b 100%) !important;
+    border: 1px solid #f59e0b !important;
+    color: #1a1a2e !important;
+    padding: 11px 26px !important;
+    font-family: 'Bodoni Moda', 'Didot', Georgia, serif !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.18em !important;
+    text-transform: uppercase !important;
+    border-radius: 0 !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+    line-height: 1 !important;
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7), 0 4px 14px rgba(245, 158, 11, 0.45) !important;
+    animation: bkUnlockPulse 1.4s ease-in-out infinite !important;
+    transition: transform 0.2s ease, letter-spacing 0.3s ease !important;
+}
+.p2-actions .btn-unlock-premium:hover {
+    transform: translateY(-2px) scale(1.04) !important;
+    letter-spacing: 0.24em !important;
+    background: linear-gradient(135deg, #fde047 0%, #ffd700 50%, #fbbf24 100%) !important;
+    color: #0d1117 !important;
+}
+@keyframes bkUnlockPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.75), 0 4px 14px rgba(245, 158, 11, 0.45);
+        filter: brightness(1);
+    }
+    50% {
+        box-shadow: 0 0 0 12px rgba(255, 215, 0, 0), 0 6px 20px rgba(245, 158, 11, 0.6);
+        filter: brightness(1.15);
+    }
 }
 .p2-meta {
     color: #c9d1d9;
@@ -8294,8 +8978,29 @@ body.p2-light .p2-sim-section-sub { color: #5a5040; }
         <button class="btn-follow" id="btnFollow" onclick="toggleFollow(<?= $id ?>)">&#9825; Suivre</button>
         <button class="btn-pdf" id="btnPdf" onclick="downloadPdf(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')">&#128196; PDF</button>
         <button class="btn-detail-full" id="btnDetailFull" onclick="openDetailFullModal()" title="Voir toutes les performances en detail">&#128202; Tout en detail</button>
+        <?php if (BK_IS_LOCAL || $_slMode !== 'unlimited'): ?>
+        <a class="btn-unlock-premium" href="https://buy.stripe.com/bJebJ21lgcEl8JZ4XwdnW0L" target="_blank" rel="noopener" title="Acceder a toutes les informations detaillees de ce profil">&#128274; D&eacute;bloquer le profil complet</a>
+        <?php endif; ?>
         <button class="btn-detail-raw" id="btnDetailRaw" onclick="openBrutModal()" title="Vue brute : toutes les donnees, tous les champs">&#128221; Vue brute</button>
+        <a class="btn-ffa" href="https://athle.fr/athletes/<?= (int)$id ?>/bilans" target="_blank" rel="noopener" title="Voir la fiche FFA officielle sur athle.fr">&#127942; Fiche FFA</a>
         <button class="btn-report" id="btnReport" onclick="openReportModal(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" title="Signaler ce profil">&#9888; Signaler</button>
+        <?php
+        // Boutons admin (visible uniquement pour admin avec session valide)
+        require_once __DIR__ . '/core/athlete_purge.php';
+        if (bkUserCanPurge($conn)):
+            // Lire visible actuel pour adapter les boutons
+            $_admVisRes = $conn->query("SELECT visible FROM athletes WHERE athlete_id_externe = " . (int)$id);
+            $_admIsHidden = false;
+            if ($_admVisRes && $_admVisRow = $_admVisRes->fetch_assoc()) {
+                $_admIsHidden = ((int)$_admVisRow['visible'] === 0);
+            }
+            if (!$_admIsHidden): ?>
+        <button id="btnAdminSoftHide" onclick="adminSoftHideProfile(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" title="ADMIN : Effacer le profil du referencement (donnees conservees, reversible)" style="background:linear-gradient(135deg,#f59e0b,#b45309);color:#fff;border:1px solid #fbbf24;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,0.3);">&#128584; Masquer (admin)</button>
+            <?php else: ?>
+        <button id="btnAdminRestore" onclick="adminRestoreProfile(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" title="ADMIN : Restaurer le profil (le rendre visible)" style="background:linear-gradient(135deg,#10b981,#047857);color:#fff;border:1px solid #34d399;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,0.3);">&#128274; Restaurer (admin)</button>
+            <?php endif; ?>
+        <button class="btn-admin-purge" id="btnAdminPurge" onclick="adminPurgeProfile(<?= $id ?>, '<?= htmlspecialchars($i['nom_complet'], ENT_QUOTES) ?>')" title="ADMIN : DETRUIRE definitivement ce profil et toutes ses donnees (IRREVERSIBLE)" style="background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:1px solid #ef4444;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(220,38,38,0.3);">&#128465; Detruire (admin)</button>
+        <?php endif; ?>
     </div>
 
     <?php if ($_hasSocials || $_isLogged): ?>
@@ -8380,7 +9085,7 @@ function _bioToggleYear(y){
     else{if(_bioSelectedYears.length>=6){alert('Maximum 6 annees');return;}_bioSelectedYears.push(y);_bioSelectedYears.sort(function(a,b){return a-b;});}
     _bioRenderYearSelector();_bioRebuild();
 }
-function _bioRebuild(){var el=document.getElementById('bioText');if(el)el.textContent=buildAthleteBio(ATHLETE_DATA,_bioSelectedYears);}
+function _bioRebuild(){var el=document.getElementById('bioText');if(!el)return;var ov=(ATHLETE_DATA&&ATHLETE_DATA.identite&&ATHLETE_DATA.identite.bio_override)?String(ATHLETE_DATA.identite.bio_override).trim():'';if(ov!==''){window.bkMaskBio(el,ov);var sel=document.getElementById('bioYearSelector');if(sel)sel.style.display='none';return;}window.bkMaskBio(el,buildAthleteBio(ATHLETE_DATA,_bioSelectedYears));}
 
 function buildAthleteBio(data, selectedYears) {
     var filterByYear = selectedYears.length > 0;
@@ -8479,7 +9184,7 @@ function buildAthleteBio(data, selectedYears) {
     var recordsToUse = filterByYear ? fRecords : (data.records||[]);
     if(recordsToUse.length>0){
         var recsByEp={};
-        recordsToUse.forEach(function(r){if(r.epreuve&&r.performance_brut)recsByEp[r.epreuve]=r;});
+        recordsToUse.forEach(function(r){if(!r.epreuve||!r.performance_brut)return;var pi=parseInt(r.performance,10)||0;if(pi<=0)return;var ex=recsByEp[r.epreuve];if(!ex){recsByEp[r.epreuve]=r;return;}var isDist=/Longueur|Triple|Hauteur|Perche|Poids|Disque|Marteau|Javelot/i.test(r.epreuve);var ei=parseInt(ex.performance,10)||0;if((isDist&&pi>ei)||(!isDist&&pi<ei))recsByEp[r.epreuve]=r;});
         var epNames=Object.keys(recsByEp), nbEp=epNames.length;
         if(nbEp>0){
             var pr;
@@ -8562,7 +9267,7 @@ function buildAthleteBio(data, selectedYears) {
         var progEpNames=Object.keys(progByEp);
         if(progEpNames.length>0){
             var bestPerfs=[];
-            progEpNames.forEach(function(ep){var perfs=progByEp[ep];var best=perfs[0];perfs.forEach(function(p){if(p.performance&&p.performance<best.performance)best=p;});bestPerfs.push({epreuve:ep,perf:best.performance_brut,lieu:best.lieu});});
+            progEpNames.forEach(function(ep){var perfs=progByEp[ep];var isDist=/Longueur|Triple|Hauteur|Perche|Poids|Disque|Marteau|Javelot/i.test(ep);var best=null;perfs.forEach(function(p){var pi=parseInt(p.performance,10)||0;if(pi<=0)return;if(!best){best=p;return;}var bi=parseInt(best.performance,10)||0;if((isDist&&pi>bi)||(!isDist&&pi<bi))best=p;});if(best)bestPerfs.push({epreuve:ep,perf:best.performance_brut,lieu:best.lieu});});
             if(bestPerfs.length<=4){var pp=bestPerfs.map(function(bp){return bp.perf+' au '+bp.epreuve+(bp.lieu?' à '+bp.lieu:'');});bio.push('Ses meilleures performances incluent '+pp.join(', ')+'.');}
             else{var pp=bestPerfs.slice(0,4).map(function(bp){return bp.perf+' au '+bp.epreuve;});bio.push('Parmi ses meilleures performances, on note '+pp.join(', ')+', sur un total de '+progEpNames.length+' épreuves.');}
         }
@@ -12535,6 +13240,7 @@ elseif ($page === 'clubs'):
         <button class="club-detail-tab" data-tab="stats" onclick="switchClubTab('stats')">Stats</button>
         <button class="club-detail-tab" data-tab="performances" onclick="switchClubTab('performances')">Performances</button>
         <button class="club-detail-tab" data-tab="resume" onclick="switchClubTab('resume')">Resume</button>
+        <button class="club-detail-tab" data-tab="generations" onclick="switchClubTab('generations')" style="color:#a78bfa;">&#127874; N&eacute;s</button>
         <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTab('sprint')" style="color:#ff6b6b;">Sprint</button>
     </div>
     <div class="club-search-bar" id="clubSearchBar" style="display:none;padding:8px 16px;">
@@ -13116,13 +13822,6 @@ elseif ($page === 'villes'):
         if ($vans !== '') $vpBase .= '&ans=' . urlencode($vans);
         if ($vd && ($vd['success'] ?? false)):
 ?>
-
-<?php $_bkYN = (int)date('Y'); $_bkYP = $_bkYN - 1; ?>
-<div style="margin-bottom:16px;padding:14px 20px;background:linear-gradient(135deg,#f59e0b25,#ec489925);border:2px solid #f59e0b;border-radius:12px;display:flex;align-items:center;gap:14px;font-weight:700;flex-wrap:wrap;">
-    <span style="font-size:24px;">&#128197;</span>
-    <span style="color:#fbbf24;font-size:15px;letter-spacing:0.3px;">Donnees affichees : <b style="color:#fff;font-size:18px;"><?= $_bkYP ?> + <?= $_bkYN ?></b> uniquement</span>
-    <span style="margin-left:auto;font-size:11px;color:#fbbf24;background:#f59e0b20;padding:4px 10px;border-radius:100px;border:1px solid #f59e0b50;">Gratuit</span>
-</div>
 
 <div class="profil-header">
     <div>
@@ -14153,6 +14852,885 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <?php
 // ================================================================
+//  NOMS DE FAMILLE — liste + stats par nom
+// ================================================================
+elseif ($page === 'noms'):
+    $nomQ = trim($_GET['q'] ?? '');
+    if ($nomQ !== '') {
+        $nomData = apiCall("$BASE_API/nom.php?q=" . urlencode($nomQ));
+    } else {
+        $nomData = apiCall("$BASE_API/nom.php?limit=100");
+    }
+?>
+
+<style>
+/* ====== PAGE NOMS — utilise les variables CSS du site (compatible jour/nuit) ====== */
+.bk-noms-hero{background:linear-gradient(135deg,#1e1b4b 0%,#0f0c2e 50%,#1a0a2e 100%);border:1px solid #6c5ce760;border-radius:18px;padding:32px 28px;margin-bottom:28px;text-align:center;position:relative;overflow:hidden;}
+.bk-noms-hero h1{font-size:34px;font-weight:900;margin:0 0 8px;color:#fff;letter-spacing:-0.5px;background:linear-gradient(135deg,#fff 0%,#a78bfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.bk-noms-hero p{color:#c9d1d9;font-size:15px;margin:0 0 20px;font-style:italic;}
+.bk-noms-search{display:flex;gap:10px;justify-content:center;max-width:560px;margin:0 auto;position:relative;}
+.bk-noms-search input{flex:1;padding:14px 18px;border-radius:10px;border:1px solid #6c5ce780;background:rgba(13,17,23,.6);color:#fff;font-size:16px;font-weight:600;outline:none;transition:all .2s;}
+.bk-noms-search input:focus{border-color:#a78bfa;box-shadow:0 0 0 3px #6c5ce740;}
+.bk-noms-search button{padding:14px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;font-weight:800;cursor:pointer;font-size:15px;letter-spacing:.04em;}
+.bk-noms-search button:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(108,92,231,.4);}
+
+/* Live dropdown — texte agrandi pour lisibilite */
+.bk-noms-livedrop{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--bg-card,#0d1117);border:1px solid var(--border,#6c5ce780);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.55);max-height:440px;overflow-y:auto;z-index:50;display:none;text-align:left;}
+.bk-noms-livedrop.show{display:block;}
+.bk-noms-liveitem{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;cursor:pointer;border-bottom:1px solid var(--border,#1e2a3a);text-decoration:none;color:var(--text-primary,#c9d1d9);transition:background .15s;gap:14px;}
+.bk-noms-liveitem:last-child{border-bottom:none;}
+.bk-noms-liveitem:hover,.bk-noms-liveitem.kbd{background:var(--bg-card-hover,#1a2540);}
+.bk-noms-liveitem .nm{font-weight:800;color:var(--text-primary,#fff);letter-spacing:.6px;font-size:19px;line-height:1.2;flex:1;min-width:0;}
+.bk-noms-liveitem .meta{display:flex;gap:10px;align-items:center;font-size:14px;flex-shrink:0;}
+.bk-noms-liveitem .meta .cnt{color:var(--brand-light,#a78bfa);font-weight:800;font-size:14px;}
+.bk-noms-liveitem .meta .mf{padding:4px 10px;border-radius:6px;font-weight:800;font-size:13px;}
+.bk-noms-livedrop .empty,.bk-noms-livedrop .loading{padding:20px;color:var(--text-muted,#8b949e);font-size:15px;text-align:center;}
+.bk-noms-livedrop mark{background:var(--brand,#6c5ce7)60;color:var(--text-primary,#fff);padding:0 3px;border-radius:3px;font-weight:900;}
+@media (max-width:600px){
+    .bk-noms-liveitem{padding:14px 16px;flex-wrap:wrap;}
+    .bk-noms-liveitem .nm{font-size:17px;width:100%;}
+    .bk-noms-liveitem .meta{font-size:13px;}
+}
+
+/* Grille des noms */
+.bk-noms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:18px;}
+.bk-noms-tile{background:var(--bg-card,#131a28);border:1px solid var(--border,#1e2a3a);border-radius:10px;padding:12px 14px;text-decoration:none;color:var(--text-primary,#c9d1d9);transition:all .2s;display:block;}
+.bk-noms-tile:hover{border-color:var(--brand,#6c5ce7);transform:translateY(-2px);box-shadow:0 4px 14px rgba(108,92,231,.25);}
+.bk-noms-tile .nm{font-size:15px;font-weight:800;color:var(--text-primary,#fff);letter-spacing:.5px;}
+.bk-noms-tile .cnt{font-size:11px;color:var(--text-muted,#8b949e);margin-top:4px;}
+.bk-noms-tile .mf{display:inline-flex;gap:8px;margin-top:6px;font-size:10px;}
+.bk-noms-tile .mf span{padding:1px 6px;border-radius:4px;font-weight:700;}
+
+/* KPI cards + sections */
+.bk-noms-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:22px;}
+.bk-noms-stat-card{background:var(--bg-card,#131a28);border:1px solid var(--border,#1e2a3a);border-radius:14px;padding:18px;}
+.bk-noms-stat-card h3{margin:0 0 12px;font-size:13px;color:var(--brand-light,#a78bfa);text-transform:uppercase;letter-spacing:.08em;font-weight:700;}
+.bk-noms-stat-card .big-num{color:var(--text-primary,#fff);}
+
+/* Barres */
+.bk-noms-bar{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px;color:var(--text-primary,#c9d1d9);}
+.bk-noms-bar .lbl{flex:0 0 90px;font-weight:600;}
+.bk-noms-bar .trk{flex:1;height:8px;background:var(--bg-surface,#0d1117);border-radius:4px;overflow:hidden;}
+.bk-noms-bar .fill{height:100%;border-radius:4px;transition:width .6s ease;}
+.bk-noms-bar .val{flex:0 0 50px;text-align:right;font-weight:700;color:var(--text-primary,#fff);}
+
+/* Sections */
+.bk-noms-section{background:var(--bg-card,#131a28);border:1px solid var(--border,#1e2a3a);border-radius:14px;padding:20px;margin-bottom:18px;}
+.bk-noms-section h2{margin:0 0 14px;font-size:18px;color:var(--text-primary,#fff);font-weight:800;}
+.bk-noms-section > p{color:var(--text-muted,#8b949e);}
+
+/* Onglets de tri */
+#bkNomsSortTabs{background:var(--bg-surface,#0d1117);border-color:var(--border,#1e2a3a);}
+.bk-sort-btn:not(.active)[data-sort="total"]{color:var(--text-primary,#c9d1d9) !important;}
+
+/* Liens et cellules du tableau athletes — variables CSS */
+.bk-noms-link-name{color:#a29bfe;}
+body.p2-light .bk-noms-link-name{color:#6b4f2c;}
+.bk-noms-link-club{color:#34d399;}
+body.p2-light .bk-noms-link-club{color:#047857;}
+.bk-noms-medals{color:#fbbf24;}
+body.p2-light .bk-noms-medals{color:#b45309;}
+
+/* Bandeau d'avertissement (truncated) */
+.bk-noms-warn{color:#fb923c;}
+body.p2-light .bk-noms-warn{color:#b45309;}
+
+/* ====== MODE CLAIR (body.p2-light) — overrides ====== */
+body.p2-light .bk-noms-hero{
+    background:linear-gradient(135deg,#faf6ec 0%,#f4ede0 50%,#ebe2cf 100%);
+    border-color:#c9bfa6;
+}
+body.p2-light .bk-noms-hero h1{
+    background:linear-gradient(135deg,#0a0805 0%,#6b4f2c 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+}
+body.p2-light .bk-noms-hero p{color:#5a5040;}
+body.p2-light .bk-noms-search input{
+    background:#faf6ec;
+    color:#0a0805;
+    border-color:#c9bfa6;
+}
+body.p2-light .bk-noms-search input::placeholder{color:#8a7d63;}
+body.p2-light .bk-noms-search input:focus{
+    border-color:#6b4f2c;
+    box-shadow:0 0 0 3px rgba(107,79,44,.2);
+}
+body.p2-light .bk-noms-search button{
+    background:linear-gradient(135deg,#6b4f2c,#8a6a3f);
+}
+body.p2-light .bk-noms-livedrop mark{background:#d6cdb5;color:#0a0805;}
+body.p2-light .bk-noms-tile{box-shadow:0 1px 3px rgba(58,42,12,.06);}
+body.p2-light .bk-noms-tile:hover{box-shadow:0 4px 14px rgba(107,79,44,.18);}
+
+/* === Overrides ciblees pour les inline styles hardcodees === */
+/* Texte clair -> texte sombre */
+body.p2-light .bk-noms-page [style*="color:#fff"],
+body.p2-light .bk-noms-page [style*="color: #fff"],
+body.p2-light .bk-noms-page [style*="color:#ffffff"]{color:#0a0805 !important;}
+body.p2-light .bk-noms-page [style*="color:#c9d1d9"]{color:#2a2418 !important;}
+body.p2-light .bk-noms-page [style*="color:#8b949e"]{color:#5a5040 !important;}
+body.p2-light .bk-noms-page [style*="color:#5a6580"]{color:#8a7d63 !important;}
+
+/* Backgrounds sombres -> backgrounds clairs */
+body.p2-light .bk-noms-page [style*="background:#0d1117"]{background:#ebe2cf !important;}
+body.p2-light .bk-noms-page [style*="background:#131a28"]{background:#faf6ec !important;}
+body.p2-light .bk-noms-page [style*="background:#1e2a3a"]{background:#c9bfa6 !important;}
+body.p2-light .bk-noms-page [style*="background-color:#0d1117"]{background-color:#ebe2cf !important;}
+
+/* Bordures sombres -> bordures claires */
+body.p2-light .bk-noms-page [style*="border:1px solid #1e2a3a"]{border-color:#c9bfa6 !important;}
+body.p2-light .bk-noms-page [style*="border-top:1px solid #1e2a3a"]{border-top-color:#c9bfa6 !important;}
+body.p2-light .bk-noms-page [style*="border-bottom:1px solid #1e2a3a"]{border-bottom-color:#c9bfa6 !important;}
+
+/* Onglets de tri (inline background) */
+body.p2-light #bkNomsSortTabs{background:#ebe2cf !important;border-color:#c9bfa6 !important;}
+body.p2-light #bkNomsSortTabs .bk-sort-btn:not(.active){color:#5a5040;}
+
+/* Liens dans le tableau athletes : passer aux tons cognac */
+body.p2-light .bk-noms-page .bk-table [style*="color:#a29bfe"]{color:#6b4f2c !important;}
+body.p2-light .bk-noms-page .bk-table [style*="color:#34d399"]{color:#047857 !important;}
+body.p2-light .bk-noms-page .bk-table [style*="color:#fbbf24"]{color:#b45309 !important;}
+
+/* Avertissements orange */
+body.p2-light .bk-noms-page [style*="color:#fb923c"]{color:#b45309 !important;}
+
+@media (max-width:600px){.bk-noms-hero h1{font-size:24px;}.bk-noms-search{flex-direction:column;}}
+</style>
+
+<div class="bk-noms-page">
+
+<?php if ($nomQ === ''): ?>
+<!-- =========== MODE INDEX : top noms les plus frequents =========== -->
+<section class="bk-noms-hero">
+    <h1>Recherche par nom de famille</h1>
+    <p>Trouvez toutes les personnes qui partagent votre nom (ou celui d'un athlete)</p>
+    <form class="bk-noms-search" method="get" action="<?= $_canonBase ?>/noms" autocomplete="off">
+        <input type="text" name="q" id="bkNomsLiveInput" placeholder="Tapez un nom (ex : Martin, Dupont, Luvumbu...)" autofocus required autocomplete="off">
+        <button type="submit">Rechercher</button>
+        <div class="bk-noms-livedrop" id="bkNomsLiveDrop" role="listbox"></div>
+    </form>
+    <div style="margin-top:14px;"><button type="button" id="bkDeepToggle" style="background:transparent;border:1px solid var(--brand);color:var(--brand-light);padding:8px 16px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.03em;">&#128269; Recherche approfondie par niveau</button></div>
+</section>
+
+<!-- =========== RECHERCHE APPROFONDIE — par niveau =========== -->
+<div class="bk-noms-section" id="bkDeepSection" style="display:none;">
+    <h2 style="margin-bottom:8px;">Trouver les noms les plus representes a un niveau donne</h2>
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px;line-height:1.55;">
+        Choisissez un niveau + un nombre minimum d'athletes. Le moteur retourne uniquement les noms qui valident.<br>
+        <strong style="color:var(--text-primary);">Mode strict</strong> : ne compte que les athletes dont le <em>meilleur niveau</em> est exactement le niveau choisi.<br>
+        <strong style="color:var(--text-primary);">Niveau ou superieur</strong> : compte tous les athletes dont le meilleur niveau est au moins egal au niveau choisi (ex : N1+ inclut IA, IB, IE et N1).
+    </p>
+
+    <form id="bkDeepForm" onsubmit="return false;" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:16px;">
+        <div style="flex:1;min-width:160px;">
+            <label style="display:block;font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Niveau recherche</label>
+            <select id="bkDeepLevel" style="width:100%;padding:11px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px;font-weight:600;cursor:pointer;">
+                <optgroup label="International">
+                    <option value="IA">IA — Internationale A (elite)</option>
+                    <option value="IB">IB — Internationale B</option>
+                    <option value="IE">IE — Internationale Espoir</option>
+                </optgroup>
+                <optgroup label="National">
+                    <option value="N1" selected>N1 — National 1</option>
+                    <option value="N2">N2 — National 2</option>
+                    <option value="N3">N3 — National 3</option>
+                    <option value="N4">N4 — National 4</option>
+                </optgroup>
+                <optgroup label="Inter-regional">
+                    <option value="IR1">IR1</option>
+                    <option value="IR2">IR2</option>
+                    <option value="IR3">IR3</option>
+                    <option value="IR4">IR4</option>
+                </optgroup>
+                <optgroup label="Regional">
+                    <option value="R1">R1</option>
+                    <option value="R2">R2</option>
+                    <option value="R3">R3</option>
+                    <option value="R4">R4</option>
+                    <option value="R5">R5</option>
+                    <option value="R6">R6</option>
+                </optgroup>
+                <optgroup label="Departemental">
+                    <option value="D1">D1</option>
+                    <option value="D2">D2</option>
+                    <option value="D3">D3</option>
+                    <option value="D4">D4</option>
+                </optgroup>
+            </select>
+        </div>
+        <div style="min-width:140px;">
+            <label style="display:block;font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Minimum personnes</label>
+            <input type="number" id="bkDeepMin" value="3" min="1" max="50" style="width:100%;padding:11px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:14px;font-weight:600;">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding-bottom:11px;">
+            <input type="checkbox" id="bkDeepOrBetter" style="width:18px;height:18px;cursor:pointer;accent-color:#6c5ce7;">
+            <label for="bkDeepOrBetter" style="font-size:13px;color:var(--text-primary);cursor:pointer;font-weight:600;" title="Coche pour inclure aussi tous les niveaux superieurs (ex: IA, IB, IE sont inclus si N1 est choisi)">Inclure les niveaux superieurs</label>
+        </div>
+        <button type="button" id="bkDeepSubmit" style="padding:12px 22px;border-radius:8px;border:none;background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;font-weight:800;cursor:pointer;font-size:14px;letter-spacing:.04em;white-space:nowrap;">Lancer la recherche</button>
+    </form>
+
+    <!-- Animation de traitement (apparait pendant la recherche) -->
+    <div id="bkDeepProgress" style="display:none;margin:18px 0;padding:18px;background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:13px;font-weight:800;color:var(--text-primary);letter-spacing:.04em;text-transform:uppercase;">&#9881; Analyse en cours</div>
+            <div id="bkDeepTimer" style="font-family:monospace;font-size:13px;color:var(--text-secondary);font-weight:700;">0,0s</div>
+        </div>
+        <div id="bkDeepStages" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div style="margin-top:14px;height:8px;background:var(--bg-card);border-radius:4px;overflow:hidden;border:1px solid var(--border);">
+            <div id="bkDeepProgressFill" style="height:100%;background:linear-gradient(90deg,#6c5ce7,#a29bfe);width:0%;transition:width .4s ease;"></div>
+        </div>
+    </div>
+
+    <div id="bkDeepInfo" style="font-size:12px;color:var(--text-muted);margin-bottom:10px;display:none;"></div>
+    <div id="bkDeepResults"></div>
+</div>
+
+<style>
+.bk-deep-stage{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;opacity:.4;transition:all .3s ease;}
+.bk-deep-stage.active{opacity:1;border-color:#a78bfa;box-shadow:0 0 0 1px #a78bfa40;}
+.bk-deep-stage.done{opacity:.85;border-color:#10b98140;}
+.bk-deep-stage-ic{font-size:18px;width:28px;text-align:center;}
+.bk-deep-stage.active .bk-deep-stage-ic{animation:bkSpin 1.2s linear infinite;}
+.bk-deep-stage.done .bk-deep-stage-ic{animation:none;}
+@keyframes bkSpin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+.bk-deep-stage-title{flex:1;font-size:13px;color:var(--text-primary);font-weight:600;}
+.bk-deep-stage-num{font-family:monospace;font-size:14px;font-weight:800;color:#a78bfa;min-width:80px;text-align:right;}
+.bk-deep-stage.done .bk-deep-stage-num{color:#10b981;}
+</style>
+<script>
+(function(){
+    var btnToggle = document.getElementById('bkDeepToggle');
+    var section   = document.getElementById('bkDeepSection');
+    var submit    = document.getElementById('bkDeepSubmit');
+    var resBox    = document.getElementById('bkDeepResults');
+    var info      = document.getElementById('bkDeepInfo');
+    if (!btnToggle || !section || !submit) return;
+    var API_BASE  = '<?= $BASE_API_JS ?>';
+    var CANON     = '<?= $_canonBase ?>';
+
+    btnToggle.addEventListener('click', function(){
+        var open = section.style.display === 'block';
+        section.style.display = open ? 'none' : 'block';
+        btnToggle.innerHTML = open ? '&#128269; Recherche approfondie par niveau' : '&#10005; Fermer la recherche approfondie';
+        if (!open) section.scrollIntoView({behavior:'smooth', block:'nearest'});
+    });
+
+    function esc(s){ return (s+'').replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+
+    // ===== Animation multi-etapes =====
+    var progressBox = document.getElementById('bkDeepProgress');
+    var stagesBox   = document.getElementById('bkDeepStages');
+    var progFill    = document.getElementById('bkDeepProgressFill');
+    var timerBox    = document.getElementById('bkDeepTimer');
+    var STAGE_DEFS  = [
+        { id:'connect', ic:'&#127760;', t:'Connexion a la base Bokonzi (300k+ athletes)' },
+        { id:'scan',    ic:'&#128269;', t:'Scan des niveaux enregistres (athlete_niveaux + resultats)' },
+        { id:'filter',  ic:'&#128202;', t:'Filtre des athletes au niveau requis' },
+        { id:'group',   ic:'&#128101;', t:'Regroupement par nom de famille' },
+        { id:'validate',ic:'&#9989;',   t:'Application du minimum de personnes' }
+    ];
+
+    function buildStages() {
+        stagesBox.innerHTML = STAGE_DEFS.map(function(s){
+            return '<div class="bk-deep-stage" id="bkStg-' + s.id + '">'
+                 + '<div class="bk-deep-stage-ic">' + s.ic + '</div>'
+                 + '<div class="bk-deep-stage-title">' + s.t + '</div>'
+                 + '<div class="bk-deep-stage-num">-</div>'
+                 + '</div>';
+        }).join('');
+    }
+    function setStage(id, state) {
+        var el = document.getElementById('bkStg-' + id);
+        if (!el) return;
+        el.classList.remove('active','done');
+        if (state) el.classList.add(state);
+    }
+    function setStageNum(id, n) {
+        var el = document.getElementById('bkStg-' + id);
+        if (!el) return;
+        el.querySelector('.bk-deep-stage-num').textContent = (n || 0).toLocaleString('fr-FR');
+    }
+    function setProgress(p) {
+        progFill.style.width = Math.max(0, Math.min(100, p)) + '%';
+    }
+    function delay(ms) { return new Promise(function(r){ setTimeout(r, ms); }); }
+
+    // Animation de compteur de 0 a target en duration ms
+    function animateCounter(id, target, duration) {
+        var el = document.getElementById('bkStg-' + id);
+        if (!el) return Promise.resolve();
+        var numEl = el.querySelector('.bk-deep-stage-num');
+        return new Promise(function(resolve){
+            var start = performance.now();
+            function tick(now) {
+                var t = Math.min(1, (now - start) / duration);
+                // easeOutQuad
+                var v = Math.floor(target * (1 - (1-t)*(1-t)));
+                numEl.textContent = v.toLocaleString('fr-FR');
+                if (t < 1) requestAnimationFrame(tick);
+                else resolve();
+            }
+            requestAnimationFrame(tick);
+        });
+    }
+
+    submit.addEventListener('click', async function(){
+        var lvl = document.getElementById('bkDeepLevel').value;
+        var min = parseInt(document.getElementById('bkDeepMin').value, 10) || 2;
+        var orB = document.getElementById('bkDeepOrBetter').checked ? 1 : 0;
+        if (min < 1) min = 1;
+        if (min > 50) min = 50;
+
+        // Reset UI
+        info.style.display = 'none';
+        resBox.innerHTML = '';
+        buildStages();
+        progressBox.style.display = 'block';
+        setProgress(0);
+
+        // Timer
+        var tStart = performance.now();
+        var timerInterval = setInterval(function(){
+            var sec = (performance.now() - tStart) / 1000;
+            timerBox.textContent = sec.toFixed(1).replace('.', ',') + 's';
+        }, 100);
+
+        // Lancer le fetch en parallele
+        var url = API_BASE + '/nom.php?level=' + encodeURIComponent(lvl)
+                + '&min=' + min + '&or_better=' + orB + '&limit=100&nocache=1';
+        var fetchPromise = fetch(url).then(function(r){ return r.json(); });
+
+        try {
+            // ETAPE 1 : Connexion
+            setStage('connect', 'active');
+            await delay(450);
+            setStage('connect', 'done');
+            setStageNum('connect', 'OK');
+            document.querySelector('#bkStg-connect .bk-deep-stage-num').textContent = '✓ OK';
+            setProgress(15);
+
+            // ETAPE 2 : Scan
+            setStage('scan', 'active');
+            // attend le fetch (peut prendre du temps si non cache)
+            var d = await fetchPromise;
+            if (!d || !d.success) {
+                clearInterval(timerInterval);
+                resBox.innerHTML = '<div style="color:#ef4444;padding:20px;text-align:center;">' + esc(d && d.error ? d.error : 'Erreur lors de la recherche') + '</div>';
+                progressBox.style.display = 'none';
+                return;
+            }
+            var scan = d.scan || {};
+            // Animer le scan total
+            await animateCounter('scan', scan.athletes_with_any_level || 0, 800);
+            setStage('scan', 'done');
+            setProgress(40);
+            await delay(200);
+
+            // ETAPE 3 : Filtrage par niveau
+            setStage('filter', 'active');
+            await animateCounter('filter', scan.athletes_matching_level || 0, 700);
+            setStage('filter', 'done');
+            setProgress(60);
+            await delay(180);
+
+            // ETAPE 4 : Regroupement
+            setStage('group', 'active');
+            await animateCounter('group', scan.surnames_with_at_least_one || 0, 600);
+            setStage('group', 'done');
+            setProgress(80);
+            await delay(180);
+
+            // ETAPE 5 : Application du minimum
+            setStage('validate', 'active');
+            await animateCounter('validate', scan.surnames_passing_min || 0, 600);
+            setStage('validate', 'done');
+            setProgress(100);
+            await delay(350);
+
+            clearInterval(timerInterval);
+
+            // RESULTATS
+            progressBox.style.display = 'none';
+            renderResults(d);
+        } catch(err) {
+            clearInterval(timerInterval);
+            resBox.innerHTML = '<div style="color:#ef4444;padding:20px;text-align:center;">Erreur reseau, reessayez.</div>';
+            progressBox.style.display = 'none';
+        }
+    });
+
+    function renderResults(d) {
+        var codes = (d.codes || []).join(', ');
+        var modeTxt = d.or_better ? 'au niveau <strong>' + esc(d.level) + '</strong> ou superieur (' + esc(codes) + ')'
+                                  : 'au niveau <strong>' + esc(d.level) + '</strong> strict';
+        var scan = d.scan || {};
+        var dur = scan.duration_ms ? (scan.duration_ms / 1000).toFixed(2).replace('.', ',') + 's' : '';
+
+        // Bandeau "preuve de traitement"
+        var proofHtml = '<div style="background:linear-gradient(135deg,#10b98120,#10b98108);border:1px solid #10b98140;border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:13px;color:var(--text-primary);line-height:1.6;">'
+                      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:800;color:#10b981;text-transform:uppercase;letter-spacing:.06em;font-size:11px;">&#9989; Traitement termine ' + (dur ? ' en ' + dur : '') + '</div>'
+                      + 'Sur <strong>' + (scan.total_athletes_db || 0).toLocaleString('fr-FR') + '</strong> athletes visibles dans la base, '
+                      + '<strong>' + (scan.athletes_with_any_level || 0).toLocaleString('fr-FR') + '</strong> sont classes, '
+                      + '<strong>' + (scan.athletes_matching_level || 0).toLocaleString('fr-FR') + '</strong> correspondent au critere de niveau ' + esc(d.level) + (d.or_better ? '+' : '') + ', '
+                      + 'repartis sur <strong>' + (scan.surnames_with_at_least_one || 0).toLocaleString('fr-FR') + '</strong> noms de famille distincts. '
+                      + '<strong style="color:#10b981;">' + (scan.surnames_passing_min || 0).toLocaleString('fr-FR') + '</strong> nom' + ((scan.surnames_passing_min || 0) > 1 ? 's' : '') + ' atteignent le minimum de <strong>' + d.min + '</strong> personne' + (d.min > 1 ? 's' : '') + ' demande.'
+                      + '</div>';
+
+        if (d.count === 0) {
+            info.style.display = 'none';
+            resBox.innerHTML = proofHtml
+                + '<div style="text-align:center;padding:30px 20px;border:2px dashed var(--border);border-radius:12px;">'
+                + '<div style="font-size:48px;margin-bottom:10px;">&#128683;</div>'
+                + '<div style="font-size:15px;color:var(--text-primary);font-weight:700;margin-bottom:6px;">Aucun nom ne valide</div>'
+                + '<div style="font-size:13px;color:var(--text-muted);">Aucun nom de famille ne compte au moins <strong>' + d.min + '</strong> personne(s) ' + modeTxt + '.<br>Essayez avec un minimum plus bas ou un niveau plus accessible.</div>'
+                + '</div>';
+            return;
+        }
+        info.style.display = 'none';
+
+        var html = proofHtml;
+        html += '<div style="font-size:13px;color:var(--text-primary);margin:6px 0 12px;"><strong>' + d.count + '</strong> nom' + (d.count > 1 ? 's' : '') + ' de famille valident le critere — cliquez pour voir les athletes.</div>';
+        html += '<div class="bk-noms-grid">';
+        d.results.forEach(function(r){
+            var mfHtml = '';
+            if (r.M > 0) mfHtml += '<span style="background:#3b82f620;color:#60a5fa;">&#9794; ' + r.M + '</span>';
+            if (r.F > 0) mfHtml += '<span style="background:#ec489920;color:#f472b6;">&#9792; ' + r.F + '</span>';
+            html += '<a class="bk-noms-tile" href="' + CANON + '/noms?q=' + encodeURIComponent(r.nom) + '">'
+                  + '<div class="nm">' + esc(r.nom) + '</div>'
+                  + '<div class="cnt"><strong style="color:#a78bfa;font-size:14px;">' + r.count + '</strong> niv. ' + esc(d.level) + (d.or_better ? '+' : '') + '</div>'
+                  + '<div class="mf">' + mfHtml + '</div>'
+                  + '</a>';
+        });
+        html += '</div>';
+        resBox.innerHTML = html;
+    }
+})();
+</script>
+
+<?php
+$top = $nomData['top_names'] ?? [];
+if (!empty($top)):
+?>
+<div class="bk-noms-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:6px;">
+        <h2 style="margin:0;">Les <?= count($top) ?> noms de famille les plus frequents</h2>
+        <div id="bkNomsSortTabs" style="display:inline-flex;gap:4px;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:3px;">
+            <button type="button" data-sort="total" class="bk-sort-btn active" style="padding:6px 14px;border-radius:7px;border:none;background:#6c5ce7;color:#fff;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:.04em;">Tous</button>
+            <button type="button" data-sort="M" class="bk-sort-btn" style="padding:6px 14px;border-radius:7px;border:none;background:transparent;color:#60a5fa;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:.04em;">&#9794; Hommes</button>
+            <button type="button" data-sort="F" class="bk-sort-btn" style="padding:6px 14px;border-radius:7px;border:none;background:transparent;color:#f472b6;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:.04em;">&#9792; Femmes</button>
+        </div>
+    </div>
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 14px;">Cliquez sur un nom pour voir tous les athletes correspondants, leur club, leur age, leurs records.</p>
+    <div class="bk-noms-grid" id="bkNomsGrid">
+        <?php foreach ($top as $tn):
+            $slug = urlencode($tn['nom']);
+        ?>
+        <a class="bk-noms-tile" href="<?= $_canonBase ?>/noms?q=<?= $slug ?>" data-total="<?= (int)$tn['count'] ?>" data-m="<?= (int)$tn['M'] ?>" data-f="<?= (int)$tn['F'] ?>">
+            <div class="nm"><?= htmlspecialchars($tn['nom']) ?></div>
+            <div class="cnt"><span class="bk-tile-num"><?= number_format($tn['count'], 0, ',', ' ') ?></span> athlete<?= $tn['count'] > 1 ? 's' : '' ?></div>
+            <div class="mf">
+                <?php if ($tn['M'] > 0): ?><span class="bk-tile-m" style="background:#3b82f620;color:#60a5fa;">&#9794; <?= $tn['M'] ?></span><?php endif; ?>
+                <?php if ($tn['F'] > 0): ?><span class="bk-tile-f" style="background:#ec489920;color:#f472b6;">&#9792; <?= $tn['F'] ?></span><?php endif; ?>
+            </div>
+        </a>
+        <?php endforeach; ?>
+    </div>
+</div>
+<script>
+(function(){
+    var grid = document.getElementById('bkNomsGrid');
+    var tabs = document.querySelectorAll('#bkNomsSortTabs .bk-sort-btn');
+    if (!grid || !tabs.length) return;
+    var tiles = Array.from(grid.querySelectorAll('.bk-noms-tile'));
+
+    function applySort(key){
+        var keyAttr = key === 'M' ? 'm' : (key === 'F' ? 'f' : 'total');
+        var sorted = tiles.slice().sort(function(a, b){
+            var va = parseInt(a.getAttribute('data-' + keyAttr), 10) || 0;
+            var vb = parseInt(b.getAttribute('data-' + keyAttr), 10) || 0;
+            return vb - va; // descending
+        });
+        // Si tri par M ou F : masquer les tuiles a 0 (pas de pertinence)
+        sorted.forEach(function(t){
+            var v = parseInt(t.getAttribute('data-' + keyAttr), 10) || 0;
+            t.style.display = (key !== 'total' && v === 0) ? 'none' : '';
+            // Met en avant le nombre choisi
+            var num = t.querySelector('.bk-tile-num');
+            if (num) {
+                if (key === 'M')      num.textContent = (parseInt(t.getAttribute('data-m'), 10) || 0).toLocaleString('fr-FR');
+                else if (key === 'F') num.textContent = (parseInt(t.getAttribute('data-f'), 10) || 0).toLocaleString('fr-FR');
+                else                  num.textContent = (parseInt(t.getAttribute('data-total'), 10) || 0).toLocaleString('fr-FR');
+            }
+            grid.appendChild(t);
+        });
+    }
+
+    tabs.forEach(function(btn){
+        btn.addEventListener('click', function(){
+            tabs.forEach(function(b){
+                b.classList.remove('active');
+                b.style.background = 'transparent';
+                // M et F gardent leur couleur accent ; "Tous" laisse le CSS (var(--text-primary)) prendre le relais
+                if (b.dataset.sort === 'M')      b.style.color = '#60a5fa';
+                else if (b.dataset.sort === 'F') b.style.color = '#f472b6';
+                else                              b.style.color = '';
+            });
+            btn.classList.add('active');
+            var k = btn.dataset.sort;
+            btn.style.background = k === 'M' ? '#3b82f6' : (k === 'F' ? '#ec4899' : '#6c5ce7');
+            btn.style.color = '#fff';
+            applySort(k);
+        });
+    });
+})();
+</script>
+<?php endif; ?>
+
+<?php else:
+// =========== MODE DETAIL : athletes pour un nom ===========
+$total = (int)($nomData['total'] ?? 0);
+$nomCanon = $nomData['nom'] ?? strtoupper($nomQ);
+$stats = $nomData['stats'] ?? null;
+$listAth = $nomData['athletes'] ?? [];
+?>
+<section class="bk-noms-hero">
+    <div style="font-size:11px;font-weight:900;letter-spacing:6px;text-transform:uppercase;color:#a78bfa;margin-bottom:8px;">&#128100; NOM DE FAMILLE</div>
+    <h1><?= htmlspecialchars($nomCanon) ?></h1>
+    <p><?= $total > 0 ? $total . ' athlete' . ($total > 1 ? 's' : '') . ' avec ce nom' : 'Aucun athlete trouve avec ce nom' ?></p>
+    <form class="bk-noms-search" method="get" action="<?= $_canonBase ?>/noms" autocomplete="off">
+        <input type="text" name="q" id="bkNomsLiveInput" placeholder="Chercher un autre nom..." value="" autocomplete="off">
+        <button type="submit">Rechercher</button>
+        <div class="bk-noms-livedrop" id="bkNomsLiveDrop" role="listbox"></div>
+    </form>
+    <div style="margin-top:12px;"><a href="<?= $_canonBase ?>/noms" style="color:#a78bfa;font-size:13px;text-decoration:none;">&larr; Retour aux noms les plus frequents</a></div>
+</section>
+
+<?php if ($total === 0): ?>
+<div class="bk-noms-section" style="text-align:center;padding:40px 20px;">
+    <p style="color:var(--text-secondary);font-size:15px;margin:0 0 8px;">Aucun athlete trouve pour <strong style="color:var(--text-primary);"><?= htmlspecialchars($nomCanon) ?></strong>.</p>
+    <p style="color:var(--text-muted);font-size:13px;margin:0;">Verifiez l'orthographe ou essayez une variante.</p>
+</div>
+<?php else:
+    $bySex = $stats['by_sex'] ?? ['M'=>0,'F'=>0];
+    $byCat = $stats['by_categorie'] ?? [];
+    $byNat = $stats['by_nationalite'] ?? [];
+    $byAge = $stats['by_age_range'] ?? [];
+    $byNiv = $stats['by_niveau_famille'] ?? [];
+    $topClubs = $stats['top_clubs'] ?? [];
+    $topEpr   = $stats['top_epreuves'] ?? [];
+    $topVilles= $stats['top_villes_naissance'] ?? [];
+    $anMin = $stats['annee_naissance_min'] ?? null;
+    $anMax = $stats['annee_naissance_max'] ?? null;
+    $maxAge = max($byAge) ?: 1;
+    $maxCat = !empty($byCat) ? max($byCat) : 1;
+?>
+
+<!-- KPI cards -->
+<div class="bk-noms-stats">
+    <div class="bk-noms-stat-card">
+        <h3>Repartition H / F</h3>
+        <div style="display:flex;gap:14px;align-items:center;justify-content:center;padding:6px 0;">
+            <div style="text-align:center;flex:1;">
+                <div style="font-size:32px;font-weight:900;color:#60a5fa;"><?= $bySex['M'] ?></div>
+                <div style="font-size:11px;color:var(--text-secondary);letter-spacing:.08em;text-transform:uppercase;">Hommes</div>
+            </div>
+            <div style="width:1px;height:36px;background:var(--border);"></div>
+            <div style="text-align:center;flex:1;">
+                <div style="font-size:32px;font-weight:900;color:#f472b6;"><?= $bySex['F'] ?></div>
+                <div style="font-size:11px;color:var(--text-secondary);letter-spacing:.08em;text-transform:uppercase;">Femmes</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bk-noms-stat-card">
+        <h3>Age moyen <?php if (!empty($stats['age_renseigne_count'])): ?><span style="font-size:10px;color:var(--text-muted);text-transform:none;letter-spacing:0;font-weight:500;">(<?= (int)$stats['age_renseigne_count'] ?> renseigne<?= $stats['age_renseigne_count'] > 1 ? 's' : '' ?>)</span><?php endif; ?></h3>
+        <?php $ageMoy = $stats['age_moyen'] ?? null; $ageM = $stats['age_moyen_M'] ?? null; $ageF = $stats['age_moyen_F'] ?? null; ?>
+        <?php if ($ageMoy !== null): ?>
+        <div style="text-align:center;padding:2px 0;">
+            <div style="font-size:32px;font-weight:900;color:var(--text-primary);line-height:1;"><?= number_format($ageMoy, 1, ',', ' ') ?> <span style="font-size:14px;color:var(--text-secondary);font-weight:600;">ans</span></div>
+            <div style="display:flex;justify-content:center;gap:14px;margin-top:8px;font-size:11px;">
+                <?php if ($ageM !== null): ?><span style="color:#60a5fa;font-weight:700;">&#9794; <?= number_format($ageM, 1, ',', ' ') ?> ans</span><?php endif; ?>
+                <?php if ($ageF !== null): ?><span style="color:#f472b6;font-weight:700;">&#9792; <?= number_format($ageF, 1, ',', ' ') ?> ans</span><?php endif; ?>
+            </div>
+            <?php if ($anMin && $anMax): ?>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Nes entre <?= $anMin ?> et <?= $anMax ?></div>
+            <?php endif; ?>
+        </div>
+        <?php else: ?>
+        <div style="text-align:center;color:var(--text-muted);font-size:13px;padding:14px 0;">Donnees indisponibles</div>
+        <?php endif; ?>
+    </div>
+
+    <div class="bk-noms-stat-card">
+        <h3>Niveau moyen <?php if (!empty($stats['niveau_moyen']['classes_count'])): ?><span style="font-size:10px;color:var(--text-muted);text-transform:none;letter-spacing:0;font-weight:500;">(<?= (int)$stats['niveau_moyen']['classes_count'] ?> classes)</span><?php endif; ?></h3>
+        <?php
+        $nm = $stats['niveau_moyen'] ?? null;
+        $nmM = $stats['niveau_moyen_M'] ?? null;
+        $nmF = $stats['niveau_moyen_F'] ?? null;
+        $nivColorOf = function($code) {
+            $f = $code[0] ?? '';
+            if ($f === 'I') return '#c026d3';
+            if ($f === 'N') return '#e11d48';
+            if ($f === 'R') return '#0891b2';
+            if ($f === 'D') return '#f97316';
+            return '#6e7681';
+        };
+        $nivTextOf = function($code) {
+            $f = $code[0] ?? '';
+            if ($f === 'I') return '#e879f9';
+            if ($f === 'N') return '#fb7185';
+            if ($f === 'R') return '#22d3ee';
+            if ($f === 'D') return '#fb923c';
+            return '#8b949e';
+        };
+        ?>
+        <?php if ($nm): $col = $nivColorOf($nm['code']); $tcol = $nivTextOf($nm['code']); ?>
+        <div style="text-align:center;padding:2px 0;">
+            <div style="display:inline-block;padding:6px 22px;border-radius:10px;background:<?= $col ?>20;border:2px solid <?= $col ?>;color:<?= $tcol ?>;font-size:30px;font-weight:900;line-height:1;letter-spacing:1px;"><?= htmlspecialchars($nm['code']) ?></div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;">Score <strong style="color:var(--text-primary);"><?= number_format($nm['points'], 1, ',', ' ') ?>/<?= (int)$nm['points_max'] ?></strong> &middot; rang <strong style="color:var(--text-primary);"><?= (int)$nm['rang'] ?>/<?= (int)$nm['points_max'] ?></strong></div>
+            <?php if ($nmM || $nmF): ?>
+            <div style="display:flex;justify-content:center;gap:14px;margin-top:8px;font-size:11px;">
+                <?php if ($nmM): $cM = $nivTextOf($nmM['code']); ?><span style="color:#60a5fa;font-weight:700;">&#9794; <span style="color:<?= $cM ?>;font-weight:900;"><?= htmlspecialchars($nmM['code']) ?></span></span><?php endif; ?>
+                <?php if ($nmF): $cF = $nivTextOf($nmF['code']); ?><span style="color:#f472b6;font-weight:700;">&#9792; <span style="color:<?= $cF ?>;font-weight:900;"><?= htmlspecialchars($nmF['code']) ?></span></span><?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php else: ?>
+        <div style="text-align:center;color:var(--text-muted);font-size:13px;padding:14px 0;">Aucun niveau renseigne</div>
+        <?php endif; ?>
+    </div>
+
+    <div class="bk-noms-stat-card">
+        <h3>Repartition niveaux</h3>
+        <div style="display:flex;justify-content:space-around;gap:6px;padding:6px 0;font-size:11px;text-align:center;">
+            <div><div style="font-size:20px;font-weight:900;color:#e879f9;"><?= $byNiv['I'] ?? 0 ?></div><div style="color:var(--text-secondary);">Inter</div></div>
+            <div><div style="font-size:20px;font-weight:900;color:#fb7185;"><?= $byNiv['N'] ?? 0 ?></div><div style="color:var(--text-secondary);">Nat.</div></div>
+            <div><div style="font-size:20px;font-weight:900;color:#22d3ee;"><?= $byNiv['R'] ?? 0 ?></div><div style="color:var(--text-secondary);">Reg.</div></div>
+            <div><div style="font-size:20px;font-weight:900;color:#fb923c;"><?= $byNiv['D'] ?? 0 ?></div><div style="color:var(--text-secondary);">Dep.</div></div>
+        </div>
+        <?php $nclasse = $byNiv['non_classe'] ?? 0; if ($nclasse > 0): ?>
+        <div style="text-align:center;font-size:11px;color:var(--text-secondary);margin-top:6px;border-top:1px solid var(--border);padding-top:6px;"><?= $nclasse ?> non classe<?= $nclasse > 1 ? 's' : '' ?></div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Tranches d'age + Categories cote a cote -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:18px;">
+    <div class="bk-noms-section">
+        <h2>Tranches d'age</h2>
+        <?php foreach ($byAge as $tranche => $nb):
+            if ($tranche === 'inconnu' && $nb === 0) continue;
+            $pct = $nb > 0 ? round(($nb / $maxAge) * 100) : 0;
+        ?>
+        <div class="bk-noms-bar">
+            <div class="lbl"><?= htmlspecialchars($tranche) ?><?= $tranche !== 'inconnu' ? ' ans' : '' ?></div>
+            <div class="trk"><div class="fill" style="width:<?= $pct ?>%;background:linear-gradient(90deg,#6c5ce7,#a29bfe);"></div></div>
+            <div class="val"><?= $nb ?></div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+
+    <div class="bk-noms-section">
+        <h2>Categories FFA</h2>
+        <?php if (empty($byCat)): ?>
+        <div style="color:var(--text-muted);font-size:13px;">Aucune categorie renseignee</div>
+        <?php else: foreach ($byCat as $cat => $nb): $pct = round(($nb / $maxCat) * 100); ?>
+        <div class="bk-noms-bar">
+            <div class="lbl"><span class="badge badge-cat"><?= htmlspecialchars($cat) ?></span></div>
+            <div class="trk"><div class="fill" style="width:<?= $pct ?>%;background:linear-gradient(90deg,#10b981,#34d399);"></div></div>
+            <div class="val"><?= $nb ?></div>
+        </div>
+        <?php endforeach; endif; ?>
+    </div>
+</div>
+
+<!-- Top clubs / Top epreuves / Top villes -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px;">
+    <?php if (!empty($topClubs)): ?>
+    <div class="bk-noms-section">
+        <h2>Clubs frequents</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <?php foreach ($topClubs as $tc): ?>
+            <a href="<?= $_canonBase ?>/recherche?club=<?= urlencode($tc['nom']) ?>" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;background:#10b98120;border:1px solid #10b98140;color:#34d399;">
+                <?= htmlspecialchars($tc['nom']) ?> <span style="opacity:.7;font-size:10px;">(<?= $tc['count'] ?>)</span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if (!empty($topEpr)): ?>
+    <div class="bk-noms-section">
+        <h2>Epreuves pratiquees</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <?php foreach (array_slice($topEpr, 0, 10) as $te): ?>
+            <a href="<?= $_canonBase ?>/recherche?epreuve=<?= urlencode($te['nom']) ?>" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;background:#6c5ce720;border:1px solid #6c5ce740;color:#a78bfa;">
+                <?= htmlspecialchars($te['nom']) ?> <span style="opacity:.7;font-size:10px;">(<?= $te['count'] ?>)</span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if (!empty($topVilles)): ?>
+    <div class="bk-noms-section">
+        <h2>Villes de naissance</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <?php foreach ($topVilles as $tv): ?>
+            <a href="<?= $_canonBase ?>/villes/<?= urlencode($tv['nom']) ?>" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;background:#3b82f620;border:1px solid #3b82f640;color:#60a5fa;">
+                <?= htmlspecialchars($tv['nom']) ?> <span style="opacity:.7;font-size:10px;">(<?= $tv['count'] ?>)</span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+</div>
+
+<!-- Liste des athletes -->
+<?php $listedCount = (int)($nomData['listed_count'] ?? count($listAth)); ?>
+<div class="bk-noms-section">
+    <h2>Athletes <?= htmlspecialchars($nomCanon) ?> <span style="font-size:14px;color:var(--text-secondary);font-weight:600;">(<?= $listedCount ?> affiches sur <?= $total ?>)</span></h2>
+    <?php if (!empty($stats['truncated'])): ?>
+    <p class="bk-noms-warn" style="font-size:12px;margin:0 0 12px;">&#9888; <?= $total ?> athletes au total, affichage limite aux <?= $listedCount ?> premiers (tri alphabetique). Les statistiques ci-dessus sont calculees sur l'ensemble.</p>
+    <?php endif; ?>
+    <div class="table-wrap">
+        <?php
+        $thNoms = '<tr><th>Nom complet</th><th>Sexe</th><th>Cat.</th><th>Nat.</th><th>Age</th><th>Club</th><th>Niveau</th><th>Records</th><th>Med.</th></tr>';
+        ?>
+        <table class="bk-table"><?= $thNoms ?></table>
+        <table class="bk-table">
+        <?php foreach ($listAth as $a):
+            $sx = $a['sexe'] ?? '';
+            $cat = $a['categorie'] ?? '';
+            $nat = $a['nationalite'] ?? '';
+            $niv = $a['meilleur_niveau'] ?? '';
+            $nivColor = '#6e7681';
+            if ($niv) {
+                $f = $niv[0];
+                if ($f === 'I') $nivColor = '#c026d3';
+                elseif ($f === 'N') $nivColor = '#e11d48';
+                elseif ($f === 'R') $nivColor = '#0891b2';
+                elseif ($f === 'D') $nivColor = '#f97316';
+            }
+        ?>
+        <tr>
+            <td><a href="<?= $_canonBase ?>/profil/<?= (int)$a['athlete_id_externe'] ?>" class="bk-noms-link-name" style="text-decoration:none;font-weight:600;"><?= htmlspecialchars($a['nom_complet']) ?></a></td>
+            <td><?php if ($sx): ?><span class="badge badge-<?= strtolower($sx) ?>"><?= htmlspecialchars($sx) ?></span><?php else: ?>-<?php endif; ?></td>
+            <td><?php if ($cat): ?><span class="badge badge-cat"><?= htmlspecialchars($cat) ?></span><?php else: ?>-<?php endif; ?></td>
+            <td style="color:var(--text-primary);"><?= htmlspecialchars($nat ?: '-') ?></td>
+            <td style="color:var(--text-primary);"><?= $a['age'] !== null ? (int)$a['age'] . ' ans' : '-' ?></td>
+            <td><?php if (!empty($a['club'])): ?><a href="<?= $_canonBase ?>/recherche?club=<?= urlencode($a['club']) ?>" class="bk-noms-link-club" style="text-decoration:none;font-size:12px;"><?= htmlspecialchars($a['club']) ?></a><?php else: ?>-<?php endif; ?></td>
+            <td><?php if ($niv): ?><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:<?= $nivColor ?>20;border:1px solid <?= $nivColor ?>;color:<?= $nivColor ?>;"><?= htmlspecialchars($niv) ?></span><?php else: ?>-<?php endif; ?></td>
+            <td style="color:var(--text-primary);text-align:center;"><?= (int)($a['nb_records'] ?? 0) ?></td>
+            <td class="bk-noms-medals" style="text-align:center;"><?= (int)($a['nb_medailles'] ?? 0) ?></td>
+        </tr>
+        <?php endforeach; ?>
+        </table>
+        <table class="bk-table"><?= $thNoms ?></table>
+    </div>
+</div>
+
+<?php endif; // total > 0
+endif; // mode index vs detail
+?>
+
+</div><!-- /.bk-noms-page -->
+
+<!-- =========== LIVE SEARCH JS (commun aux 2 modes) =========== -->
+<script>
+(function(){
+    var input = document.getElementById('bkNomsLiveInput');
+    var drop  = document.getElementById('bkNomsLiveDrop');
+    if (!input || !drop) return;
+    var API_BASE = '<?= $BASE_API_JS ?>';
+    var timer = null;
+    var lastQ = '';
+    var kbdIdx = -1;
+    var inflight = null;
+
+    function esc(s){ return (s+'').replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+    function highlight(name, q){
+        if (!q) return esc(name);
+        var i = name.toUpperCase().indexOf(q.toUpperCase());
+        if (i < 0) return esc(name);
+        return esc(name.substring(0,i)) + '<mark>' + esc(name.substring(i, i+q.length)) + '</mark>' + esc(name.substring(i+q.length));
+    }
+    function close(){ drop.classList.remove('show'); drop.innerHTML = ''; kbdIdx = -1; }
+    function render(results, q){
+        if (!results || !results.length) {
+            drop.innerHTML = '<div class="empty">Aucun nom trouve pour <b>' + esc(q) + '</b></div>';
+            drop.classList.add('show');
+            return;
+        }
+        var html = '';
+        results.forEach(function(r, idx){
+            var mfHtml = '';
+            if (r.M > 0) mfHtml += '<span class="mf" style="background:#3b82f620;color:#60a5fa;">&#9794; ' + r.M + '</span>';
+            if (r.F > 0) mfHtml += '<span class="mf" style="background:#ec489920;color:#f472b6;">&#9792; ' + r.F + '</span>';
+            html += '<a class="bk-noms-liveitem" data-idx="' + idx + '" href="<?= $_canonBase ?>/noms?q=' + encodeURIComponent(r.nom) + '">'
+                  + '<div class="nm">' + highlight(r.nom, q) + '</div>'
+                  + '<div class="meta"><span class="cnt">' + r.count.toLocaleString('fr-FR') + ' athl.</span>' + mfHtml + '</div>'
+                  + '</a>';
+        });
+        drop.innerHTML = html;
+        drop.classList.add('show');
+        kbdIdx = -1;
+    }
+    function fetchLive(q){
+        if (inflight && inflight.abort) try { inflight.abort(); } catch(e) {}
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        inflight = ctrl;
+        var url = API_BASE + '/nom.php?search=' + encodeURIComponent(q);
+        drop.innerHTML = '<div class="loading">Recherche...</div>';
+        drop.classList.add('show');
+        fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (!d || !d.success) { close(); return; }
+                if (input.value.trim() !== q) return; // l'utilisateur a continue a taper
+                render(d.results || [], q);
+            })
+            .catch(function(){ /* abort ou erreur reseau : silencieux */ });
+    }
+    input.addEventListener('input', function(){
+        var v = input.value.trim();
+        if (v === lastQ) return;
+        lastQ = v;
+        if (timer) clearTimeout(timer);
+        if (v.length < 2) { close(); return; }
+        timer = setTimeout(function(){ fetchLive(v); }, 220);
+    });
+    input.addEventListener('keydown', function(e){
+        var items = drop.querySelectorAll('.bk-noms-liveitem');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            kbdIdx = Math.min(kbdIdx + 1, items.length - 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            kbdIdx = Math.max(kbdIdx - 1, 0);
+        } else if (e.key === 'Enter' && kbdIdx >= 0) {
+            e.preventDefault();
+            window.location.href = items[kbdIdx].getAttribute('href');
+            return;
+        } else if (e.key === 'Escape') {
+            close();
+            return;
+        } else { return; }
+        items.forEach(function(it, i){ it.classList.toggle('kbd', i === kbdIdx); });
+    });
+    document.addEventListener('click', function(e){
+        if (!drop.contains(e.target) && e.target !== input) close();
+    });
+    input.addEventListener('focus', function(){
+        if (input.value.trim().length >= 2 && drop.innerHTML !== '') drop.classList.add('show');
+    });
+})();
+</script>
+
+<?php
+// ================================================================
 //  MENTIONS LEGALES
 // ================================================================
 elseif ($page === 'mentions-legales'):
@@ -14318,6 +15896,14 @@ elseif ($page === 'comparer'):
 </div>
 
 <div id="cmpChartArea" style="display:none;">
+    <!-- Carte de comparaison partageable -->
+    <div style="background:linear-gradient(135deg,#6c5ce7,#ec4899);border-radius:14px;padding:18px 20px;margin:20px 0;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+        <div>
+            <div style="color:#fff;font-weight:800;font-size:16px;">&#127908; Crée ta carte de comparaison</div>
+            <div style="color:#ffffffdd;font-size:13px;margin-top:2px;">Une image prête à partager sur WhatsApp, Insta, X… avec le face-à-face.</div>
+        </div>
+        <button onclick="openCmpCard()" style="background:#fff;color:#6c5ce7;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:800;cursor:pointer;white-space:nowrap;">G&eacute;n&eacute;rer l'image &rarr;</button>
+    </div>
     <div class="chart-card" style="margin:20px 0;">
         <h3><span class="chart-icon" style="background:#f59e0b20;color:#fbbf24;">VS</span> <span id="cmpChartTitle">Comparaison</span></h3>
         <canvas id="cmpChart" style="max-height:500px;"></canvas>
@@ -14342,6 +15928,27 @@ elseif ($page === 'comparer'):
         <button onclick="navigator.clipboard.writeText(document.getElementById('cmpSummaryText').textContent).then(function(){alert('Analyse copiée !')})" style="margin-top:12px;background:#253049;color:#f59e0b;border:1px solid #f59e0b40;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12px;">&#128203; Copier le texte</button>
     </div>
 </div>
+</div>
+
+<!-- Modale : carte de comparaison partageable -->
+<div id="cmpCardModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:16px;padding:20px;max-width:700px;width:100%;max-height:92vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="color:#f0f6fc;margin:0;font-size:18px;">&#127908; Carte &agrave; partager</h3>
+      <button onclick="closeCmpCard()" style="background:none;border:none;color:#8b949e;font-size:26px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <canvas id="cmpCardCanvas" width="1200" height="630" style="width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0d1117;"></canvas>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+      <button onclick="downloadCmpCard()" style="flex:1;min-width:160px;background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;border:none;border-radius:10px;padding:12px;font-weight:800;cursor:pointer;">&#11015;&#65039; T&eacute;l&eacute;charger l'image</button>
+      <button onclick="shareCmpCard()" id="cmpCardShareBtn" style="flex:1;min-width:160px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:10px;padding:12px;font-weight:700;cursor:pointer;">&#128241; Partager</button>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;justify-content:center;">
+      <a id="cmpShareWa" target="_blank" rel="noopener" style="color:#25D366;font-size:13px;text-decoration:none;font-weight:700;">WhatsApp</a>
+      <a id="cmpShareX" target="_blank" rel="noopener" style="color:#1DA1F2;font-size:13px;text-decoration:none;font-weight:700;">X / Twitter</a>
+      <a id="cmpShareFb" target="_blank" rel="noopener" style="color:#7aa0ff;font-size:13px;text-decoration:none;font-weight:700;">Facebook</a>
+    </div>
+    <p style="color:#6e7681;font-size:11px;text-align:center;margin:12px 0 0;">Le lien partag&eacute; ram&egrave;ne directement vers cette comparaison sur Bokonzi.</p>
+  </div>
 </div>
 
 <!-- ════════════════ TAB CLUBS ════════════════ -->
@@ -15440,7 +17047,7 @@ elseif ($page === 'produits'):
                     <li>Fiches athletes</li>
                     <li>Recherche simple</li>
                     <li>Consultation clubs</li>
-                    <li>5 recherches/jour</li>
+                    <li><?= BK_SEARCH_LIMIT_FREE ?> recherches/jour</li>
                 </ul>
                 <a href="<?= BK_BASE ?>/athletes" class="bk-prix-cta free">Commencer</a>
             </div>
@@ -16118,6 +17725,7 @@ elseif ($page === 'tuto'):
             <button class="club-detail-tab" data-tab="stats" onclick="switchClubTabTuto('stats')">Stats</button>
             <button class="club-detail-tab" data-tab="performances" onclick="switchClubTabTuto('performances')">Performances</button>
             <button class="club-detail-tab" data-tab="resume" onclick="switchClubTabTuto('resume')">Résumé</button>
+            <button class="club-detail-tab" data-tab="generations" onclick="switchClubTabTuto('generations')" style="color:#a78bfa;">&#127874; Nés</button>
             <button class="club-detail-tab" data-tab="sprint" onclick="switchClubTabTuto('sprint')" style="color:#ff6b6b;">Sprint</button>
         </div>
         <!-- Bouton suite APRÈS les onglets (visible en haut) -->
@@ -16774,7 +18382,7 @@ function _buildLimitMsg(data) {
             + '<div style="font-size:26px;font-weight:800;color:#a29bfe;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">Decouverte gratuite terminee</div>'
             + '<div style="font-size:16px;line-height:1.9;">Vous avez profite de <b style="color:#a29bfe;">60 secondes</b> de recherche libre.<br>Pour continuer a explorer la base, connectez-vous — c\'est gratuit.</div>'
             + '<div style="margin-top:22px;"><a href="login.php" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;font-weight:800;border-radius:10px;text-decoration:none;font-size:16px;box-shadow:0 4px 16px rgba(108,92,231,0.4);">&#128274; Se connecter / s\'inscrire</a></div>'
-            + '<div style="margin-top:16px;font-size:13px;color:#5a6580;line-height:1.7;">Connecte : <b style="color:#8b949e;">5 recherches/jour</b>.<br>Abonne : recherches <b style="color:#8b949e;">illimitees et sans delai</b> — <a href="<?= $_canonBase ?>/tarifs" style="color:#fbbf24;text-decoration:underline;">voir les abonnements</a>.</div>'
+            + '<div style="margin-top:16px;font-size:13px;color:#5a6580;line-height:1.7;">Connecte : <b style="color:#8b949e;"><?= BK_SEARCH_LIMIT_FREE ?> recherches/jour</b>.<br>Abonne : recherches <b style="color:#8b949e;">illimitees et sans delai</b> — <a href="<?= $_canonBase ?>/tarifs" style="color:#fbbf24;text-decoration:underline;">voir les abonnements</a>.</div>'
             + '</div>';
     }
     // ── Variante COOLDOWN : delai entre 2 recherches (connecte sans abo : 30 min) ──
@@ -16783,18 +18391,18 @@ function _buildLimitMsg(data) {
         var cdTot = data.cooldown_total || 1800;
         var cdDur = cdTot >= 60 ? (Math.round(cdTot / 60) + ' minute' + (cdTot >= 120 ? 's' : '')) : (cdTot + ' secondes');
         var cdId  = 'bkCdBox' + Math.random().toString(36).slice(2, 8);
-        setTimeout(function() { _bkStartCooldown(secs, data.search_used || 0, data.limit || 5, cdId); }, 30);
+        setTimeout(function() { _bkStartCooldown(secs, data.search_used || 0, data.limit || <?= BK_SEARCH_LIMIT_FREE ?>, cdId); }, 30);
         var cdCta = data.logged
             ? '<a href="<?= $_canonBase ?>/tarifs" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#ffd700,#fbbf24);color:#000;font-weight:800;border-radius:10px;text-decoration:none;font-size:15px;box-shadow:0 4px 14px rgba(255,215,0,0.35);">&#128081; Passer a l\'illimite — voir les abonnements</a>'
               + '<div style="margin-top:14px;font-size:12px;color:#5a6580;">Avec un abonnement : recherches sans delai et sans limite.</div>'
             : '<a href="login.php" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;font-weight:800;border-radius:10px;text-decoration:none;font-size:15px;box-shadow:0 4px 14px rgba(108,92,231,0.35);">&#128274; Connectez-vous pour continuer</a>'
-              + '<div style="margin-top:14px;font-size:12px;color:#5a6580;">Connecte : 5 recherches/jour. Abonne : recherches sans delai ni limite.</div>';
+              + '<div style="margin-top:14px;font-size:12px;color:#5a6580;">Connecte : <?= BK_SEARCH_LIMIT_FREE ?> recherches/jour. Abonne : recherches sans delai ni limite.</div>';
         return '<div style="text-align:center;padding:48px 30px;color:#c9d1d9;background:#0d1117;border:2px solid #f59e0b;border-radius:16px;margin:20px 0;">'
             + '<div style="font-size:64px;margin-bottom:10px;">&#9203;</div>'
             + '<div style="font-size:26px;font-weight:800;color:#f59e0b;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">Recherche en attente</div>'
             + '<div style="font-size:16px;line-height:1.9;">Pour proteger nos donnees, un delai de <b style="color:#fbbf24;">' + cdDur + '</b> separe deux recherches.<br>Prochaine recherche possible dans :</div>'
             + '<div id="' + cdId + '" style="font-size:46px;font-weight:900;color:#fbbf24;margin:16px 0;letter-spacing:2px;">' + _bkFmtTime(secs) + '</div>'
-            + '<div style="font-size:14px;color:#8b949e;margin-bottom:20px;">Vous avez utilise <b style="color:#a29bfe;">' + (data.search_used || 0) + '/' + (data.limit || 5) + '</b> recherches aujourd\'hui.</div>'
+            + '<div style="font-size:14px;color:#8b949e;margin-bottom:20px;">Vous avez utilise <b style="color:#a29bfe;">' + (data.search_used || 0) + '/' + (data.limit || <?= BK_SEARCH_LIMIT_FREE ?>) + '</b> recherches aujourd\'hui.</div>'
             + cdCta
             + '</div>';
     }
@@ -17021,6 +18629,7 @@ function _fillClubPanel(data, suffix) {
     window['_clubResumeYear' + s] = null;
     window['_clubYearDataCache' + s] = {};
     window['_clubCompareChart' + s] = null;
+    window['_clubYearSel' + s] = data.annee_filtree ? String(data.annee_filtree).split(',').map(Number).filter(function(n){return n>0;}) : [];
     window._ctxClubName = data.club.nom_club;
     document.getElementById('clubDetailName' + s).textContent = data.club.nom_club;
     var meta = data.total_athletes + ' athletes';
@@ -17037,6 +18646,7 @@ function _fillClubPanel(data, suffix) {
     if (data.filter_nationalite) filterBadges += ' <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;background:#ec489930;border:1px solid #ec489960;color:#f472b6;margin-left:4px;">\u{1F30D} ' + escapeHtml(data.filter_nationalite) + '</span>';
     if (data.filter_sexe) filterBadges += ' <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;background:#3b82f630;border:1px solid #3b82f660;color:#60a5fa;margin-left:4px;">' + (data.filter_sexe === 'M' ? 'Hommes' : 'Femmes') + '</span>';
     if (data.filter_categorie) filterBadges += ' <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;background:#10b98130;border:1px solid #10b98160;color:#34d399;margin-left:4px;">' + escapeHtml(data.filter_categorie) + '</span>';
+    if (data.filter_annee_naissance) filterBadges += ' <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;background:#a78bfa30;border:1px solid #a78bfa60;color:#c4b5fd;margin-left:4px;">🎂 ' + escapeHtml(String(data.filter_annee_naissance).split(',').join(', ')) + '</span>';
     var metaEl = document.getElementById('clubDetailMeta' + s);
     metaEl.innerHTML = escapeHtml(meta) + filterBadges;
     // QR code dynamique
@@ -17325,14 +18935,6 @@ function _renderClubTab(tab, suffix) {
     var d = window['_clubDetailData' + s];
     if (!content || !d) return;
     var html = '';
-    // Bandeau periode : donnees limitees a l'annee en cours + precedente
-    var _bkYN = new Date().getFullYear();
-    var _bkYP = _bkYN - 1;
-    html += '<div style="margin-bottom:16px;padding:12px 18px;background:linear-gradient(135deg,#f59e0b25,#ec489925);border:2px solid #f59e0b;border-radius:12px;display:flex;align-items:center;gap:12px;font-weight:700;">'
-         + '<span style="font-size:22px;">&#128197;</span>'
-         + '<span style="color:#fbbf24;font-size:15px;letter-spacing:0.3px;">Donnees affichees : <b style="color:#fff;font-size:17px;">' + _bkYP + ' + ' + _bkYN + '</b> uniquement</span>'
-         + '<span style="margin-left:auto;font-size:11px;color:#fbbf24;background:#f59e0b20;padding:4px 10px;border-radius:100px;border:1px solid #f59e0b50;">Gratuit</span>'
-         + '</div>';
     if (tab === 'epreuves') {
         var ep = d.epreuves || [];
         var totalEp = d.total_epreuves || ep.length;
@@ -17404,23 +19006,30 @@ function _renderClubTab(tab, suffix) {
             html += '<button onclick="_clubEpYearModeSet(\'compare\',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isCmp?'#ffd700':'#1e2a3a')+';background:'+(isCmp?'#ffd70020':'transparent')+';color:'+(isCmp?'#ffd700':'#5a6580')+';transition:all .2s;">Comparer</button>';
             html += '</div>';
             var recentYears = anneesDisp.slice(-15).reverse();
+            // Annees actuellement selectionnees (liste, source = annee_filtree backend "2021,2023")
+            var selYears = yearFilter ? String(yearFilter).split(',').map(Number).filter(function(n){return n>0;}) : [];
             if (isFilter) {
-                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;align-items:center;">';
-                var yrAllActive = !yearFilter;
-                html += '<button onclick="_clubSetEpYear(null,\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(yrAllActive?'#a29bfe':'#1e2a3a')+';background:'+(yrAllActive?'#a29bfe20':'transparent')+';color:'+(yrAllActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;align-items:center;">';
+                var yrAllActive = selYears.length === 0;
+                html += '<button onclick="_clubToggleYear(null,\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(yrAllActive?'#a29bfe':'#1e2a3a')+';background:'+(yrAllActive?'#a29bfe20':'transparent')+';color:'+(yrAllActive?'#a29bfe':'#5a6580')+';transition:all .2s;">Tout</button>';
                 recentYears.forEach(function(yr) {
-                    var isOn = yearFilter && yearFilter == yr;
-                    html += '<button onclick="_clubSetEpYear(' + yr + ',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?'#a29bfe':'#1e2a3a')+';background:'+(isOn?'#a29bfe20':'transparent')+';color:'+(isOn?'#a29bfe':'#5a6580')+';transition:all .2s;">' + yr + '</button>';
+                    var isOn = selYears.indexOf(yr) !== -1;
+                    html += '<button onclick="_clubToggleYear(' + yr + ',\'' + s + '\')" style="padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid '+(isOn?'#a29bfe':'#1e2a3a')+';background:'+(isOn?'#a29bfe20':'transparent')+';color:'+(isOn?'#a29bfe':'#5a6580')+';transition:all .2s;">' + (isOn ? '✓ ' : '') + yr + '</button>';
                 });
                 if (anneesDisp.length > 15) {
-                    html += '<select onchange="_clubSetEpYear(this.value ? parseInt(this.value) : null,\'' + s + '\')" style="padding:3px 8px;border-radius:6px;font-size:11px;background:#0d1117;border:1px solid #1e2a3a;color:#5a6580;cursor:pointer;">';
+                    html += '<select onchange="if(this.value)_clubToggleYear(parseInt(this.value),\'' + s + '\');this.selectedIndex=0;" style="padding:3px 8px;border-radius:6px;font-size:11px;background:#0d1117;border:1px solid #1e2a3a;color:#5a6580;cursor:pointer;">';
                     html += '<option value="">+ anciennes</option>';
                     anneesDisp.slice(0, anneesDisp.length - 15).forEach(function(yr) {
-                        html += '<option value="' + yr + '"' + (yearFilter == yr ? ' selected' : '') + '>' + yr + '</option>';
+                        html += '<option value="' + yr + '">' + yr + (selYears.indexOf(yr)!==-1?' ✓':'') + '</option>';
                     });
                     html += '</select>';
                 }
                 html += '</div>';
+                if (selYears.length > 0) {
+                    html += '<div style="color:#a29bfe;font-size:10px;margin-bottom:12px;">Données agrégées sur ' + selYears.slice().sort().join(', ') + ' — toutes les stats du club sont filtrées sur ces années.</div>';
+                } else {
+                    html += '<div style="margin-bottom:12px;"></div>';
+                }
             } else {
                 // Mode comparaison : multi-select
                 html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;align-items:center;">';
@@ -18135,6 +19744,44 @@ function _renderClubTab(tab, suffix) {
             // Bouton recharger
             html += '<div style="text-align:center;margin-top:16px;">';
             html += '<button onclick="_clubSprintLoad(\'' + s + '\')" style="padding:6px 16px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:12px;cursor:pointer;">Recharger</button>';
+            html += '</div>';
+        }
+    } else if (tab === 'generations') {
+        var yrs = d.annees_naissance_disponibles || [];
+        var selN = (d.filter_annee_naissance ? String(d.filter_annee_naissance).split(',') : []).filter(Boolean);
+        html += '<div style="margin-bottom:16px;padding:14px 18px;background:linear-gradient(135deg,#a78bfa18,#6c5ce718);border:1px solid #a78bfa55;border-radius:12px;">';
+        html += '<div style="font-size:16px;font-weight:800;color:#c4b5fd;display:flex;align-items:center;gap:8px;">&#127874; Athletes par annee de naissance</div>';
+        html += '<div style="color:#8b949e;font-size:12px;margin-top:4px;">Selectionnez une ou plusieurs annees pour filtrer tout le panneau (epreuves, records, stats, resume...).</div>';
+        html += '</div>';
+        if (!yrs.length) {
+            html += '<div style="text-align:center;padding:30px;color:#8b949e;">Aucune annee de naissance renseignee pour ce club.</div>';
+        } else {
+            // Barre d'action : selection courante + reset
+            html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">';
+            if (selN.length) {
+                html += '<span style="color:#c4b5fd;font-size:13px;font-weight:700;">' + selN.length + ' annee' + (selN.length > 1 ? 's' : '') + ' selectionnee' + (selN.length > 1 ? 's' : '') + '</span>';
+                html += '<button onclick="_clubSetNaissance(\'\',\'' + s + '\')" style="padding:4px 12px;border-radius:8px;border:1px solid #f8717140;background:transparent;color:#f87171;font-size:12px;cursor:pointer;font-weight:600;">&#10005; Tout afficher</button>';
+            } else {
+                html += '<span style="color:#8b949e;font-size:13px;">Toutes les generations affichees &mdash; cliquez une annee pour filtrer</span>';
+            }
+            html += '</div>';
+            // Distribution visuelle (barres horizontales cliquables)
+            var maxN = 0;
+            yrs.forEach(function(y) { if (y.nb > maxN) maxN = y.nb; });
+            var nowY = new Date().getFullYear();
+            html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+            yrs.forEach(function(y) {
+                var isSel = selN.indexOf(String(y.annee)) !== -1;
+                var pct = maxN > 0 ? Math.round(y.nb / maxN * 100) : 0;
+                var age = nowY - y.annee;
+                html += '<div onclick="_clubToggleNaissance(' + y.annee + ',\'' + s + '\')" style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:10px;cursor:pointer;border:1px solid ' + (isSel ? '#a78bfa' : '#1e2a3a') + ';background:' + (isSel ? '#a78bfa18' : 'transparent') + ';transition:all .15s;">';
+                html += '<span style="min-width:46px;font-weight:800;font-size:14px;color:' + (isSel ? '#c4b5fd' : '#c9d1d9') + ';">' + y.annee + '</span>';
+                html += '<span style="min-width:52px;font-size:10px;color:#5a6580;">~' + age + ' ans</span>';
+                html += '<div style="flex:1;height:14px;background:#0d1117;border-radius:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#6c5ce7,#a78bfa);border-radius:7px;"></div></div>';
+                html += '<span style="min-width:58px;text-align:right;font-size:12px;font-weight:700;color:' + (isSel ? '#c4b5fd' : '#8b949e') + ';">' + y.nb.toLocaleString('fr-FR') + '</span>';
+                html += '<span style="width:14px;text-align:center;color:#a78bfa;font-weight:700;">' + (isSel ? '&#10003;' : '') + '</span>';
+                html += '</div>';
+            });
             html += '</div>';
         }
     }
@@ -18994,7 +20641,37 @@ function _clubFilterParams(d) {
     if (d.filter_nationalite) p += '&nationalite=' + encodeURIComponent(d.filter_nationalite);
     if (d.filter_sexe) p += '&sexe=' + encodeURIComponent(d.filter_sexe);
     if (d.filter_categorie) p += '&categorie=' + encodeURIComponent(d.filter_categorie);
+    if (d.filter_annee_naissance) p += '&annee_naissance=' + encodeURIComponent(d.filter_annee_naissance);
     return p;
+}
+// --- Onglet Generations : filtre par annee(s) de naissance ---
+function _clubSetNaissance(val, suffix) {
+    _clubReloadNaissance(val, suffix || '');
+}
+function _clubToggleNaissance(year, suffix) {
+    var s = suffix || '';
+    var d = window['_clubDetailData' + s];
+    if (!d) return;
+    var cur = (d.filter_annee_naissance ? String(d.filter_annee_naissance).split(',') : []).filter(Boolean);
+    var idx = cur.indexOf(String(year));
+    if (idx === -1) cur.push(String(year)); else cur.splice(idx, 1);
+    _clubReloadNaissance(cur.join(','), s);
+}
+function _clubReloadNaissance(naissCsv, suffix) {
+    var s = suffix || '';
+    var d = window['_clubDetailData' + s];
+    if (!d || !d.club) return;
+    d.filter_annee_naissance = naissCsv || null;
+    var content = document.getElementById('clubDetailContent' + s);
+    if (content) content.innerHTML = '<div class="loading-msg">Chargement...</div>';
+    var url = BASE_API + '/club_stats.php?id=' + d.club.id_club;
+    if (d.annee_filtree) url += '&annee=' + d.annee_filtree;
+    url += _clubFilterParams(d);
+    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+        if (!data.success) { if (content) content.innerHTML = '<div class="loading-msg">Erreur de chargement</div>'; return; }
+        _fillClubPanel(data, s);
+        _switchClubTab('generations', s);
+    }).catch(function() { if (content) content.innerHTML = '<div class="loading-msg">Erreur reseau</div>'; });
 }
 function loadClubRecPage(page, suffix) {
     var s = suffix || '';
@@ -19355,6 +21032,50 @@ function _clubSetEpYear(year, suffix) {
         if (data.niveaux_par_annee) d.niveaux_par_annee = data.niveaux_par_annee;
         _renderClubTab('epreuves', s);
     });
+}
+// Multi-selection d'annees (mode "Filtrer") : agrege toutes les stats du club
+// sur les annees cochees. Aucune annee = toutes les annees.
+function _clubToggleYear(yr, suffix) {
+    var s = suffix || '';
+    var sel = (window['_clubYearSel' + s] || []).slice();
+    if (yr === null || yr === undefined || yr === '') {
+        sel = [];
+    } else {
+        yr = parseInt(yr);
+        var i = sel.indexOf(yr);
+        if (i === -1) sel.push(yr); else sel.splice(i, 1);
+    }
+    window['_clubYearSel' + s] = sel;
+    _clubReloadYears(s);
+}
+// Recharge COMPLETE du panneau avec les annees selectionnees, en preservant l'onglet actif.
+function _clubReloadYears(suffix) {
+    var s = suffix || '';
+    var d = window['_clubDetailData' + s];
+    if (!d || !d.club) return;
+    var years = (window['_clubYearSel' + s] || []).slice().sort(function(a,b){ return a-b; });
+    var epMode = window['_clubEpMode' + s] || 'club';
+    var url = BASE_API + '/club_stats.php?id=' + d.club.id_club + '&ep=1';
+    if (years.length) url += '&annee=' + years.join(',');
+    if (epMode === 'perso') url += '&perso=1';
+    url += _clubFilterParams(d);
+    // Memoriser l'onglet actif pour le restaurer apres rechargement
+    var panel = document.getElementById('clubDetailPanel' + s);
+    var activeTab = 'epreuves';
+    if (panel) { var at = panel.querySelector('.club-detail-tab.active'); if (at) activeTab = at.getAttribute('data-tab') || 'epreuves'; }
+    var content = document.getElementById('clubDetailContent' + s);
+    if (content) content.innerHTML = '<div class="loading-msg">Chargement...</div>';
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){
+        if (!data.success) { if (content) content.innerHTML = '<div class="loading-msg">Erreur de chargement</div>'; return; }
+        _fillClubPanel(data, s);
+        window['_clubYearSel' + s] = data.annee_filtree ? String(data.annee_filtree).split(',').map(Number).filter(function(n){return n>0;}) : [];
+        if (panel) {
+            panel.querySelectorAll('.club-detail-tab').forEach(function(t){ t.classList.remove('active'); });
+            var tEl = panel.querySelector('.club-detail-tab[data-tab="' + activeTab + '"]');
+            if (tEl) tEl.classList.add('active');
+        }
+        _renderClubTab(activeTab, s);
+    }).catch(function(){ if (content) content.innerHTML = '<div class="loading-msg">Erreur réseau</div>'; });
 }
 function _clubSetEpMode(mode, suffix) {
     var s = suffix || '';
@@ -19959,7 +21680,19 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
             try {
                 const url = config.url(q);
                 const resp = await fetch(url, { signal: controller.signal });
-                const data = await resp.json();
+                const rawText = await resp.text();
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    console.error('[live-search] JSON parse failed', {
+                        url: url,
+                        status: resp.status,
+                        contentType: resp.headers.get('content-type'),
+                        bodyPreview: rawText.substring(0, 500)
+                    });
+                    throw parseErr;
+                }
 
                 input.style.borderColor = '#1a2540';
                 input.classList.remove('ls-loading');
@@ -19973,9 +21706,10 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                         paginated.style.display = 'none';
                         input.style.borderColor = '#ff7675';
                     } else {
-                        status.textContent = data.error || 'Erreur';
+                        status.textContent = data.error || ('Erreur HTTP ' + resp.status);
                         status.className = 'ls-status error';
                         input.style.borderColor = '#ff7675';
+                        console.warn('[live-search] API success=false', { url: url, status: resp.status, data: data });
                     }
                     return;
                 }
@@ -20017,8 +21751,9 @@ function liveSearch(inputId, statusId, resultsId, paginatedId, config) {
                 if (e.name === 'AbortError') return;
                 input.style.borderColor = '#ff7675';
                 input.classList.remove('ls-loading');
-                status.textContent = 'Erreur de connexion';
+                status.textContent = 'Erreur de connexion (' + (e.name || 'fetch') + ')';
                 status.className = 'ls-status error';
+                console.error('[live-search] fetch ou parse echoue', e);
             }
         }, 300);
     });
@@ -20068,7 +21803,7 @@ function _rchRenderClubs(items, q) {
         n++;
         html += '<tr>'
             + '<td>' + n + '</td>'
-            + '<td><b><a href="#" onclick="openClubDetail(' + c.id_club + ');return false;">' + highlight(c.nom_club, q) + '</a></b></td>'
+            + '<td><b><a href="?page=recherche&club=' + encodeURIComponent(c.nom_club) + '" style="color:#a29bfe;text-decoration:none;">' + highlight(c.nom_club, q) + '</a></b></td>'
             + '<td>' + c.nb_athletes + '</td>'
             + '<td><a href="?page=recherche&club=' + encodeURIComponent(c.nom_club) + '">Voir athletes</a></td>'
             + '</tr>';
@@ -20391,6 +22126,135 @@ function compareNow() {
 
     // Scroll vers les graphiques
     document.getElementById('cmpChartArea').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ════════════ Carte de comparaison partageable (acquisition) ════════════
+var _cmpCardURL = '';
+function _buildCmpShareURL() {
+    var ids = cmpAthletes.filter(function(a){ return a.data; }).map(function(a){ return a.id; });
+    return location.origin + '/?page=comparer&ids=' + ids.join(',');
+}
+function openCmpCard() {
+    var ready = cmpAthletes.filter(function(a){ return a.data; });
+    if (ready.length < 2) { alert('Ajoutez au moins 2 athlètes (attendez le chargement).'); return; }
+    drawCmpCard(ready);
+    _cmpCardURL = _buildCmpShareURL();
+    var txt = encodeURIComponent('Comparaison d\'athlètes sur Bokonzi : ' + ready.map(function(a){ return a.name; }).join(' vs '));
+    var u = encodeURIComponent(_cmpCardURL);
+    document.getElementById('cmpShareWa').href = 'https://wa.me/?text=' + txt + '%20' + u;
+    document.getElementById('cmpShareX').href  = 'https://twitter.com/intent/tweet?text=' + txt + '&url=' + u;
+    document.getElementById('cmpShareFb').href = 'https://www.facebook.com/sharer/sharer.php?u=' + u;
+    document.getElementById('cmpCardModal').style.display = 'flex';
+}
+function closeCmpCard() { document.getElementById('cmpCardModal').style.display = 'none'; }
+
+function _ccRound(x, cx, cy, w, h, r) {
+    x.beginPath();
+    x.moveTo(cx + r, cy);
+    x.arcTo(cx + w, cy, cx + w, cy + h, r);
+    x.arcTo(cx + w, cy + h, cx, cy + h, r);
+    x.arcTo(cx, cy + h, cx, cy, r);
+    x.arcTo(cx, cy, cx + w, cy, r);
+    x.closePath();
+}
+function _ccWrap(x, text, px, py, maxW, lh, maxLines) {
+    var words = String(text || '').split(' '), line = '', lines = [];
+    for (var i = 0; i < words.length; i++) {
+        var test = line ? line + ' ' + words[i] : words[i];
+        if (x.measureText(test).width > maxW && line) { lines.push(line); line = words[i]; }
+        else { line = test; }
+    }
+    if (line) lines.push(line);
+    if (lines.length > maxLines) { lines = lines.slice(0, maxLines); lines[maxLines - 1] += '…'; }
+    for (var j = 0; j < lines.length; j++) x.fillText(lines[j], px, py + j * lh);
+    return py + lines.length * lh;
+}
+function drawCmpCard(athletes) {
+    var c = document.getElementById('cmpCardCanvas'), x = c.getContext('2d');
+    var W = c.width, H = c.height;
+    var g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0d1117'); g.addColorStop(1, '#161b22');
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    var g2 = x.createLinearGradient(0, 0, W, 0); g2.addColorStop(0, '#6c5ce7'); g2.addColorStop(1, '#ec4899');
+    x.fillStyle = g2; x.fillRect(0, 0, W, 8);
+
+    x.textBaseline = 'top'; x.textAlign = 'left';
+    x.fillStyle = '#fff'; x.font = '800 40px Arial'; x.fillText('BOKONZI', 40, 32);
+    x.fillStyle = '#8b949e'; x.font = '600 20px Arial'; x.textAlign = 'right';
+    x.fillText('Comparaison d\'athlètes', W - 40, 44);
+    x.strokeStyle = '#30363d'; x.lineWidth = 1; x.beginPath(); x.moveTo(40, 92); x.lineTo(W - 40, 92); x.stroke();
+
+    var n = athletes.length, pad = 40, gap = (n === 2 ? 76 : 24);
+    var colW = (W - pad * 2 - gap * (n - 1)) / n;
+    var topY = 122, colH = H - topY - 64;
+
+    athletes.forEach(function(a, i) {
+        var cx = pad + i * (colW + gap);
+        x.fillStyle = '#0d1117'; _ccRound(x, cx, topY, colW, colH, 14); x.fill();
+        x.fillStyle = a.color || '#6c5ce7'; _ccRound(x, cx, topY, colW, 10, 6); x.fill();
+
+        var ix = cx + 22, iw = colW - 44, iy = topY + 28;
+        x.textAlign = 'left'; x.fillStyle = '#fff'; x.font = '800 30px Arial';
+        iy = _ccWrap(x, a.name, ix, iy, iw, 34, 2) + 6;
+
+        var id = (a.data && a.data.identite) || {};
+        var meta = [id.categorie, id.sexe, id.nationalite].filter(Boolean).join('  ·  ');
+        if (meta) { x.fillStyle = '#8b949e'; x.font = '600 18px Arial'; x.fillText(meta, ix, iy); iy += 28; }
+        var club = id.club || (a.data && a.data.clubs && a.data.clubs[0] ? (a.data.clubs[0].nom || a.data.clubs[0].nom_club) : '');
+        if (club) { x.fillStyle = '#a29bfe'; x.font = '600 18px Arial'; iy = _ccWrap(x, String(club).replace(/\*$/, '').trim(), ix, iy, iw, 24, 1) + 4; }
+        iy += 12;
+
+        var stats = [
+            ['Records', ((a.data && a.data.records) || []).length],
+            ['Médailles', ((a.data && a.data.medailles) || []).length],
+            ['Podiums', ((a.data && a.data.podiums) || []).length],
+            ['Sélections', ((a.data && a.data.selections) || []).length]
+        ];
+        stats.forEach(function(s) {
+            x.fillStyle = '#161b22'; _ccRound(x, ix, iy, iw, 44, 10); x.fill();
+            x.fillStyle = '#c9d1d9'; x.font = '600 18px Arial'; x.textAlign = 'left'; x.fillText(s[0], ix + 14, iy + 12);
+            x.fillStyle = a.color || '#6c5ce7'; x.font = '800 22px Arial'; x.textAlign = 'right'; x.fillText(String(s[1]), ix + iw - 14, iy + 10);
+            iy += 52;
+        });
+
+        x.textAlign = 'left';
+        var rec = ((a.data && a.data.records) || []).filter(function(r){ return r.performance_brut && r.epreuve; })[0];
+        if (rec && iy < topY + colH - 50) {
+            x.fillStyle = '#8b949e'; x.font = '600 15px Arial'; x.fillText('Record clé', ix, iy); iy += 20;
+            x.fillStyle = '#fff'; x.font = '700 18px Arial'; _ccWrap(x, rec.epreuve + ' — ' + rec.performance_brut, ix, iy, iw, 22, 2);
+        }
+    });
+
+    if (n === 2) {
+        var mx = W / 2, my = topY + colH / 2;
+        x.fillStyle = '#f59e0b'; x.beginPath(); x.arc(mx, my, 34, 0, Math.PI * 2); x.fill();
+        x.fillStyle = '#0d1117'; x.font = '800 26px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillText('VS', mx, my + 1); x.textBaseline = 'top';
+    }
+
+    x.fillStyle = '#6e7681'; x.font = '600 20px Arial'; x.textAlign = 'center';
+    x.fillText('Compare tes athlètes sur bokonzi.com', W / 2, H - 42);
+}
+function downloadCmpCard() {
+    var c = document.getElementById('cmpCardCanvas');
+    var a = document.createElement('a');
+    a.download = 'bokonzi-comparaison.png';
+    a.href = c.toDataURL('image/png');
+    a.click();
+}
+function shareCmpCard() {
+    var c = document.getElementById('cmpCardCanvas');
+    if (navigator.canShare && c.toBlob) {
+        c.toBlob(function(blob) {
+            var file = new File([blob], 'bokonzi-comparaison.png', { type: 'image/png' });
+            if (navigator.canShare({ files: [file] })) {
+                navigator.share({ files: [file], title: 'Comparaison Bokonzi', text: 'Compare des athlètes sur Bokonzi', url: _cmpCardURL }).catch(function(){});
+            } else if (navigator.share) {
+                navigator.share({ title: 'Comparaison Bokonzi', text: 'Compare des athlètes sur Bokonzi', url: _cmpCardURL }).catch(function(){});
+            } else { downloadCmpCard(); }
+        }, 'image/png');
+    } else if (navigator.share) {
+        navigator.share({ title: 'Comparaison Bokonzi', url: _cmpCardURL }).catch(function(){});
+    } else { downloadCmpCard(); }
 }
 
 function buildProgressionChart(athletes, epreuve) {
@@ -21575,7 +23439,7 @@ function copyCmpLink() {
             <option value="autre">Autre</option>
         </select>
         <div id="reportRetraitHint" style="display:none;background:#ef444415;border:1px solid #ef444440;border-radius:8px;padding:10px 14px;margin:8px 0 12px;">
-            <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0;line-height:1.5;">&#9888; L'email est obligatoire pour ce motif. Vous recevrez un lien de confirmation : un seul clic et votre profil sera masque immediatement.</p>
+            <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0;line-height:1.5;">&#9888; L'email est obligatoire pour ce motif. Vous recevrez un lien de confirmation : un seul clic et votre profil sera <strong>retire des resultats de recherche et de Google</strong>. Vos donnees sont conservees, restauration possible sur demande.</p>
         </div>
         <label for="reportMessage">Details (facultatif)</label>
         <textarea id="reportMessage" placeholder="Precisez votre demande..." maxlength="2000"></textarea>
@@ -21586,6 +23450,95 @@ function copyCmpLink() {
     </div>
 </div>
 <script>
+// === Admin : Masquer un profil (soft delete, reversible) ===
+window.adminSoftHideProfile = function(athleteId, athleteName) {
+    var msg = "MASQUER LE PROFIL (action reversible)\n\n"
+            + athleteName + " (ID " + athleteId + ")\n\n"
+            + "Effets :\n"
+            + "  • Disparait des resultats Google (410 Gone)\n"
+            + "  • Disparait de la recherche, listes, stats, sitemap\n"
+            + "  • Plus accessible via son URL directe\n\n"
+            + "Donnees conservees en BDD. Restauration possible en 1 clic.\n\n"
+            + "Continuer ?";
+    if (!confirm(msg)) return;
+    fetch('api/report.php?soft_hide=' + encodeURIComponent(athleteId), { credentials: 'same-origin' })
+        .then(function(r) { return r.json().then(function(j) { return { status: r.status, json: j }; }); })
+        .then(function(res) {
+            if (res.json && res.json.success) {
+                alert('Profil ' + athleteName + ' masque.\n'
+                    + (res.json.affected || 0) + ' ligne(s) BDD mises a jour\n'
+                    + (res.json.cache_cleared || 0) + ' fichier(s) cache vides\n\n'
+                    + 'Pour restaurer : reviens sur ce profil et clique "Restaurer".');
+                window.location.reload();
+            } else {
+                alert('Erreur : ' + (res.json && res.json.error ? res.json.error : 'HTTP ' + res.status));
+            }
+        })
+        .catch(function(err) { alert('Erreur reseau : ' + err.message); });
+};
+
+// === Admin : Restaurer un profil masque ===
+window.adminRestoreProfile = function(athleteId, athleteName) {
+    if (!confirm('Restaurer le profil ' + athleteName + ' (le rendre a nouveau visible) ?')) return;
+    fetch('api/report.php?restore=' + encodeURIComponent(athleteId), { credentials: 'same-origin' })
+        .then(function(r) { return r.json().then(function(j) { return { status: r.status, json: j }; }); })
+        .then(function(res) {
+            if (res.json && res.json.success) {
+                alert('Profil ' + athleteName + ' restaure.\nRechargement...');
+                window.location.reload();
+            } else {
+                alert('Erreur : ' + (res.json && res.json.error ? res.json.error : 'HTTP ' + res.status));
+            }
+        })
+        .catch(function(err) { alert('Erreur reseau : ' + err.message); });
+};
+
+// === Admin : suppression definitive d'un profil depuis la page profil ===
+window.adminPurgeProfile = function(athleteId, athleteName) {
+    var msg = "⚠ SUPPRESSION DEFINITIVE\n\n"
+            + "Vous allez supprimer DEFINITIVEMENT :\n"
+            + "  " + athleteName + " (ID " + athleteId + ")\n\n"
+            + "Cette action va :\n"
+            + "  • Effacer toutes les donnees (records, progressions, resultats, medailles, podiums)\n"
+            + "  • Supprimer le compte utilisateur lie si existe\n"
+            + "  • Blacklister l'athlete (empeche tout re-scraping futur)\n"
+            + "  • Retirer de Google (HTTP 410 Gone)\n\n"
+            + "IRREVERSIBLE. Continuer ?";
+    if (!confirm(msg)) return;
+    var confirm2 = prompt('Pour confirmer, tapez SUPPRIMER (en majuscules) :');
+    if (confirm2 !== 'SUPPRIMER') {
+        alert('Suppression annulee.');
+        return;
+    }
+    var btn = document.getElementById('btnAdminPurge') || event.target;
+    if (btn) { btn.disabled = true; btn.textContent = 'Suppression en cours...'; }
+    fetch('api/report.php?hide_athlete=' + encodeURIComponent(athleteId), { credentials: 'same-origin' })
+        .then(function(r) { return r.json().then(function(j) { return { status: r.status, json: j }; }); })
+        .then(function(res) {
+            if (res.json && res.json.success) {
+                var d = res.json.detail || {};
+                var summary = 'Profil ' + athleteName + ' supprime.\n\n';
+                if (d.deleted) {
+                    if (d.deleted.athletes) summary += '• ' + d.deleted.athletes + ' ligne(s) athletes\n';
+                    if (d.deleted.users) summary += '• ' + d.deleted.users + ' compte(s) user lie(s)\n';
+                    if (d.deleted.nom_et_liens) summary += '• ' + d.deleted.nom_et_liens + ' entree(s) nom_et_liens\n';
+                    if (d.deleted.search_tracking) summary += '• ' + d.deleted.search_tracking + ' entree(s) tracking\n';
+                    if (d.deleted.cache_files) summary += '• ' + d.deleted.cache_files + ' fichier(s) cache\n';
+                }
+                summary += '\nRedirection vers l\'accueil...';
+                alert(summary);
+                window.location.href = '?page=accueil';
+            } else {
+                alert('Erreur : ' + (res.json && res.json.error ? res.json.error : 'reponse invalide (HTTP ' + res.status + ')'));
+                if (btn) { btn.disabled = false; btn.innerHTML = '&#128465; Supprimer (admin)'; }
+            }
+        })
+        .catch(function(err) {
+            alert('Erreur reseau : ' + err.message);
+            if (btn) { btn.disabled = false; btn.innerHTML = '&#128465; Supprimer (admin)'; }
+        });
+};
+
 window.openReportModal = function(athleteId, athleteName) {
     document.getElementById('reportAthleteId').value = athleteId;
     document.getElementById('reportAthleteNameVal').value = athleteName;

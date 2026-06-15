@@ -2,6 +2,11 @@
 /**
  * classement.php — Page de classement des athlètes par épreuve
  */
+// Anti-cache navigateur : force le chargement de la derniere version de la page
+// (sinon un cache navigateur peut masquer le graphique recemment ajoute).
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
 require_once __DIR__ . '/../core/ip_logger.php';
 logIp();
 ?>
@@ -10,6 +15,7 @@ logIp();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-adsense-account" content="ca-pub-7899923856846249">
     <title>Classement — Bokonzi</title>
     <link rel="stylesheet" href="../dashboard.css">
     <style>
@@ -168,7 +174,101 @@ logIp();
         .filters-row { flex-direction: column; }
         .filter-group { min-width: 100%; }
     }
+    /* Barre d'outils de tri */
+    .cls-toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+    .cls-tb-label {
+        color: #5a6580;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-right: 4px;
+    }
+    .cls-sort-btn {
+        padding: 7px 14px;
+        background: #1a2540;
+        border: 1px solid #253560;
+        border-radius: 18px;
+        color: #a8b2c8;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .cls-sort-btn:hover { background: #253560; }
+    .cls-sort-btn.is-active {
+        background: linear-gradient(135deg, #6c5ce7, #5541d0);
+        border-color: transparent;
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(108,92,231,0.4);
+    }
+    /* Graphique en barres horizontales */
+    .cls-chart {
+        background: #080c14;
+        border: 1px solid #1a2540;
+        border-radius: 10px;
+        padding: 18px 16px;
+        margin-bottom: 20px;
+    }
+    .cls-chart-title {
+        color: #a29bfe;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 14px;
+    }
+    .cls-bar-row {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .cls-bar-name {
+        color: #d0d7e0;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: right;
+    }
+    .cls-bar-name a { color: #d0d7e0; text-decoration: none; }
+    .cls-bar-name a:hover { color: #a29bfe; }
+    .cls-bar-track {
+        background: #111830;
+        border-radius: 6px;
+        height: 22px;
+        position: relative;
+        overflow: hidden;
+    }
+    .cls-bar-fill {
+        height: 100%;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 8px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #fff;
+        font-family: 'Courier New', monospace;
+        min-width: 44px;
+        box-sizing: border-box;
+        transition: width 0.5s cubic-bezier(.2,.8,.2,1);
+    }
+    @media (max-width: 600px) {
+        .cls-bar-row { grid-template-columns: 110px 1fr; }
+    }
     </style>
+    <?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
 </head>
 <body>
 <?php include __DIR__ . '/../nav.php'; ?>
@@ -231,6 +331,15 @@ logIp();
             <span><strong id="totalResults">0</strong> athlètes trouvés</span>
             <span id="sortInfo"></span>
         </div>
+        <div class="cls-toolbar">
+            <span class="cls-tb-label">Trier :</span>
+            <button type="button" class="cls-sort-btn is-active" id="clsSortBest" onclick="toggleClsSort('best')">&#127942; Meilleure perf d'abord</button>
+            <button type="button" class="cls-sort-btn" id="clsSortWorst" onclick="toggleClsSort('worst')">&#128317; Moins bonne d'abord</button>
+        </div>
+        <div class="cls-chart" id="clsChart" style="display:none;">
+            <div class="cls-chart-title" id="clsChartTitle">Top performances</div>
+            <div id="clsChartBody"></div>
+        </div>
         <div class="table-wrap">
             <table class="bk-table">
                 <thead>
@@ -271,6 +380,9 @@ logIp();
 <script>
 let currentOffset = 0;
 const PAGE_SIZE = 50;
+let clsData = [];                                  // classement de la page courante
+let clsMeta = { total: 0, sort: 'ASC', offset: 0 }; // meta de la derniere recherche
+let clsSortDir = 'best';                           // 'best' = meilleure perf d'abord, 'worst' = inverse
 
 // Charger la liste des epreuves
 fetch('../api/epreuves.php?limit=500')
@@ -285,6 +397,16 @@ fetch('../api/epreuves.php?limit=500')
                 opt.textContent = e.nom_epreuve + (e.sexe_epreuve ? ' (' + e.sexe_epreuve + ')' : '');
                 sel.appendChild(opt);
             });
+        }
+        // Auto-chargement : affiche directement un classement + le graphique
+        // (sans attendre que l'utilisateur lance une recherche manuellement).
+        if (sel.options.length > 1) {
+            let defIdx = 1; // index 0 = "-- Choisir une épreuve --"
+            for (let i = 1; i < sel.options.length; i++) {
+                if (sel.options[i].textContent.trim() === '100m') { defIdx = i; break; }
+            }
+            sel.selectedIndex = defIdx;
+            searchClassement();
         }
     });
 
@@ -324,53 +446,135 @@ function searchClassement(offset) {
             document.getElementById('resultsCard').style.display = 'block';
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('totalResults').textContent = data.total;
-            document.getElementById('sortInfo').textContent = data.sort === 'ASC' ? 'Tri : meilleur temps' : 'Tri : meilleure distance';
 
-            const tbody = document.getElementById('clsBody');
-            tbody.innerHTML = '';
-
-            if (data.classement.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#5a6580;padding:40px;">Aucun résultat</td></tr>';
-                document.getElementById('paginationCls').innerHTML = '';
-                return;
-            }
-
-            data.classement.forEach(a => {
-                const rangClass = a.rang <= 3 ? 'rang-' + a.rang : 'rang-other';
-                const tr = document.createElement('tr');
-                tr.style.cursor = 'pointer';
-                tr.onclick = function() { window.location = 'global_athlete.php?id=' + a.athlete_id_externe; };
-                tr.innerHTML =
-                    '<td><span class="rang-badge ' + rangClass + '">' + a.rang + '</span></td>' +
-                    '<td><a class="athlete-link" href="global_athlete.php?id=' + a.athlete_id_externe + '">' + esc(a.nom_complet_athlete) + '</a></td>' +
-                    '<td>' + (a.nom_club ? '<a class="athlete-link" href="global_athlete.php?club=' + encodeURIComponent(a.nom_club) + '">' + esc(a.nom_club) + '</a>' : '-') + '</td>' +
-                    '<td>' + esc(a.categorie_athlete || '-') + '</td>' +
-                    '<td class="perf-value">' + esc(a.performance || '-') + '</td>' +
-                    '<td>' + dateFR(a.date_progression || '-') + '</td>';
-                tbody.appendChild(tr);
-            });
-
-            // Pagination
-            const pagDiv = document.getElementById('paginationCls');
-            pagDiv.innerHTML = '';
-            if (offset > 0) {
-                const prev = document.createElement('button');
-                prev.textContent = 'Précédent';
-                prev.onclick = function() { searchClassement(offset - PAGE_SIZE); };
-                pagDiv.appendChild(prev);
-            }
-            if (offset + PAGE_SIZE < data.total) {
-                const next = document.createElement('button');
-                next.textContent = 'Suivant';
-                next.onclick = function() { searchClassement(offset + PAGE_SIZE); };
-                pagDiv.appendChild(next);
-            }
+            clsData = data.classement || [];
+            clsMeta = { total: data.total, sort: data.sort, offset: offset };
+            renderClassement();
         })
         .catch(function() {
             btn.disabled = false;
             btn.textContent = 'Rechercher';
             alert('Erreur réseau');
         });
+}
+
+// Bouton de tri : bascule meilleure perf / moins bonne perf en tete
+function toggleClsSort(dir) {
+    clsSortDir = dir;
+    document.getElementById('clsSortBest').classList.toggle('is-active', dir === 'best');
+    document.getElementById('clsSortWorst').classList.toggle('is-active', dir === 'worst');
+    renderClassement();
+}
+
+// Rendu complet : tableau + graphique, selon le sens de tri choisi
+function renderClassement() {
+    // Le rang encode deja l'ordre meilleur->moins bon (course ou concours)
+    const rows = clsData.slice();
+    rows.sort(function(a, b) {
+        return clsSortDir === 'best' ? (a.rang - b.rang) : (b.rang - a.rang);
+    });
+
+    const isDist = clsMeta.sort === 'DESC';
+    document.getElementById('sortInfo').textContent =
+        (isDist ? 'Concours (distance)' : 'Course (temps)') + ' — ' +
+        (clsSortDir === 'best' ? 'meilleure perf en tête' : 'moins bonne perf en tête');
+
+    const tbody = document.getElementById('clsBody');
+    tbody.innerHTML = '';
+
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#5a6580;padding:40px;">Aucun résultat</td></tr>';
+        document.getElementById('paginationCls').innerHTML = '';
+        document.getElementById('clsChart').style.display = 'none';
+        return;
+    }
+
+    rows.forEach(function(a) {
+        const rangClass = a.rang <= 3 ? 'rang-' + a.rang : 'rang-other';
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.onclick = function() { window.location = 'global_athlete.php?id=' + a.athlete_id_externe; };
+        tr.innerHTML =
+            '<td><span class="rang-badge ' + rangClass + '">' + a.rang + '</span></td>' +
+            '<td><a class="athlete-link" href="global_athlete.php?id=' + a.athlete_id_externe + '">' + esc(a.nom_complet_athlete) + '</a></td>' +
+            '<td>' + (a.nom_club ? '<a class="athlete-link" href="global_athlete.php?club=' + encodeURIComponent(a.nom_club) + '">' + esc(a.nom_club) + '</a>' : '-') + '</td>' +
+            '<td>' + esc(a.categorie_athlete || '-') + '</td>' +
+            '<td class="perf-value">' + esc(a.performance || '-') + '</td>' +
+            '<td>' + dateFR(a.date_progression || '-') + '</td>';
+        tbody.appendChild(tr);
+    });
+
+    renderClsPagination();
+    renderClsChart(rows);
+}
+
+function renderClsPagination() {
+    const pagDiv = document.getElementById('paginationCls');
+    pagDiv.innerHTML = '';
+    const offset = clsMeta.offset;
+    if (offset > 0) {
+        const prev = document.createElement('button');
+        prev.textContent = 'Précédent';
+        prev.onclick = function() { searchClassement(offset - PAGE_SIZE); };
+        pagDiv.appendChild(prev);
+    }
+    if (offset + PAGE_SIZE < clsMeta.total) {
+        const next = document.createElement('button');
+        next.textContent = 'Suivant';
+        next.onclick = function() { searchClassement(offset + PAGE_SIZE); };
+        pagDiv.appendChild(next);
+    }
+}
+
+// Graphique en barres horizontales : nom de l'athlete + barre proportionnelle a la perf
+function renderClsChart(rows) {
+    const chart = document.getElementById('clsChart');
+    const body  = document.getElementById('clsChartBody');
+    const top   = rows.slice(0, 12);
+    const vals  = top.map(function(a) { return parseInt(a.perf_int, 10) || 0; })
+                     .filter(function(v) { return v > 0; });
+
+    if (top.length === 0 || vals.length === 0) {
+        chart.style.display = 'none';
+        return;
+    }
+
+    const isDist = clsMeta.sort === 'DESC';   // concours = plus haut meilleur
+    const maxV = Math.max.apply(null, vals);
+    const minV = Math.min.apply(null, vals);
+    const span = maxV - minV;
+
+    body.innerHTML = '';
+    top.forEach(function(a) {
+        const pi = parseInt(a.perf_int, 10) || 0;
+        // Barre normalisee : la meilleure perf = barre la plus longue (course OU concours)
+        let norm;
+        if (pi <= 0)        norm = 0;
+        else if (span <= 0) norm = 1;
+        else                norm = isDist ? (pi - minV) / span : (maxV - pi) / span;
+        const w = (12 + norm * 88).toFixed(1);
+
+        const col = a.rang === 1 ? 'linear-gradient(90deg,#ffd700,#ffaa00)'
+                  : a.rang === 2 ? 'linear-gradient(90deg,#c0c0c0,#9aa0a8)'
+                  : a.rang === 3 ? 'linear-gradient(90deg,#cd7f32,#a0622e)'
+                  : 'linear-gradient(90deg,#6c5ce7,#8b7bf0)';
+
+        const row = document.createElement('div');
+        row.className = 'cls-bar-row';
+        row.innerHTML =
+            '<div class="cls-bar-name" title="' + esc(a.nom_complet_athlete) + '">' +
+                '<a href="global_athlete.php?id=' + a.athlete_id_externe + '">#' + a.rang + ' ' + esc(a.nom_complet_athlete) + '</a>' +
+            '</div>' +
+            '<div class="cls-bar-track"><div class="cls-bar-fill" style="width:' + w + '%;background:' + col + ';">' +
+                esc(a.performance || '') +
+            '</div></div>';
+        body.appendChild(row);
+    });
+
+    document.getElementById('clsChartTitle').textContent =
+        (clsSortDir === 'best' ? 'Top ' : 'Dernières ') + top.length +
+        ' — barre longue = meilleure performance';
+    chart.style.display = 'block';
 }
 
 function esc(str) {

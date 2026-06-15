@@ -132,7 +132,7 @@ if (BK_IS_LOCAL) {
                 </div>
                 <div class="form-group">
                     <label for="adminPassword">Mot de passe</label>
-                    <input type="password" id="adminPassword" name="password" required placeholder="Mot de passe" autocomplete="current-password">
+                    <input type="password" id="adminPassword" name="password" placeholder="Mot de passe (peut etre vide)" autocomplete="current-password">
                 </div>
                 <button type="submit" class="btn-submit" id="btnAdminSubmit">Connexion Admin</button>
             </form>

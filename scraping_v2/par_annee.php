@@ -149,6 +149,41 @@ $stats = $reader->statsParAnneeGlobal($forceRefresh);
 $statsCacheFile = __DIR__ . '/state/stats_par_annee.json';
 $statsCacheAge = file_exists($statsCacheFile) ? (time() - filemtime($statsCacheFile)) : -1;
 
+// =========================================================================
+// COUVERTURE BDD : pour chaque annee, combien d'athletes ont au moins une
+// donnee datee de cette annee dans la BDD ? Cache 1h (queries COUNT DISTINCT
+// peuvent etre lentes sur grosse table).
+// =========================================================================
+$ATHLETE_PER_PAGE   = 50; // estimation athle.fr (classements paginated par 50)
+$bddCacheFile = __DIR__ . '/state/coverage_bdd.json';
+$bddCacheTtl  = 3600;
+$forceCov     = isset($_GET['refresh_coverage']);
+$bddByAnnee   = [];
+if (!$forceCov && file_exists($bddCacheFile) && (time() - filemtime($bddCacheFile)) < $bddCacheTtl) {
+    $bddByAnnee = json_decode(file_get_contents($bddCacheFile), true) ?: [];
+} else {
+    // Source principale : athlete_progressions (1 entry/athlete/annee/epreuve, integer annee)
+    $r = $conn->query("SELECT annee_progression AS an, COUNT(DISTINCT id_athlete) AS n
+                       FROM athlete_progressions
+                       WHERE annee_progression BETWEEN 1990 AND 2100
+                       GROUP BY annee_progression");
+    if ($r) while ($row = $r->fetch_assoc()) $bddByAnnee[(int)$row['an']] = (int)$row['n'];
+
+    // Fallback / complement : athlete_resultats (au cas ou progressions vide pour une annee)
+    $r2 = $conn->query("SELECT YEAR(date_resultat) AS an, COUNT(DISTINCT id_athlete) AS n
+                        FROM athlete_resultats
+                        WHERE date_resultat IS NOT NULL AND YEAR(date_resultat) BETWEEN 1990 AND 2100
+                        GROUP BY YEAR(date_resultat)");
+    if ($r2) while ($row = $r2->fetch_assoc()) {
+        $an = (int)$row['an'];
+        $n  = (int)$row['n'];
+        if (!isset($bddByAnnee[$an]) || $n > $bddByAnnee[$an]) $bddByAnnee[$an] = $n;
+    }
+    if (!is_dir(dirname($bddCacheFile))) @mkdir(dirname($bddCacheFile), 0755, true);
+    @file_put_contents($bddCacheFile, json_encode($bddByAnnee));
+}
+$bddCacheAge = file_exists($bddCacheFile) ? (time() - filemtime($bddCacheFile)) : -1;
+
 // Comptage UNIQUE de tables sources (au lieu de l'appeler dans le loop)
 $totalTables = count($reader->listerTables());
 
@@ -247,17 +282,57 @@ $pct = $stPages > 0 ? round($stDone / $stPages * 100, 1) : 0;
 <?php elseif (!$running): ?>
     <!-- Annees connues -->
     <div class="card">
-        <h3 style="margin:0 0 12px;color:#34d399;">Annees deja peuplees</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 12px;">
+            <h3 style="margin:0;color:#34d399;">Annees deja peuplees</h3>
+            <a href="?annee=<?= $anneeChoisie ?>&refresh_coverage=1" style="font-size:11px;color:#60a5fa;text-decoration:none;border:1px solid #1f2937;padding:3px 10px;border-radius:6px;" title="Recalcule la couverture BDD (cache 1h)">
+                Recalculer couverture
+                <?php if ($bddCacheAge >= 0): ?>
+                    <span style="color:#6b7280;">(cache : <?= $bddCacheAge < 60 ? $bddCacheAge.'s' : round($bddCacheAge/60).'min' ?>)</span>
+                <?php endif; ?>
+            </a>
+        </div>
         <table class="yr-table">
-            <thead><tr><th>Annee</th><th>URLs</th><th>Pages total</th><th>Tables sources</th><th></th></tr></thead>
+            <thead><tr>
+                <th>Annee</th>
+                <th>URLs (classements)</th>
+                <th>Pages total</th>
+                <th title="Estimation : pages x 50 athletes/page sur athle.fr">Athletes attendus</th>
+                <th title="Athletes distincts en BDD avec donnee datee de cette annee (progressions + resultats)">BDD</th>
+                <th title="bdd / athletes attendus">Couverture</th>
+                <th>Tables</th>
+                <th></th>
+            </tr></thead>
             <tbody>
             <?php foreach ($stats as $annee => $info):
                 $sel = ($annee === $anneeChoisie);
+                $expected = (int)$info['pages'] * $ATHLETE_PER_PAGE;
+                $bdd      = (int)($bddByAnnee[$annee] ?? 0);
+                $covPct   = $expected > 0 ? min(100, round($bdd / $expected * 100, 1)) : null;
+                // Couleur progressive : rouge < 50% / orange < 80% / vert >= 80%
+                if ($covPct === null)       { $covColor = '#6b7280'; $covBg = '#1f2937'; }
+                elseif ($covPct >= 95)      { $covColor = '#34d399'; $covBg = '#022c22'; }
+                elseif ($covPct >= 80)      { $covColor = '#86efac'; $covBg = '#0a2818'; }
+                elseif ($covPct >= 50)      { $covColor = '#fbbf24'; $covBg = '#422006'; }
+                else                        { $covColor = '#f87171'; $covBg = '#450a0a'; }
             ?>
             <tr class="yr-row<?= $sel ? ' selected' : '' ?>" onclick="window.location.href='?annee=<?= $annee ?>'">
                 <td><b><?= $annee ?></b></td>
                 <td><?= number_format($info['urls']) ?></td>
                 <td><?= number_format($info['pages']) ?></td>
+                <td style="color:#a78bfa;"><?= number_format($expected) ?></td>
+                <td style="color:#34d399;"><?= number_format($bdd) ?></td>
+                <td>
+                    <?php if ($covPct === null): ?>
+                        <span style="color:#6b7280;">--</span>
+                    <?php else: ?>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="flex:0 0 80px;height:14px;background:#0a0e15;border-radius:7px;overflow:hidden;border:1px solid #1f2937;">
+                                <div style="height:100%;width:<?= $covPct ?>%;background:<?= $covColor ?>;transition:width 0.3s;"></div>
+                            </div>
+                            <b style="color:<?= $covColor ?>;font-size:13px;min-width:50px;text-align:right;"><?= $covPct ?>%</b>
+                        </div>
+                    <?php endif; ?>
+                </td>
                 <td><?= count($info['tables']) ?> / <?= $totalTables ?></td>
                 <td>
                     <?php if ($sel): ?>

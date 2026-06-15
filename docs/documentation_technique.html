@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOKONZI — Documentation technique complète</title>
+<style>
+  :root{
+    --bg:#0d1117; --bg2:#161b22; --bg3:#1c2128; --border:#30363d;
+    --text:#c9d1d9; --text2:#8b949e; --head:#f0f6fc;
+    --accent:#6c5ce7; --accent2:#a78bfa; --blue:#58a6ff; --green:#3fb950;
+    --orange:#f59e0b; --red:#f85149; --cyan:#22d3ee;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.7;font-size:16px;
+  }
+  /* Layout */
+  .layout{display:flex;max-width:1500px;margin:0 auto}
+  /* Sidebar */
+  nav.toc{
+    width:320px;flex-shrink:0;height:100vh;position:sticky;top:0;
+    overflow-y:auto;background:var(--bg2);border-right:1px solid var(--border);
+    padding:24px 18px;
+  }
+  nav.toc h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--accent2);margin:18px 0 8px;padding-left:8px}
+  nav.toc h2:first-child{margin-top:0}
+  nav.toc a{
+    display:block;color:var(--text2);text-decoration:none;padding:5px 10px;
+    border-radius:6px;font-size:14px;transition:.12s;border-left:2px solid transparent;
+  }
+  nav.toc a:hover{background:var(--bg3);color:var(--head)}
+  nav.toc a.sub{padding-left:24px;font-size:13px;color:#6e7681}
+  nav.toc a.active{background:var(--accent)22;color:var(--accent2);border-left-color:var(--accent)}
+  .toc-search{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:16px}
+  /* Content */
+  main{flex:1;padding:48px 56px;max-width:1050px;overflow-x:hidden}
+  h1{font-size:34px;color:var(--head);margin-bottom:6px;line-height:1.2}
+  .subtitle{color:var(--text2);font-size:18px;margin-bottom:8px}
+  .meta-line{color:#6e7681;font-size:13px;margin-bottom:36px;border-bottom:1px solid var(--border);padding-bottom:24px}
+  section{margin-bottom:54px;scroll-margin-top:24px}
+  section>h2{font-size:27px;color:var(--head);margin:10px 0 18px;padding-bottom:10px;border-bottom:2px solid var(--accent)}
+  section h3{font-size:21px;color:var(--accent2);margin:30px 0 12px}
+  section h4{font-size:17px;color:var(--blue);margin:22px 0 8px}
+  p{margin-bottom:14px}
+  ul,ol{margin:0 0 14px 26px}
+  li{margin-bottom:6px}
+  code{font-family:var(--mono);background:var(--bg3);padding:2px 6px;border-radius:5px;font-size:13.5px;color:#ffa657}
+  pre{background:#010409;border:1px solid var(--border);border-radius:10px;padding:18px 20px;
+    overflow-x:auto;margin:14px 0;font-size:13.5px;line-height:1.55}
+  pre code{background:none;padding:0;color:#c9d1d9}
+  .cm{color:#8b949e}      /* commentaire */
+  .kw{color:#ff7b72}      /* mot-clé */
+  .st{color:#a5d6ff}      /* string */
+  .fn{color:#d2a8ff}      /* fonction */
+  .nu{color:#79c0ff}      /* nombre */
+  a.link{color:var(--blue)}
+  strong{color:var(--head)}
+  /* Boxes */
+  .box{border-radius:10px;padding:16px 20px;margin:18px 0;border-left:4px solid}
+  .box .box-t{font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .box.info{background:#1f6feb1a;border-color:var(--blue)}
+  .box.info .box-t{color:var(--blue)}
+  .box.warn{background:#f59e0b1a;border-color:var(--orange)}
+  .box.warn .box-t{color:var(--orange)}
+  .box.danger{background:#f851491a;border-color:var(--red)}
+  .box.danger .box-t{color:var(--red)}
+  .box.tip{background:#3fb9501a;border-color:var(--green)}
+  .box.tip .box-t{color:var(--green)}
+  .box.analogy{background:#a78bfa1a;border-color:var(--accent2)}
+  .box.analogy .box-t{color:var(--accent2)}
+  /* Tables */
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border:1px solid var(--border)}
+  th{background:var(--bg3);color:var(--head);font-weight:600}
+  tr:nth-child(even) td{background:var(--bg2)}
+  td code{font-size:12.5px}
+  /* Diagram */
+  .diagram{background:#010409;border:1px solid var(--border);border-radius:10px;padding:22px;
+    margin:18px 0;font-family:var(--mono);font-size:13px;line-height:1.5;white-space:pre;overflow-x:auto;color:#9ad}
+  /* Badges */
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;
+    text-transform:uppercase;letter-spacing:.4px;vertical-align:middle}
+  .t-get{background:#3fb95033;color:#3fb950}
+  .t-post{background:#1f6feb33;color:#58a6ff}
+  .t-php{background:#a78bfa33;color:#a78bfa}
+  .t-js{background:#f59e0b33;color:#f59e0b}
+  /* Step list */
+  .steps{counter-reset:step;list-style:none;margin-left:0}
+  .steps>li{counter-increment:step;position:relative;padding-left:46px;margin-bottom:16px}
+  .steps>li::before{content:counter(step);position:absolute;left:0;top:0;width:30px;height:30px;
+    background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-weight:700;font-size:14px}
+  .pill{font-family:var(--mono);font-size:12.5px;background:var(--bg3);padding:2px 8px;border-radius:5px;color:#7ee787}
+  hr.soft{border:none;border-top:1px solid var(--border);margin:26px 0}
+  .lead{font-size:18px;color:var(--text);background:var(--bg2);border:1px solid var(--border);
+    border-radius:10px;padding:18px 22px;margin:18px 0}
+  .kbd{font-family:var(--mono);background:#21262d;border:1px solid #444c56;border-bottom-width:2px;
+    border-radius:5px;padding:1px 6px;font-size:12px}
+  @media(max-width:1000px){
+    nav.toc{display:none}
+    main{padding:28px 20px}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ================= SIDEBAR ================= -->
+<nav class="toc">
+  <input type="text" class="toc-search" id="tocSearch" placeholder="🔎 Filtrer le sommaire…">
+  <div id="tocLinks">
+  <h2>📚 Pages détaillées</h2>
+  <a href="doc_bdd.html">Schéma BDD complet (29 tables)</a>
+  <a href="doc_api.html">Référence API exhaustive</a>
+  <a href="doc_index.html">index.php ligne par ligne</a>
+  <a href="doc_scraping.html">Scraping en détail</a>
+  <a href="doc_recettes.html">Recettes de code</a>
+
+  <h2>Démarrer</h2>
+  <a href="#intro">0 · À lire en premier</a>
+  <a href="#concepts">1 · Concepts de base (débutant)</a>
+  <a href="#vue">2 · Vue d'ensemble</a>
+  <a href="#cycle">3 · Cycle de vie d'une requête</a>
+
+  <h2>Fondations</h2>
+  <a href="#arbo">4 · Arborescence des dossiers</a>
+  <a href="#noyau">5 · Le noyau (core/)</a>
+  <a href="#bdd">6 · La base de données</a>
+
+  <h2>Couche données</h2>
+  <a href="#api">7 · L'API REST</a>
+  <a href="#cache">8 · Le système de cache</a>
+  <a href="#inodes">8b · Inodes & nettoyage</a>
+
+  <h2>Couche affichage</h2>
+  <a href="#index">9 · index.php (la page géante)</a>
+  <a href="#front">10 · Frontend & conventions</a>
+
+  <h2>Sécurité & accès</h2>
+  <a href="#auth">11 · Authentification</a>
+  <a href="#quotas">12 · Quotas & anti-scraping</a>
+  <a href="#securite">13 · Sécurité générale</a>
+
+  <h2>Données & admin</h2>
+  <a href="#scraping">14 · Pipeline de scraping</a>
+  <a href="#panel">15 · Panel admin</a>
+  <a href="#seo">16 · SEO</a>
+
+  <h2>Exploitation</h2>
+  <a href="#deploiement">17 · Déploiement & environnements</a>
+  <a href="#maintenance">18 · Maintenance courante</a>
+
+  <h2>Annexes</h2>
+  <a href="#glossaire">19 · Glossaire</a>
+  <a href="#reprise">20 · Checklist de reprise</a>
+  </div>
+</nav>
+
+<!-- ================= CONTENT ================= -->
+<main>
+
+<h1>BOKONZI — Documentation technique</h1>
+<div class="subtitle">Comprendre tout le projet, ligne par ligne, sans être expert</div>
+<div class="meta-line">
+  Plateforme : base de données de l'athlétisme français (bokonzi.com) · Stack : PHP 8 / MySQL / Apache (XAMPP local, Hostinger en prod) ·
+  Aucun framework, tout est fait main · Document destiné à toute personne reprenant le projet.
+</div>
+
+<!-- ============================================================ -->
+<section id="intro">
+<h2>0 · À lire en premier</h2>
+
+<div class="lead">
+Ce document explique <strong>comment fonctionne techniquement le site Bokonzi</strong>, depuis les notions les plus simples
+(qu'est-ce qu'un serveur ?) jusqu'aux détails internes (comment une recherche est mise en cache, comment le scraping
+remplit la base). Lis-le dans l'ordre la première fois : chaque section s'appuie sur la précédente.
+</div>
+
+<h3>À qui s'adresse ce document</h3>
+<ul>
+  <li><strong>Tu n'es pas informaticien ?</strong> Commence par la section <a class="link" href="#concepts">1 · Concepts de base</a> :
+  elle explique tout le vocabulaire (PHP, base de données, API, cache…) avec des analogies du quotidien.</li>
+  <li><strong>Tu es développeur et tu reprends le projet ?</strong> Lis la <a class="link" href="#vue">vue d'ensemble</a>,
+  le <a class="link" href="#cycle">cycle de vie d'une requête</a>, puis saute aux sections qui t'intéressent. La
+  <a class="link" href="#reprise">checklist de reprise</a> (section 20) te dit quoi installer et vérifier en premier.</li>
+</ul>
+
+<div class="box info">
+  <div class="box-t">ℹ️ Règle d'or du projet</div>
+  Le projet est volontairement <strong>« sans framework »</strong> : pas de Laravel, pas de Symfony, pas de React.
+  Que du PHP, du HTML, du CSS et du JavaScript écrits à la main. C'est plus simple à héberger (n'importe quel
+  hébergement PHP fonctionne) mais cela veut dire qu'il faut comprendre les conventions maison décrites ici, car
+  rien n'est « magique » : tout est explicite dans le code.
+</div>
+
+<h3>📚 Les pages détaillées (le niveau « chaque ligne de code »)</h3>
+<p>Ce document est la <strong>vue d'ensemble</strong>. Pour le détail exhaustif, cinq pages complémentaires
+décortiquent chaque sous-système — c'est là qu'on va pour comprendre précisément le code :</p>
+<table>
+  <tr><th>Page</th><th>Contenu</th></tr>
+  <tr><td><a class="link" href="doc_bdd.html">Schéma BDD complet</a></td><td>Les 29 tables, colonne par colonne, avec les relations et les comportements de suppression</td></tr>
+  <tr><td><a class="link" href="doc_api.html">Référence API exhaustive</a></td><td>Chaque endpoint, tous ses paramètres, sa réponse, son cache, sa protection</td></tr>
+  <tr><td><a class="link" href="doc_index.html">index.php ligne par ligne</a></td><td>La carte des ~23 500 lignes : sections PHP par numéro de ligne + inventaire des fonctions JS</td></tr>
+  <tr><td><a class="link" href="doc_scraping.html">Scraping en détail</a></td><td>Le parcours d'une donnée d'athle.fr à la base, + les 7 patterns de <code>performanceToInt()</code></td></tr>
+  <tr><td><a class="link" href="doc_recettes.html">Recettes de code</a></td><td>Les 10 patterns récurrents (cache, pagination, batch query, barème FFA…) avec extraits réels</td></tr>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section id="concepts">
+<h2>1 · Concepts de base (pour débutant)</h2>
+<p>Si ces mots te sont familiers, saute à la <a class="link" href="#vue">section 2</a>. Sinon, voici les briques de base
+expliquées simplement.</p>
+
+<h3>Le modèle « client / serveur »</h3>
+<div class="box analogy">
+  <div class="box-t">🍽️ Analogie : le restaurant</div>
+  Imagine un restaurant. <strong>Le client</strong> (ton navigateur : Chrome, Firefox…) passe une commande.
+  <strong>Le serveur</strong> (l'ordinateur d'Hostinger qui héberge le site) reçoit la commande, va en cuisine,
+  prépare le plat et le ramène. Sur le web :
+  <ul style="margin-top:8px">
+    <li>Le <strong>client</strong> demande une page (« je veux voir le profil de l'athlète n°548525 »).</li>
+    <li>Le <strong>serveur</strong> exécute du code PHP, va chercher les infos dans la base de données, fabrique une
+    page HTML et la renvoie.</li>
+    <li>Le navigateur <strong>affiche</strong> cette page HTML.</li>
+  </ul>
+</div>
+
+<h3>Les langages utilisés</h3>
+<table>
+  <tr><th>Langage</th><th>Où il tourne</th><th>À quoi il sert ici</th></tr>
+  <tr><td><strong>PHP</strong></td><td>Sur le serveur</td><td>Le « cerveau ». Il décide quoi afficher, parle à la base de données, fabrique le HTML. Fichiers <code>.php</code>.</td></tr>
+  <tr><td><strong>HTML</strong></td><td>Dans le navigateur</td><td>La structure de la page (titres, tableaux, boutons). C'est le squelette.</td></tr>
+  <tr><td><strong>CSS</strong></td><td>Dans le navigateur</td><td>L'apparence (couleurs, polices, mise en page). Fichiers <code>.css</code>.</td></tr>
+  <tr><td><strong>JavaScript (JS)</strong></td><td>Dans le navigateur</td><td>L'interactivité sans recharger la page (ouvrir un panneau, charger des données en fond, graphiques).</td></tr>
+  <tr><td><strong>SQL</strong></td><td>Dans la base de données</td><td>Le langage pour <em>interroger</em> les données (« donne-moi tous les athlètes du club X »).</td></tr>
+</table>
+
+<h3>La base de données (MySQL)</h3>
+<div class="box analogy">
+  <div class="box-t">📚 Analogie : un classeur géant de tableaux Excel</div>
+  Une base de données, c'est comme un gros classeur contenant plusieurs <strong>tables</strong> (des feuilles Excel).
+  Chaque table a des <strong>colonnes</strong> (nom, âge, club…) et des <strong>lignes</strong> (un athlète = une ligne).
+  Ici la base s'appelle MySQL. Bokonzi a <strong>~23 tables</strong> : une pour les athlètes, une pour les clubs,
+  une pour les records, etc. On les relie entre elles par des <strong>identifiants</strong> (voir
+  <a class="link" href="#bdd">section 6</a>).
+</div>
+
+<h3>Apache & XAMPP</h3>
+<p><strong>Apache</strong> est le logiciel « serveur web » : il reçoit les requêtes des navigateurs et exécute le PHP.
+<strong>XAMPP</strong> est un pack tout-en-un (Apache + MySQL + PHP) que tu installes sur ton PC pour développer en
+local, c'est-à-dire tester le site sur ta propre machine avant de l'envoyer en ligne. En local le site est à
+<code>http://localhost/BK</code>, en ligne il est à <code>https://bokonzi.com</code>.</p>
+
+<h3>Une requête HTTP</h3>
+<p>Quand tu tapes une adresse (URL), le navigateur envoie une <strong>requête HTTP</strong>. Les deux types les plus courants :</p>
+<ul>
+  <li><span class="tag t-get">GET</span> : « donne-moi quelque chose » (afficher une page, lire des données). Les paramètres sont dans l'URL : <code>?page=profil&id=548525</code>.</li>
+  <li><span class="tag t-post">POST</span> : « voici des données à enregistrer » (envoyer un formulaire de contact, se connecter).</li>
+</ul>
+
+<h3>JSON & API</h3>
+<div class="box analogy">
+  <div class="box-t">📦 Analogie : un colis standardisé</div>
+  <strong>JSON</strong> est un format texte universel pour échanger des données, lisible par PHP comme par JavaScript.
+  Exemple : <code>{"nom":"DUPONT","age":25}</code>. Une <strong>API</strong> (Application Programming Interface)
+  est une « porte d'entrée » du serveur qui, au lieu de renvoyer une page HTML, renvoie du JSON. Bokonzi a une API
+  avec ~25 portes (les <em>endpoints</em>) : <code>/api/athlete.php</code>, <code>/api/search.php</code>… Le
+  JavaScript de la page appelle ces portes pour charger des données « en fond » sans recharger toute la page.
+</div>
+
+<h3>Le cache</h3>
+<div class="box analogy">
+  <div class="box-t">🗄️ Analogie : la photocopie sous le comptoir</div>
+  Calculer certaines pages coûte cher (beaucoup de requêtes à la base). Plutôt que de tout recalculer à chaque
+  visiteur, on garde une <strong>copie toute prête</strong> du résultat dans un fichier. Le visiteur suivant reçoit
+  la photocopie : instantané. C'est le <strong>cache</strong>. Ici, les résultats d'API sont stockés en fichiers
+  <code>.json</code> dans le dossier <code>cache/</code> pendant 24 h (voir <a class="link" href="#cache">section 8</a>).
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="vue">
+<h2>2 · Vue d'ensemble de l'architecture</h2>
+
+<p>Bokonzi est organisé en <strong>4 grandes couches</strong> qui s'empilent. Comprendre ces 4 couches, c'est
+comprendre 80 % du projet.</p>
+
+<div class="diagram">┌─────────────────────────────────────────────────────────────────┐
+│  4. AFFICHAGE  (ce que voit le visiteur)                          │
+│     index.php  ·  pages/*.php  ·  CSS  ·  JavaScript              │
+│     « Je veux la page profil » → HTML + graphiques + panneaux     │
+└───────────────────────────────┬───────────────────────────────────┘
+                                 │ appelle (HTTP interne / fetch JS)
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  3. API REST  (api/*.php)   renvoie du JSON                       │
+│     athlete.php · search.php · club_stats.php · classement.php …  │
+│     Vérifie le cache → sinon interroge la base → met en cache     │
+└───────────────┬───────────────────────────────┬───────────────────┘
+                │ si pas en cache                │ écrit / lit
+                ▼                                 ▼
+┌──────────────────────────────┐   ┌──────────────────────────────┐
+│  2. NOYAU  (core/)           │   │  CACHE FICHIER (cache/*.json)  │
+│  db.php (connexion) · auth   │   │  copies prêtes, 24 h           │
+│  search_limit · ip_logger    │   └──────────────────────────────┘
+└───────────────┬──────────────┘
+                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  1. BASE DE DONNÉES MySQL  (~23 tables, 300k+ athlètes)          │
+│     alimentée par le PIPELINE DE SCRAPING (scraping/, scraping_v2)│
+│     qui aspire les données depuis athle.fr                        │
+└─────────────────────────────────────────────────────────────────┘</div>
+
+<h3>Les deux « mondes » du code</h3>
+<table>
+  <tr><th>Monde</th><th>Rôle</th><th>Dossiers concernés</th></tr>
+  <tr><td><strong>Le site public</strong></td><td>Ce que voient les visiteurs : explorer athlètes, clubs, records, comparer, etc.</td><td><code>index.php</code>, <code>pages/</code>, <code>api/</code>, <code>core/</code>, <code>cache/</code></td></tr>
+  <tr><td><strong>Les coulisses</strong></td><td>Remplir et entretenir la base : aspirer athle.fr, vérifier, nettoyer, administrer.</td><td><code>scraping/</code>, <code>scraping_v2/</code>, <code>admin/</code></td></tr>
+</table>
+
+<div class="box tip">
+  <div class="box-t">✅ À retenir</div>
+  Le visiteur ne touche jamais directement la base de données. Il demande une <strong>page</strong> (couche 4),
+  qui demande des <strong>données JSON</strong> à l'API (couche 3), qui regarde d'abord dans le <strong>cache</strong>,
+  et seulement si nécessaire interroge la <strong>base</strong> (couche 1). C'est cet empilement qui rend le site rapide.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="cycle">
+<h2>3 · Cycle de vie d'une requête (du clic à l'écran)</h2>
+<p>Suivons un exemple concret de bout en bout : <strong>un visiteur ouvre le profil d'un athlète</strong>.</p>
+
+<ol class="steps">
+  <li><strong>Le navigateur demande la page.</strong> Le visiteur clique sur un lien
+  <code>index.php?page=profil&id=548525</code>. Apache reçoit la requête et lance <code>index.php</code>.</li>
+
+  <li><strong>index.php se prépare.</strong> Il charge le noyau : <code>core/paths.php</code> (les chemins),
+  <code>core/db.php</code> (ouvre la connexion <code>$conn</code> à MySQL), puis <code>logIp()</code> (journalise la visite).
+  Il applique l'anti-scraping (compteur de pages/jour) et le minuteur « découverte » anonyme.</li>
+
+  <li><strong>Il identifie la page demandée.</strong> Le paramètre <code>?page=profil</code> dit à index.php quelle
+  portion afficher. Pour le profil, il appelle l'API : <code>apiCall("$BASE_API/athlete.php?id=548525")</code>.</li>
+
+  <li><strong>L'API entre en jeu.</strong> <code>api/athlete.php</code> commence par inclure <code>api/config.php</code>
+  (en-têtes JSON + connexion + auth). Il calcule une <strong>clé de cache</strong> à partir de l'identifiant, puis
+  regarde si <code>cache/athlete_&lt;clé&gt;.json</code> existe et a moins de 24 h.</li>
+
+  <li><strong>Deux scénarios :</strong>
+    <ul>
+      <li><span class="pill">CACHE HIT</span> Le fichier existe et est frais → l'API renvoie son contenu tel quel. <em>Ultra-rapide, zéro requête SQL.</em></li>
+      <li><span class="pill">CACHE MISS</span> Sinon → l'API exécute ses requêtes SQL (identité, clubs, records, médailles…), assemble un gros objet, l'écrit dans le fichier cache, puis le renvoie.</li>
+    </ul>
+  </li>
+
+  <li><strong>Retour à index.php.</strong> Il reçoit le JSON, en extrait les infos et génère le <strong>HTML</strong>
+  de la fiche (en-tête, tableaux de records, médailles…). Il génère aussi les balises <strong>SEO</strong>
+  (voir <a class="link" href="#seo">section 16</a>).</li>
+
+  <li><strong>Le navigateur affiche la page.</strong> Le HTML arrive. Le <strong>CSS</strong> l'habille, puis le
+  <strong>JavaScript</strong> prend le relais pour les parties dynamiques : graphiques de progression (Chart.js),
+  bouton « suivre », biographie auto-générée, carte des lieux… souvent via d'autres appels API en arrière-plan.</li>
+</ol>
+
+<div class="box info">
+  <div class="box-t">ℹ️ Pourquoi deux fois « id » ?</div>
+  Pour les <strong>données JSON</strong>, le JS appelle directement les URLs <code>/api/...</code>. Pour le rendu
+  initial côté serveur, PHP utilise <code>apiCall()</code> qui fait un appel HTTP interne. C'est important de le
+  savoir car en prod (Hostinger) cet appel interne (« loopback ») se fait <strong>sans les cookies</strong> du
+  visiteur — donc le PHP ne « voit » pas qui est connecté lors de cet appel. C'est une contrainte connue de
+  l'hébergement.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="arbo">
+<h2>4 · Arborescence des dossiers</h2>
+<p>Voici les dossiers principaux et leur rôle. Les détails de chaque sous-système sont dans les sections suivantes.</p>
+
+<div class="diagram">BK/
+├── index.php          ★ PAGE PRINCIPALE (~23 500 lignes : PHP + HTML + JS mélangés)
+├── core/              ★ LE NOYAU — briques partagées par tout le site
+│   ├── credentials.php   identifiants de la base (secret)
+│   ├── db.php            ouvre la connexion MySQL → variable $conn
+│   ├── auth.php          connexion, sessions, rôles
+│   ├── search_limit.php  quotas de recherche (source de vérité unique)
+│   ├── ip_logger.php     journalise chaque visite (logIp())
+│   ├── seo.php           génère les balises SEO des profils
+│   └── paths.php         constantes de chemins (BK_BASE, BK_URL())
+├── api/               ★ L'API REST — ~25 « portes » renvoyant du JSON
+│   ├── config.php        en-têtes + connexion + auth (inclus par tous)
+│   ├── athlete.php       fiche complète d'un athlète
+│   ├── search.php        recherche multi-critères (12 filtres)
+│   ├── club_stats.php    statistiques d'un club
+│   ├── classement.php    classement par épreuve (temps réel)
+│   └── … (voir section 7)
+├── cache/             COPIES JSON prêtes (24 h) — protégé, vidé par janitor
+├── pages/             Pages autonomes : profil.php, recherche.php, classement.php…
+├── admin/             ★ COULISSES — panel super admin, outils, maintenance
+│   ├── panel.php         dashboard 16 sections
+│   ├── clear_cache.php   vider le cache
+│   ├── cache_janitor.php nettoyeur de cache (cron) — limite les inodes
+│   └── remote_check.php  API d'administration à distance
+├── scraping/          ★ PIPELINE v1 — aspire athle.fr (orchestrateur scraper.php)
+├── scraping_v2/       ★ PIPELINE v2 — version objet (classements → base)
+├── Class/             53 classes utilitaires (dont AthleteScraper.php = parseur HTML)
+├── logs/              journaux + compteurs (protégés par die())
+├── docs/              cette documentation
+├── dashboard.css      styles du tableau de bord
+└── common.css         styles globaux</div>
+
+<div class="box warn">
+  <div class="box-t">⚠️ Le fichier qui fait peur : index.php</div>
+  <code>index.php</code> fait <strong>~23 500 lignes</strong> et mélange PHP, HTML et JavaScript dans un seul fichier.
+  C'est le cœur du site public. Ne le lis jamais en entier : utilise la carte détaillée
+  (<a class="link" href="doc_index.html">page « index.php ligne par ligne »</a>) pour aller directement à la bonne portion.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="noyau">
+<h2>5 · Le noyau (<code>core/</code>)</h2>
+<p>Le noyau regroupe le code partagé par tout le reste. Chaque page et chaque endpoint commence par inclure une
+partie de ces fichiers.</p>
+
+<h3>5.1 · <code>core/db.php</code> — la connexion à la base</h3>
+<p>C'est <strong>le fichier le plus important</strong> : il ouvre la connexion à MySQL et la met dans une variable
+appelée <code>$conn</code>, utilisée partout ensuite pour faire des requêtes. Il détecte aussi automatiquement si
+on est en local ou en prod.</p>
+<pre><code><span class="cm">// On charge d'abord les identifiants de prod (Hostinger)</span>
+<span class="kw">require_once</span> __DIR__ . <span class="st">'/credentials.php'</span>;
+
+<span class="cm">// Détection : sommes-nous en local (XAMPP) ou en ligne (Hostinger) ?</span>
+<span class="nu">$isLocal</span> = (in_array(<span class="nu">$_SERVER</span>[<span class="st">'SERVER_NAME'</span>] ?? <span class="st">''</span>, [<span class="st">'localhost'</span>,<span class="st">'127.0.0.1'</span>], <span class="kw">true</span>) || …);
+
+<span class="cm">// En local, si un fichier credentials_local.php existe, on prend CES identifiants</span>
+<span class="kw">if</span> (<span class="nu">$isLocal</span> && file_exists(__DIR__ . <span class="st">'/credentials_local.php'</span>)) {
+    <span class="kw">require</span> __DIR__ . <span class="st">'/credentials_local.php'</span>;
+}
+
+<span class="cm">// Ouverture de la connexion. $conn est LA variable utilisée partout ensuite.</span>
+<span class="nu">$conn</span> = <span class="kw">new</span> <span class="fn">mysqli</span>(<span class="st">"localhost"</span>, <span class="nu">$username</span>, <span class="nu">$password</span>, <span class="nu">$dbname</span>);
+<span class="nu">$conn</span>->set_charset(<span class="st">"utf8mb4"</span>); <span class="cm">// supporte les accents et emojis</span></code></pre>
+<div class="box info">
+  <div class="box-t">ℹ️ Le truc à comprendre</div>
+  Dès qu'un fichier fait <code>require core/db.php</code>, il dispose de <code>$conn</code> et peut interroger la base.
+  C'est pour ça qu'on voit partout <code>$conn->query("SELECT …")</code>. Les identifiants réels (mot de passe de la
+  base) sont dans <code>credentials.php</code> (prod) et <code>credentials_local.php</code> (ton PC) — ces fichiers
+  ne doivent jamais être partagés publiquement.
+</div>
+
+<h3>5.2 · <code>core/auth.php</code> — qui est connecté ?</h3>
+<p>Gère tout ce qui concerne les comptes utilisateurs. Fonctions clés :</p>
+<table>
+  <tr><th>Fonction</th><th>Ce qu'elle fait</th></tr>
+  <tr><td><code>generateToken()</code></td><td>Crée un jeton aléatoire de 64 caractères (la « clé de session »).</td></tr>
+  <tr><td><code>createSession($conn,$userId)</code></td><td>Enregistre une session en base (table <code>user_sessions</code>) et pose le cookie <code>bk_token</code> valable 30 jours.</td></tr>
+  <tr><td><code>getCurrentUser($conn)</code></td><td>Lit le cookie <code>bk_token</code>, retrouve l'utilisateur en base. Renvoie ses infos ou <code>null</code> si non connecté.</td></tr>
+  <tr><td><code>requireAuth($conn)</code></td><td>Force la connexion : si l'utilisateur n'est pas connecté, redirige vers <code>login.php</code>.</td></tr>
+  <tr><td><code>requireAuthApi($conn)</code></td><td>Idem, mais pour l'API : renvoie une erreur JSON 401 au lieu de rediriger.</td></tr>
+  <tr><td><code>requireRole($conn,$roles)</code></td><td>Vérifie que l'utilisateur a le bon rôle (ex. <code>['admin']</code>).</td></tr>
+  <tr><td><code>logout($conn)</code></td><td>Supprime la session en base et efface les cookies (<code>bk_token</code> + <code>bk_sa_token</code>).</td></tr>
+</table>
+<div class="box analogy">
+  <div class="box-t">🎟️ Analogie : le bracelet de festival</div>
+  Quand tu te connectes, le serveur te pose un <strong>bracelet</strong> (le cookie <code>bk_token</code>) avec un
+  numéro unique. À chaque page, <code>getCurrentUser()</code> regarde ton bracelet et vérifie dans son registre
+  (table <code>user_sessions</code>) qu'il est valide et pas expiré. Pas de bracelet = visiteur anonyme.
+</div>
+
+<h3>5.3 · Les autres fichiers du noyau</h3>
+<ul>
+  <li><code>paths.php</code> : définit <code>BK_BASE</code> (le préfixe d'URL : <code>/BK</code> en local, vide en prod) et la fonction <code>BK_URL()</code>. Évite les liens cassés entre local et prod.</li>
+  <li><code>ip_logger.php</code> : la fonction <code>logIp()</code> écrit chaque visite dans <code>logs/ip_track_AAAA-MM.php</code>. Les IP whitelistées (Google, Hostinger…) ne sont pas journalisées.</li>
+  <li><code>search_limit.php</code> : la « source de vérité unique » des quotas de recherche (voir <a class="link" href="#quotas">section 12</a>).</li>
+  <li><code>seo.php</code> : fabrique le titre, la description et les données structurées des profils (voir <a class="link" href="#seo">section 16</a>).</li>
+  <li><code>insert_athle.php</code> : insère les données scrapées dans la base (voir <a class="link" href="#scraping">section 14</a>).</li>
+</ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="bdd">
+<h2>6 · La base de données</h2>
+<p>~23 tables reliées entre elles. Le principe : une table <code>athletes</code> centrale, et des tables « enfants »
+qui contiennent ses détails (records, médailles, clubs…).</p>
+
+<h3>6.1 · Le point le plus important : les DEUX identifiants</h3>
+<div class="box danger">
+  <div class="box-t">🚨 Piège n°1 du projet — à mémoriser absolument</div>
+  Chaque athlète a <strong>deux</strong> numéros d'identification différents :
+  <table style="margin-top:10px">
+    <tr><th>Identifiant</th><th>C'est quoi</th><th>Où on l'utilise</th></tr>
+    <tr><td><code>athlete_id_externe</code></td><td>Le numéro venant d'athle.fr (la source)</td><td>Dans les URLs du site (<code>?id=</code>), c'est CELUI à utiliser dans le dashboard</td></tr>
+    <tr><td><code>id_athlete</code></td><td>Le numéro interne, auto-incrémenté par MySQL (clé primaire)</td><td>Pour relier les tables entre elles (clés étrangères)</td></tr>
+  </table>
+  L'API <code>athlete.php</code> accepte les deux : <code>?id=</code> (externe) ou <code>?id_athlete=</code> (interne).
+  Confondre les deux est l'erreur la plus fréquente.
+</div>
+
+<h3>6.2 · Tables principales</h3>
+<table>
+  <tr><th>Table</th><th>Contenu</th></tr>
+  <tr><td><code>athletes</code></td><td>L'athlète : nom, sexe, catégorie, nationalité… (clé <code>id_athlete</code>, + <code>athlete_id_externe</code> unique, + colonne <code>visible</code> 0/1)</td></tr>
+  <tr><td><code>clubs</code>, <code>epreuves</code>, <code>villes</code>, <code>competitions</code></td><td>Les référentiels (listes de clubs, d'épreuves…)</td></tr>
+  <tr><td><code>categories</code>, <code>nationalites</code></td><td>Codes FFA (SE, JU, V1… / FRA, MAR… en 3 lettres)</td></tr>
+  <tr><td><code>athlete_clubs</code></td><td>Quel athlète à quel club et sur quelles années (périodes)</td></tr>
+  <tr><td><code>athlete_records</code></td><td>Records personnels (1 par épreuve)</td></tr>
+  <tr><td><code>athlete_resultats</code></td><td>Tous les résultats datés, avec niveau D/R/N/I</td></tr>
+  <tr><td><code>athlete_progressions</code></td><td>Évolution annuelle des perfs (la plus grosse table)</td></tr>
+  <tr><td><code>athlete_medailles</code>, <code>athlete_podiums</code>, <code>athlete_selections</code>, <code>athlete_niveaux</code></td><td>Palmarès et qualifications</td></tr>
+  <tr><td><code>users</code>, <code>user_sessions</code></td><td>Comptes + sessions (cookie 30 j)</td></tr>
+  <tr><td><code>search_tracking</code></td><td>Suivi de toutes les recherches/consultations (pour les « tops »)</td></tr>
+  <tr><td><code>contact_messages</code>, <code>profile_reports</code></td><td>Messages de contact, signalements de profils</td></tr>
+</table>
+<p>La liste exhaustive avec toutes les colonnes est dans <code>core/dbCheck_athle.php</code> (le fichier qui crée le
+schéma) et dans le <code>CLAUDE.md</code> du projet.</p>
+
+<h3>6.3 · Les relations (clés étrangères) et leur comportement</h3>
+<div class="box info">
+  <div class="box-t">ℹ️ Que se passe-t-il quand on supprime ?</div>
+  <ul style="margin-top:6px">
+    <li><strong>Supprimer un athlète</strong> → <code>ON DELETE CASCADE</code> : toutes ses données liées (records, médailles…) sont supprimées automatiquement.</li>
+    <li><strong>Supprimer un club / une épreuve / une ville</strong> → <code>ON DELETE SET NULL</code> : les lignes qui pointaient dessus ne sont pas supprimées, leur référence devient simplement « vide ».</li>
+  </ul>
+</div>
+
+<h3>6.4 · Le système de niveaux (couleurs)</h3>
+<p>Omniprésent dans les tableaux de performances. Hiérarchie du plus fort au plus faible :</p>
+<div class="diagram">International :  IE (100) > IR (99)                         → fuchsia
+National      :  N1 (90) … N4 (86)                          → rose
+Régional      :  R1 (80) … R6 (75)                          → cyan
+Départemental :  D1 (70) … D8 (63)                          → orange</div>
+<p>Fonctions JS : <code>_nivBadge(code)</code>, <code>_highestNiveau(arr)</code>. En PHP, des styles inline suivent
+le même schéma de couleurs.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="api">
+<h2>7 · L'API REST (<code>api/</code>)</h2>
+<p>L'API est l'ensemble des « portes » qui renvoient du JSON. Chaque fichier <code>.php</code> du dossier
+<code>api/</code> est une porte (un <em>endpoint</em>).</p>
+
+<h3>7.1 · Le squelette commun : <code>api/config.php</code></h3>
+<p>Tous les endpoints commencent par <code>require config.php</code>. Ce fichier :</p>
+<ol>
+  <li>Bloque l'accès direct (on ne peut pas ouvrir <code>config.php</code> seul).</li>
+  <li>Pose les en-têtes <strong>JSON</strong> + <strong>CORS</strong> (autorise les appels cross-domaine).</li>
+  <li>Inclut <code>core/db.php</code> → la connexion <code>$conn</code>.</li>
+  <li>Inclut <code>core/auth.php</code> et <code>ip_logger.php</code>, puis appelle <code>logIp()</code>.</li>
+  <li>Définit la clé d'API <code>BK_API_KEY</code> et la fonction <code>jsonResponse($data,$code)</code> qui renvoie le JSON et ferme la connexion.</li>
+</ol>
+
+<h3>7.2 · Le pattern type d'un endpoint (à connaître par cœur)</h3>
+<p>Presque tous les endpoints suivent le même schéma — illustré ici avec <code>search.php</code> :</p>
+<pre><code><span class="kw">require</span> <span class="st">'config.php'</span>;                       <span class="cm">// 1. en-têtes + $conn + auth</span>
+
+<span class="cm">// 2. On lit les paramètres de l'URL (?nom=…&club=…)</span>
+<span class="nu">$nom</span> = trim(<span class="nu">$_GET</span>[<span class="st">'nom'</span>] ?? <span class="st">''</span>);
+
+<span class="cm">// 3. On fabrique une CLÉ DE CACHE unique = MD5 de tous les paramètres</span>
+<span class="nu">$cacheKey</span>  = <span class="st">'search_'</span> . md5(<span class="nu">$nom</span>.<span class="st">'_'</span>.<span class="nu">$club</span>.<span class="st">'_'</span>. … );
+<span class="nu">$cacheFile</span> = <span class="nu">$cacheDir</span> . <span class="st">'/'</span> . <span class="nu">$cacheKey</span> . <span class="st">'.json'</span>;
+
+<span class="cm">// 4. Si une copie existe et a moins de 24 h → on la renvoie direct (CACHE HIT)</span>
+<span class="kw">if</span> (file_exists(<span class="nu">$cacheFile</span>) && (time() - filemtime(<span class="nu">$cacheFile</span>)) &lt; <span class="nu">86400</span>) {
+    <span class="kw">echo</span> file_get_contents(<span class="nu">$cacheFile</span>); <span class="kw">exit</span>;
+}
+
+<span class="cm">// 5. CACHE MISS → on interroge la base (requêtes SQL)</span>
+<span class="nu">$result</span> = <span class="nu">$conn</span>->query(<span class="st">"SELECT … FROM athletes WHERE …"</span>);
+
+<span class="cm">// 6. On assemble le résultat, on l'écrit dans le cache, et on le renvoie</span>
+@file_put_contents(<span class="nu">$cacheFile</span>, <span class="nu">$json</span>, LOCK_EX);
+<span class="kw">echo</span> <span class="nu">$json</span>;</code></pre>
+<div class="box tip">
+  <div class="box-t">✅ Pourquoi MD5 ?</div>
+  Chaque combinaison de paramètres doit avoir son propre fichier cache. <code>md5(...)</code> transforme une longue
+  liste de paramètres en une empreinte courte et unique (ex. <code>search_a1b2c3…</code>). Deux recherches identiques
+  → même empreinte → même fichier → réponse instantanée la seconde fois.
+</div>
+
+<h3>7.3 · Les endpoints principaux</h3>
+<table>
+  <tr><th>Endpoint</th><th>Rôle</th><th>Cache</th></tr>
+  <tr><td><code>athlete.php</code></td><td>Fiche complète d'un athlète (accepte <code>?id=</code> externe, <code>?id_athlete=</code> interne, <code>?licence=</code>)</td><td>24 h</td></tr>
+  <tr><td><code>search.php</code></td><td>Recherche : 12 filtres combinables (nom, club, catégorie, sexe, nationalité, épreuve, ville, médaille, année, licence…)</td><td>24 h</td></tr>
+  <tr><td><code>club_stats.php</code></td><td>Toutes les stats d'un club (épreuves, nationalités, records, médailles…)</td><td>24 h</td></tr>
+  <tr><td><code>epreuve_stats.php</code> / <code>ville_stats.php</code></td><td>Stats par épreuve / par ville</td><td>24 h</td></tr>
+  <tr><td><code>classement.php</code></td><td>Classement par épreuve (meilleure perf par athlète)</td><td class="t-post" style="color:#f85149;background:none">Aucun (temps réel)</td></tr>
+  <tr><td><code>stats.php</code></td><td>Stats globales du site + tops (clubs, athlètes, épreuves)</td><td>24 h</td></tr>
+  <tr><td><code>liste.php</code></td><td>Liste paginée d'athlètes (filtres niveau, épreuve, sexe, année)</td><td>24 h</td></tr>
+  <tr><td><code>nom.php</code></td><td>Recherche par nom de famille (4 modes : top noms, live, détail, deep search par niveau)</td><td>24 h</td></tr>
+  <tr><td><code>follow.php</code></td><td>Suivre/ne plus suivre un athlète ou un club (POST = toggle, GET = statut)</td><td>—</td></tr>
+  <tr><td><code>contact.php</code></td><td>Messages de contact (n'inclut PAS config.php → accessible même si IP bloquée)</td><td>—</td></tr>
+  <tr><td><code>report.php</code></td><td>Signalements de profils + actions admin</td><td>—</td></tr>
+  <tr><td><code>search_track.php</code></td><td>Tracking des recherches/consultations (reçoit du JS via sendBeacon)</td><td>—</td></tr>
+  <tr><td><code>auth/</code></td><td>login, register, logout, me, google_login, google_callback, confirm_hide…</td><td>—</td></tr>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section id="cache">
+<h2>8 · Le système de cache</h2>
+<p>Le cache est ce qui rend Bokonzi rapide malgré 300 000 athlètes et des requêtes lourdes.</p>
+
+<h3>8.1 · Comment ça marche</h3>
+<table>
+  <tr><th>Aspect</th><th>Détail</th></tr>
+  <tr><td>Emplacement</td><td>Dossier <code>cache/</code> (fichiers <code>.json</code>, protégé par <code>.htaccess</code>)</td></tr>
+  <tr><td>Durée de vie (TTL)</td><td>24 h (86400 s), 7 j pour la liste aléatoire</td></tr>
+  <tr><td>Nom du fichier</td><td><code>&lt;préfixe&gt;_&lt;md5 des paramètres&gt;.json</code></td></tr>
+  <tr><td>Préfixes</td><td><code>athlete_</code>, <code>search_</code>, <code>clubstats_</code>, <code>villestats_</code>, <code>ep_</code>, <code>stats_</code>, <code>liste_</code>, <code>nom_</code>, <code>similar_</code>…</td></tr>
+  <tr><td>Forcer le recalcul</td><td>Ajouter <code>?nocache=1</code> à l'URL de l'API</td></tr>
+</table>
+
+<h3>8.2 · Vider le cache</h3>
+<ul>
+  <li><strong>En local :</strong> supprimer les fichiers de <code>cache/</code>.</li>
+  <li><strong>En prod :</strong> ouvrir <code>https://bokonzi.com/admin/clear_cache.php</code> (tout) ou
+  <code>?prefix=clubstats</code> (ciblé).</li>
+</ul>
+<div class="box warn">
+  <div class="box-t">⚠️ Après un vidage complet</div>
+  Pense à régénérer les stats en appelant <code>stats.php?detail=1&top=30</code>, sinon les « tops » de la page
+  d'accueil seront vides (le fallback s'appuie sur <code>stats_detail_30.json</code>).
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="inodes">
+<h2>8b · Inodes & nettoyage automatique (important pour Hostinger)</h2>
+
+<h3>Qu'est-ce qu'un « inode » ?</h3>
+<div class="box analogy">
+  <div class="box-t">🗂️ Analogie : les fiches d'un fichier cartonné</div>
+  Sur un serveur, <strong>chaque fichier et chaque dossier consomme 1 « inode »</strong> (une entrée dans l'index du
+  disque), indépendamment de sa taille. Un hébergement mutualisé comme Hostinger limite le nombre total d'inodes
+  (souvent 200 000 à 400 000). Même si tes fichiers sont minuscules, <strong>trop de fichiers = serveur bloqué</strong>.
+</div>
+
+<h3>Le problème rencontré</h3>
+<p>Le dossier <code>cache/</code> grossit sans limite : chaque recherche ou profil unique crée un fichier
+<code>.json</code> permanent. Le TTL de 24 h ne <em>supprime</em> rien — il marque juste le fichier comme « périmé »
+et il ne sera réécrit que si la même requête revient. Résultat constaté en prod : <strong>337 000 fichiers</strong>
+dans <code>cache/</code> (≈ 337 000 inodes, ~4,75 Go).</p>
+
+<h3>La solution : <code>admin/cache_janitor.php</code></h3>
+<p>Un « nettoyeur » conçu pour <strong>ne pas impacter les performances</strong> :</p>
+<ul>
+  <li>Lancé uniquement par le <strong>cron</strong> (tâche planifiée), jamais pendant une visite.</li>
+  <li>Parcourt le dossier en <strong>streaming</strong> (<code>opendir</code>/<code>readdir</code>) → mémoire constante même sur 300 000 fichiers (pas de <code>glob</code> qui chargerait tout d'un coup).</li>
+  <li><strong>Borné dans le temps</strong> (<code>max_seconds</code>) : s'arrête proprement et reprend au passage suivant si le dossier est énorme.</li>
+  <li>Supprime seulement les fichiers plus vieux que le TTL → ne touche jamais un cache encore servi.</li>
+</ul>
+<pre><code><span class="cm"># Tâche cron Hostinger (1× par jour, ex. 3 h du matin) :</span>
+curl -s <span class="st">"https://bokonzi.com/admin/cache_janitor.php?bk_key=…&max_seconds=25"</span> &gt;/dev/null 2&gt;&1
+
+<span class="cm"># Test à blanc (ne supprime rien, compte seulement) :</span>
+…/cache_janitor.php?bk_key=…&dry=1</code></pre>
+<p>Il existe un jumeau <code>admin/src_janitor.php</code> pour le dossier <code>src/</code> (fichiers
+<code>{id}.php</code> du scraping). <code>src/</code> n'est qu'une optimisation SEO : <code>seoFromSrcFile()</code>
+retombe sur l'API si le fichier manque, donc on peut le purger sans rien casser.</p>
+<div class="box tip">
+  <div class="box-t">✅ Résultat</div>
+  Après nettoyage : ~316 000 inodes libérés (de ~339 000 à ~1 500). Le cron quotidien empêche la situation de revenir.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="index">
+<h2>9 · <code>index.php</code> — la page géante</h2>
+<p>Une seule URL, <code>index.php</code>, sert toutes les pages publiques via le paramètre <code>?page=</code>.</p>
+
+<h3>9.1 · Les pages disponibles</h3>
+<table>
+  <tr><th>URL</th><th>Page</th></tr>
+  <tr><td><code>?page=accueil</code></td><td>Stats globales, stade 3D, podium, tops consultés</td></tr>
+  <tr><td><code>?page=athletes</code></td><td>Liste paginée, recherche live, 4 layouts (magazine/grille/liste/flex)</td></tr>
+  <tr><td><code>?page=recherche</code></td><td>Recherche avancée 12 filtres</td></tr>
+  <tr><td><code>?page=profil&id=X</code></td><td>Fiche complète + bio auto-générée + tout cliquable</td></tr>
+  <tr><td><code>?page=clubs</code> / <code>?page=epreuves</code> / <code>?page=villes</code></td><td>Listes + panneaux de détail</td></tr>
+  <tr><td><code>?page=comparer</code></td><td>Comparaison d'athlètes/clubs (liens partageables)</td></tr>
+  <tr><td><code>?page=noms</code></td><td>Recherche par nom de famille (+ deep search par niveau)</td></tr>
+  <tr><td><code>?page=tuto</code></td><td>Tutoriel animé</td></tr>
+</table>
+
+<h3>9.2 · Repères de lignes (pour s'y retrouver dans les ~23 500 lignes)</h3>
+<p>Vue rapide ci-dessous ; la <a class="link" href="doc_index.html">carte détaillée complète</a> donne tous les numéros de ligne et l'inventaire des fonctions JS.</p>
+<table>
+  <tr><th>Lignes ≈</th><th>Contenu</th></tr>
+  <tr><td>1–60</td><td>Includes, <code>apiCall()</code>, anti-scraping, minuteur découverte anonyme</td></tr>
+  <tr><td>137–250</td><td>SEO dynamique (titre, canonical, Open Graph, JSON-LD)</td></tr>
+  <tr><td>455–810</td><td>Page Accueil</td></tr>
+  <tr><td>1027–1540</td><td>Page Recherche</td></tr>
+  <tr><td>1540–2510</td><td>Page Profil</td></tr>
+  <tr><td>2710–4120</td><td>Page Villes (rendue côté serveur en PHP)</td></tr>
+  <tr><td>4580–4800</td><td>Panneaux overlay Épreuve & Club (HTML + onglets)</td></tr>
+  <tr><td>4800–8200</td><td>JavaScript global (~100 fonctions)</td></tr>
+</table>
+
+<h3>9.3 · La fonction <code>apiCall()</code></h3>
+<p>Côté PHP, <code>apiCall($url)</code> fait un appel HTTP interne à l'API et décode le JSON. C'est le pont entre
+la couche affichage et la couche données lors du <strong>rendu initial</strong> (le premier chargement de la page).
+Ensuite, le JavaScript prend le relais avec <code>fetch()</code> pour les parties dynamiques.</p>
+
+<div class="box warn">
+  <div class="box-t">⚠️ Panneaux club/épreuve = pas des pages</div>
+  Les panneaux de détail (club, épreuve) ne sont pas des pages séparées : ce sont des <strong>overlays</strong>
+  (fenêtres superposées) remplis par du JavaScript via <code>fetch()</code>. À l'inverse, la page Villes est
+  rendue entièrement côté serveur (PHP). Ne cherche pas un fichier <code>club.php</code> : tout est dans index.php + JS.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="front">
+<h2>10 · Frontend & conventions de code</h2>
+
+<h3>10.1 · Le pattern « 3 tables » (CONVENTION OBLIGATOIRE)</h3>
+<p>Tous les tableaux <code>bk-table</code> doivent suivre cette structure en 3 tables empilées : un en-tête, les
+données, puis à nouveau l'en-tête. Cela donne des en-têtes « collants » en haut et en bas lors du défilement.</p>
+<pre><code>&lt;<span class="kw">div</span> class=<span class="st">"table-wrap"</span>&gt;
+  &lt;table class=<span class="st">"bk-table"</span>&gt;&lt;tr&gt;&lt;th&gt;Col1&lt;/th&gt;&lt;th&gt;Col2&lt;/th&gt;&lt;/tr&gt;&lt;/table&gt;  <span class="cm">&lt;!-- en-tête --&gt;</span>
+  &lt;table class=<span class="st">"bk-table"</span>&gt; … lignes de données … &lt;/table&gt;             <span class="cm">&lt;!-- données --&gt;</span>
+  &lt;table class=<span class="st">"bk-table"</span>&gt;&lt;tr&gt;&lt;th&gt;Col1&lt;/th&gt;&lt;th&gt;Col2&lt;/th&gt;&lt;/tr&gt;&lt;/table&gt;  <span class="cm">&lt;!-- en-tête --&gt;</span>
+&lt;/<span class="kw">div</span>&gt;</code></pre>
+
+<h3>10.2 · Composants JavaScript réutilisables</h3>
+<ul>
+  <li><strong>Panneau club</strong> : présent sur 3 pages avec un suffixe (<code>''</code>=Recherche, <code>'Accueil'</code>=Accueil). Fonctions <code>_openClubPanel()</code>, <code>_fillClubPanel()</code>, 5 onglets.</li>
+  <li><strong>Panneau épreuve</strong> : <code>openEpreuveDetail()</code>, 4 onglets.</li>
+  <li><strong>Biographie athlète</strong> : <code>buildAthleteBio()</code> (~500 lignes) génère une bio automatique filtrable par années.</li>
+  <li><strong>Graphiques</strong> : Chart.js 4.4.7. Le rendu se fait <em>après</em> l'insertion du HTML (post-render).</li>
+</ul>
+
+<h3>10.3 · Quelques pièges frontend</h3>
+<div class="box warn">
+  <div class="box-t">⚠️ À garder en tête</div>
+  <ul style="margin-top:6px">
+    <li>Les noms de club venant de l'API peuvent contenir un <code>*</code> en suffixe → utiliser <code>rtrim($club, '* ')</code> dans les liens.</li>
+    <li>Les clubs de plus de 5000 athlètes sont exclus des résultats de recherche (sauf si on filtre explicitement sur ce club).</li>
+    <li>Une performance avec <code>performance_int = 0</code> ou <code>NULL</code> = conversion ratée → toujours filtrer <code>&gt; 0</code>.</li>
+    <li>Beaucoup de CSS est en ligne dans index.php ; le reste est dans <code>dashboard.css</code> et <code>common.css</code>.</li>
+  </ul>
+</div>
+
+<h3>10.4 · Conversion des performances</h3>
+<p>La fonction <code>performanceToInt()</code> (dans <code>Class/AthleteScraper.php</code>) convertit un temps ou une
+distance texte en entier (centièmes / centimètres) pour pouvoir les trier. Exemple : <code>10''48</code> → 1048.
+<strong>Piège</strong> : un seul chiffre après <code>''</code> est un dixième (<code>10''9</code> = 10,9 s = 1090,
+pas 1009) — d'où le <code>str_pad</code>.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="auth">
+<h2>11 · Authentification</h2>
+
+<h3>11.1 · Connexion via Google uniquement</h3>
+<p>Les visiteurs se connectent <strong>uniquement via Google</strong> (plus de formulaire email/mot de passe). Le flux :</p>
+<div class="diagram">login.php  →  bouton Google
+   │
+   ▼
+api/auth/google_login.php   (génère un jeton anti-CSRF « state »)
+   │
+   ▼
+Google  (l'utilisateur autorise)
+   │
+   ▼
+api/auth/google_callback.php
+   │  • échange le code contre les infos du compte Google
+   │  • email déjà connu ? → on lie le google_id au compte (pas de doublon)
+   │  • email inconnu ?     → on crée un compte (rôle « athlete »)
+   ▼
+createSession()  → cookie bk_token (30 j)  → retour à index.php</div>
+<p>Config dans <code>core/oauth_config.php</code> (détecte automatiquement local vs prod pour l'URL de retour).
+Tables : <code>users.google_id</code>, <code>users.oauth_provider</code>.</p>
+
+<h3>11.2 · Le Super Admin (toi)</h3>
+<p>Le super admin garde un login classique. Sur le <strong>même</strong> formulaire <code>login.php</code>, si
+l'email saisi correspond au <em>username</em> de la base et le mot de passe au <em>password</em> de la base
+(<code>core/credentials.php</code>), c'est détecté comme connexion super admin par <code>api/auth/login.php</code>.</p>
+<table>
+  <tr><th>Élément</th><th>Valeur</th></tr>
+  <tr><td>Cookie</td><td><code>bk_sa_token</code> (7 jours), stocké dans <code>logs/.sa_sessions.php</code></td></tr>
+  <tr><td>Dashboard</td><td><code>admin/panel.php</code> (16 sections)</td></tr>
+  <tr><td>Limite de tentatives</td><td>5 essais/jour par IP, blocage 24 h (Google/Hostinger en illimité)</td></tr>
+</table>
+
+<h3>11.3 · Rôles</h3>
+<p><code>athlete</code> (par défaut), <code>coach</code>, <code>club</code>, <code>admin</code>. Vérifiés par
+<code>requireRole($conn, ['admin'])</code>.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="quotas">
+<h2>12 · Quotas de recherche & anti-scraping</h2>
+<p>Pour protéger la base (et inciter à l'inscription), les recherches et la navigation sont limitées. Toute la
+logique des quotas de recherche est centralisée dans <strong><code>core/search_limit.php</code></strong> — la
+« source de vérité unique ».</p>
+
+<div class="box danger">
+  <div class="box-t">🚨 Les vraies valeurs (vérifiées dans le code, juin 2026)</div>
+  Attention : le CLAUDE.md mentionne d'anciennes valeurs. Les constantes <strong>réelles</strong> en haut de
+  <code>search_limit.php</code> sont :
+  <table style="margin-top:10px">
+    <tr><th>Constante</th><th>Valeur</th><th>Signification</th></tr>
+    <tr><td><code>BK_SEARCH_LIMIT_FREE</code></td><td><strong>15</strong></td><td>Recherches/jour pour un connecté sans abonnement</td></tr>
+    <tr><td><code>BK_SEARCH_COOLDOWN</code></td><td><strong>0</strong></td><td>Plus de délai entre deux recherches</td></tr>
+    <tr><td><code>BK_SEARCH_TRIAL_ANON</code></td><td><strong>60</strong></td><td>Secondes de « découverte » gratuite pour un anonyme</td></tr>
+    <tr><td><code>BK_PAGE_DAILY_LIMIT</code> (dans index.php)</td><td><strong>200</strong></td><td>Pages/jour max pour un anonyme avant blocage</td></tr>
+  </table>
+</div>
+
+<h3>12.1 · Règles par type de visiteur</h3>
+<table>
+  <tr><th>Visiteur</th><th>Droits de recherche</th></tr>
+  <tr><td><strong>Anonyme</strong></td><td>60 s de découverte gratuite dès l'arrivée (cookie <code>bk_anon_t0</code>), puis recherche bloquée jusqu'à connexion. La navigation reste possible (limite séparée de 200 pages/jour).</td></tr>
+  <tr><td><strong>Connecté sans abo</strong></td><td>15 recherches/jour, sans délai entre elles</td></tr>
+  <tr><td><strong>Abonné Bronze</strong></td><td>Quota du plan (ex. 2000/jour)</td></tr>
+  <tr><td><strong>Abonné Argent/Or/Platine</strong></td><td>Illimité (<code>search_limit = -1</code>)</td></tr>
+  <tr><td><strong>Super admin / clé API</strong></td><td>Illimité</td></tr>
+  <tr><td><strong>Whitelist</strong> (Google, Hostinger, localhost, bots)</td><td>Ignoré (illimité) — pour ne pas pénaliser le référencement</td></tr>
+</table>
+
+<h3>12.2 · Les deux fonctions clés</h3>
+<ul>
+  <li><code>bkSearchLimit($conn, $consume)</code> : vérifie le quota. Si <code>$consume = true</code>, compte cette
+  recherche. Renvoie un tableau <code>{ blocked, reason, used, limit, remaining, … }</code>.</li>
+  <li><code>bkSlFields($sl)</code> : formate les champs standard à renvoyer dans les réponses JSON (pour le badge de quota).</li>
+</ul>
+<div class="box info">
+  <div class="box-t">ℹ️ Compteur par utilisateur, pas par IP</div>
+  Le fichier compteur <code>logs/.search_limits.php</code> est indexé par <code>u&lt;id_user&gt;</code> et non par IP.
+  Ainsi, deux personnes derrière le même WiFi ne se partagent pas le quota. Remise à zéro automatique au changement
+  de date.
+</div>
+
+<h3>12.3 · Anti-scraping (navigation)</h3>
+<p>Dans <code>index.php</code> (lignes ~22-47), un compteur journalier par IP (<code>logs/.page_limits.php</code>)
+bloque l'anonyme au-delà de 200 pages/jour (redirection vers <code>login.php?limit=1</code>). Connectés et whitelist
+= illimité.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="securite">
+<h2>13 · Sécurité générale</h2>
+<ul>
+  <li><strong>Identifiants de base</strong> : dans <code>core/credentials.php</code> (jamais commité en clair publiquement).</li>
+  <li><strong>Fichiers de logs protégés</strong> : chaque fichier JSON sensible commence par <code>&lt;?php die(); ?&gt;</code> — si quelqu'un l'ouvre par URL, PHP s'arrête immédiatement et ne montre rien.</li>
+  <li><strong>Dossiers protégés par <code>.htaccess</code></strong> : <code>cache/</code>, <code>logs/</code>.</li>
+  <li><strong>Mots de passe</strong> : hachés avec <code>password_hash()</code> (bcrypt) — jamais stockés en clair.</li>
+  <li><strong>Requêtes préparées</strong> : pour les données sensibles (auth), on utilise <code>$conn->prepare()</code> + <code>bind_param()</code> → protège contre l'injection SQL.</li>
+  <li><strong>Clé API</strong> : <code>bk_s3cr3t_2026_xK9mP</code>, passée en <code>?bk_key=</code> ou en-tête <code>X-BK-KEY</code>. Donne un accès illimité et des actions admin à distance (reset, bypass cache, janitors).</li>
+  <li><strong>Fichiers dangereux supprimés</strong> : <code>admin/drop_all.php</code> et <code>admin/reset.php</code> ont été retirés (ils pouvaient effacer toute la base).</li>
+</ul>
+<div class="box danger">
+  <div class="box-t">🚨 À ne jamais faire</div>
+  Ne jamais exposer publiquement <code>credentials.php</code>, la clé API, ou les fichiers de <code>logs/</code>.
+  Ne jamais désactiver les requêtes préparées sur l'authentification. Ne jamais réintroduire un script de
+  « suppression totale » accessible par URL.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="scraping">
+<h2>14 · Le pipeline de scraping</h2>
+<p>Le « scraping » est l'aspiration automatique des données depuis le site officiel <strong>athle.fr</strong> pour
+remplir la base de Bokonzi. C'est le système le plus complexe du projet.</p>
+
+<h3>14.1 · Le chemin d'une donnée</h3>
+<div class="diagram">athle.fr (pages HTML)
+   │  scrapeParallel() — télécharge 7 athlètes × 3 pages en parallèle (curl_multi)
+   ▼
+Class/AthleteScraper.php — PARSE le HTML → données structurées
+   │  (extractIdentite, extractRecords, extractMedailles, extractProgressions…)
+   ▼
+core/insert_athle.php — insertAthleteData() → écrit en base (9 tables enfants)
+   │  + écrit une copie JSON dans src/{id}.php
+   ▼
+MySQL (base de données Bokonzi)</div>
+
+<h3>14.2 · Les acteurs</h3>
+<table>
+  <tr><th>Fichier</th><th>Rôle</th></tr>
+  <tr><td><code>scraping/scraper.php</code></td><td><strong>L'orchestrateur principal.</strong> Bouton DÉMARRER/ARRÊTER (fichier flag), traite par lots de 7, ignore les athlètes déjà en base, s'auto-rafraîchit toutes les 25 s. ~3,5 jours pour 300k athlètes.</td></tr>
+  <tr><td><code>scraping/scrape_functions.php</code></td><td><code>scrapeParallel()</code> : télécharge en parallèle (curl_multi) les pages bilans / records / sélections.</td></tr>
+  <tr><td><code>Class/AthleteScraper.php</code></td><td>Le parseur : transforme le HTML brut d'athle.fr en données propres. Contient <code>performanceToInt()</code>.</td></tr>
+  <tr><td><code>core/insert_athle.php</code></td><td><code>insertAthleteData()</code> : insère tout en base. Utilise un cache mémoire des référentiels pour éviter les requêtes répétées. Si l'athlète existe déjà → on supprime ses enfants (CASCADE) et on réinsère tout.</td></tr>
+  <tr><td><code>scraping_v2/</code></td><td>Pipeline v2 (orienté objet) : découverte des classements → table <code>nom_et_liens</code>, puis scraping par année / par épreuve. Inclut des outils de drill-down et de nettoyage de doublons.</td></tr>
+</table>
+
+<h3>14.3 · Fichiers de progression (pour reprendre après interruption)</h3>
+<p>Le scraping peut tourner des jours. Pour reprendre où il s'était arrêté, il écrit son avancement dans des fichiers :
+<code>progress.txt</code> (ID courant), <code>urls_cache.json</code> (cache des URLs), <code>failed.json</code>
+(athlètes en échec). La table <code>athlete_scrape_log</code> permet d'éviter de re-scraper un athlète vu il y a
+moins de 24 h.</p>
+
+<div class="box info">
+  <div class="box-t">ℹ️ Suivi à distance</div>
+  <code>admin/remote_check.php?bk_key=…&action=scrape_status</code> donne l'état des pipelines (total en base,
+  restants, %, derniers athlètes, audit qualité) au format JSON.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="panel">
+<h2>15 · Le panel admin (<code>admin/panel.php</code>)</h2>
+<p>Le tableau de bord du super admin, accessible après connexion (cookie <code>bk_sa_token</code>). 16 sections.</p>
+<table>
+  <tr><th>Section</th><th>Contenu</th></tr>
+  <tr><td>1 · Overview</td><td>Compteurs de toutes les tables</td></tr>
+  <tr><td>2-5 · Activité</td><td>Requêtes temps réel, logs BDD, activité horaire, top IPs</td></tr>
+  <tr><td>6 · Users</td><td>Liste des utilisateurs</td></tr>
+  <tr><td>12 · Analytics Vues</td><td>Onglets, graphiques, tri, filtres</td></tr>
+  <tr><td>13 · IPs bloquées</td><td>Avec bouton « débannir »</td></tr>
+  <tr><td>14 · Messages contact</td><td>Mails reçus (confirmés / non confirmés / envoyés). <strong>Les confirmés sont séparés en « Non lus » puis « Lus ».</strong></td></tr>
+  <tr><td>15 · Search Tracking</td><td>8 KPI, graphique 14 j, 7 onglets, reset, IPs ignorées</td></tr>
+  <tr><td>17 · Profils comportementaux</td><td>Phrase auto-générée par utilisateur (activité, device, follows…)</td></tr>
+</table>
+<p>Autres outils du dossier <code>admin/</code> : <code>clear_cache.php</code>, <code>cache_janitor.php</code> /
+<code>src_janitor.php</code> (inodes), <code>audit_athletes.php</code> (intégrité des données),
+<code>db_archive.php</code> (archivage réversible), <code>remote_check.php</code> (API d'admin à distance).</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="seo">
+<h2>16 · SEO (référencement)</h2>
+<p>Le SEO, c'est ce qui aide Google à comprendre et bien classer les pages. Bokonzi le fait sérieusement car son
+trafic dépend du référencement.</p>
+<ul>
+  <li><strong>Titres dynamiques</strong> par page (index.php lignes 137-250).</li>
+  <li><strong>Open Graph & Twitter Cards</strong> : aperçu riche quand on partage un lien sur les réseaux.</li>
+  <li><strong>JSON-LD</strong> : données structurées (WebSite, SportsOrganization, Person, BreadcrumbList) que Google lit pour afficher des résultats enrichis.</li>
+  <li><strong><code>core/seo.php</code></strong> : <code>generateAthleteSEO($data)</code> fabrique titre + description + JSON-LD d'un profil. <code>seoFromSrcFile()</code> lit le fichier <code>src/{id}.php</code> pour aller vite, avec repli sur l'API.</li>
+  <li><strong><code>sitemap.php</code></strong> : génère dynamiquement le plan du site (toutes les pages + clubs + épreuves + villes + athlètes paginés).</li>
+  <li><strong>noindex</strong> sur les pages comparer, tuto, et profils 404.</li>
+</ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="deploiement">
+<h2>17 · Déploiement & environnements</h2>
+
+<h3>17.1 · Les deux environnements</h3>
+<table>
+  <tr><th></th><th>Local (développement)</th><th>Production (en ligne)</th></tr>
+  <tr><td>Logiciel</td><td>XAMPP</td><td>Hostinger (hébergement mutualisé)</td></tr>
+  <tr><td>Chemin</td><td><code>C:\xampp\htdocs\BK</code></td><td><code>public_html/</code></td></tr>
+  <tr><td>URL</td><td><code>http://localhost/BK</code></td><td><code>https://bokonzi.com</code></td></tr>
+  <tr><td>Identifiants base</td><td><code>credentials_local.php</code></td><td><code>credentials.php</code></td></tr>
+  <tr><td>Préfixe URL (<code>BK_BASE</code>)</td><td><code>/BK</code></td><td>vide</td></tr>
+</table>
+
+<h3>17.2 · Comment on met en ligne</h3>
+<div class="box info">
+  <div class="box-t">ℹ️ Workflow de déploiement</div>
+  Le déploiement se fait par <strong>copie manuelle des fichiers</strong> via le gestionnaire de fichiers Hostinger
+  (file manager). Il n'y a pas de Git automatique vers la prod : on modifie en local, on teste, puis on uploade le(s)
+  fichier(s) modifié(s). PHP en ligne de commande local : <code>C:\xampp\php\php.exe</code>.
+</div>
+
+<h3>17.3 · Contraintes Hostinger à connaître</h3>
+<div class="box warn">
+  <div class="box-t">⚠️ Particularités de l'hébergement mutualisé</div>
+  <ul style="margin-top:6px">
+    <li><strong>Limite d'inodes</strong> : nombre total de fichiers limité → d'où le cache janitor (section 8b).</li>
+    <li><strong>Appels « loopback » sans cookies</strong> : quand le PHP s'appelle lui-même (apiCall vers sa propre API), les cookies du visiteur ne sont pas transmis.</li>
+    <li><strong>Certains en-têtes HTTP sont bloqués</strong> par l'hébergeur.</li>
+    <li><strong>MySQL non optimisé</strong> : certaines requêtes lourdes (UNION, IN sur sous-requêtes) provoquent des timeouts — privilégier <code>EXISTS</code> et les index.</li>
+  </ul>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="maintenance">
+<h2>18 · Maintenance courante</h2>
+<table>
+  <tr><th>Tâche</th><th>Comment</th></tr>
+  <tr><td>Vider le cache (prod)</td><td><code>admin/clear_cache.php</code> (tout) ou <code>?prefix=X</code></td></tr>
+  <tr><td>Régénérer les stats accueil</td><td>Appeler <code>api/stats.php?detail=1&top=30</code> après vidage</td></tr>
+  <tr><td>Nettoyer les inodes</td><td>Cron quotidien sur <code>admin/cache_janitor.php</code> (déjà en place)</td></tr>
+  <tr><td>Vérifier le scraping</td><td><code>admin/remote_check.php?bk_key=…&action=scrape_status</code></td></tr>
+  <tr><td>Auditer l'intégrité des données</td><td><code>admin/audit_athletes.php?bk_key=…</code></td></tr>
+  <tr><td>Masquer un profil</td><td>Panel → signalements, ou <code>report.php?hide_athlete=ID</code> (passe <code>visible=0</code> + vide le cache)</td></tr>
+</table>
+<div class="box tip">
+  <div class="box-t">✅ Vérifier qu'un endpoint marche</div>
+  Ouvre simplement son URL dans le navigateur avec <code>?bk_key=…</code>. S'il renvoie du JSON propre, c'est bon.
+  Beaucoup d'outils (janitors, remote_check) acceptent <code>?dry=1</code> pour simuler sans rien modifier.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="glossaire">
+<h2>19 · Glossaire</h2>
+<table>
+  <tr><th>Terme</th><th>Définition simple</th></tr>
+  <tr><td><strong>API / endpoint</strong></td><td>Une « porte » du serveur qui renvoie des données (JSON) au lieu d'une page.</td></tr>
+  <tr><td><strong>Cache</strong></td><td>Copie toute prête d'un résultat, pour ne pas le recalculer à chaque fois.</td></tr>
+  <tr><td><strong>Cookie</strong></td><td>Petit fichier que le serveur dépose dans ton navigateur pour te reconnaître (ex. ta session).</td></tr>
+  <tr><td><strong>Cron</strong></td><td>Tâche planifiée qui s'exécute automatiquement à heure fixe sur le serveur.</td></tr>
+  <tr><td><strong>CSRF</strong></td><td>Attaque où un site malveillant te fait exécuter une action à ton insu. Le jeton « state » la bloque.</td></tr>
+  <tr><td><strong>Inode</strong></td><td>Une entrée dans l'index du disque : 1 par fichier ou dossier. Limité chez Hostinger.</td></tr>
+  <tr><td><strong>JSON</strong></td><td>Format texte universel pour échanger des données : <code>{"clé":"valeur"}</code>.</td></tr>
+  <tr><td><strong>JSON-LD</strong></td><td>Données structurées dans la page que Google lit pour mieux la comprendre (SEO).</td></tr>
+  <tr><td><strong>MD5</strong></td><td>Fonction qui transforme un texte en empreinte courte et unique (sert à nommer les fichiers cache).</td></tr>
+  <tr><td><strong>OAuth</strong></td><td>Protocole de connexion via un tiers (ici Google) sans gérer de mot de passe.</td></tr>
+  <tr><td><strong>Overlay</strong></td><td>Fenêtre superposée à la page (les panneaux club/épreuve), remplie par JavaScript.</td></tr>
+  <tr><td><strong>Scraping</strong></td><td>Aspirer automatiquement le contenu d'un site web (ici athle.fr) pour le réutiliser.</td></tr>
+  <tr><td><strong>SQL</strong></td><td>Le langage pour interroger la base de données.</td></tr>
+  <tr><td><strong>TTL</strong></td><td>« Time To Live » : durée de validité d'un cache (24 h ici).</td></tr>
+  <tr><td><strong>Whitelist</strong></td><td>Liste d'IP de confiance (Google, Hostinger…) exemptées des limites.</td></tr>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section id="reprise">
+<h2>20 · Checklist : reprendre le projet de zéro</h2>
+<p>Si tu récupères ce projet sans rien connaître, voici l'ordre à suivre.</p>
+<ol class="steps">
+  <li><strong>Installe XAMPP</strong> et place le dossier du projet dans <code>C:\xampp\htdocs\BK</code>. Démarre Apache et MySQL.</li>
+  <li><strong>Crée une base locale</strong> dans phpMyAdmin (ex. <code>bk_local</code>), puis configure <code>core/credentials_local.php</code> avec tes identifiants locaux.</li>
+  <li><strong>Crée les tables</strong> en ouvrant <code>admin/setup_bdd.php</code> (ou <code>admin/local_setup.php</code> qui guide).</li>
+  <li><strong>Ouvre <code>http://localhost/BK</code></strong> : le site doit s'afficher (base vide au début).</li>
+  <li><strong>Comprends le flux</strong> : relis les sections 2 (vue d'ensemble) et 3 (cycle de vie) en suivant dans le code <code>index.php</code> → <code>api/athlete.php</code> → <code>core/db.php</code>.</li>
+  <li><strong>Pour des données</strong> : soit tu importes une sauvegarde de la base de prod, soit tu lances le scraping (section 14) — attention, c'est long.</li>
+  <li><strong>Avant toute modif en prod</strong> : teste en local, puis uploade le fichier modifié via le file manager Hostinger. Vide le cache concerné après coup.</li>
+  <li><strong>Garde sous les yeux</strong> le fichier <code>CLAUDE.md</code> à la racine : c'est la référence rapide la plus détaillée (mais vérifie toujours les valeurs dans le code réel, elles peuvent avoir évolué).</li>
+</ol>
+
+<div class="box tip">
+  <div class="box-t">✅ Le mot de la fin</div>
+  Tout le projet repose sur 4 idées simples : <strong>(1)</strong> une base MySQL alimentée par le scraping,
+  <strong>(2)</strong> une API qui lit cette base et met en cache, <strong>(3)</strong> des pages PHP/JS qui appellent
+  l'API, <strong>(4)</strong> un noyau partagé (connexion, auth, quotas). Si tu gardes cette carte mentale, tu peux
+  retrouver n'importe quelle fonctionnalité en partant de la couche concernée.
+</div>
+</section>
+
+<div style="text-align:center;color:#6e7681;font-size:13px;padding:30px 0;border-top:1px solid var(--border)">
+  Documentation technique BOKONZI · générée à partir du code réel · à mettre à jour si l'architecture change.
+</div>
+
+</main>
+</div>
+
+<script>
+// Surlignage de la section active dans le sommaire + filtre de recherche
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
+  var sections = links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); }).filter(Boolean);
+
+  function onScroll(){
+    var pos = window.scrollY + 120;
+    var current = sections[0];
+    sections.forEach(function(s){ if(s.offsetTop <= pos) current = s; });
+    links.forEach(function(a){
+      a.classList.toggle('active', a.getAttribute('href') === '#' + (current && current.id));
+    });
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+
+  // Filtre du sommaire
+  var search = document.getElementById('tocSearch');
+  search.addEventListener('input', function(){
+    var q = search.value.toLowerCase().trim();
+    links.forEach(function(a){
+      a.style.display = (!q || a.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+})();
+</script>
+</body>
+</html>

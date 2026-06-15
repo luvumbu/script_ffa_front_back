@@ -16,15 +16,26 @@
  *   - Whitelist (Google, Hostinger, localhost, bots)       : ignore (illimite)
  *
  * Fichier compteur (connectes uniquement) : logs/.search_limits.php
- *   { "_date": "Y-m-d", "<ip>": { "c": <nb du jour>, "t": <ts derniere recherche> } }
+ *   { "_date": "Y-m-d", "u<id_user>": { "c": <nb du jour>, "t": <ts derniere recherche> } }
+ *   La cle est l'id_user (et non l'IP) pour eviter que deux utilisateurs derriere
+ *   la meme IP (WiFi partage, NAT) heritent du quota / cooldown l'un de l'autre.
  *   Remis a zero automatiquement au changement de date.
  */
 
-if (!defined('BK_SEARCH_LIMIT_FREE'))   define('BK_SEARCH_LIMIT_FREE', 5);     // recherches/jour : CONNECTE sans abonnement
-if (!defined('BK_SEARCH_COOLDOWN'))     define('BK_SEARCH_COOLDOWN', 1800);    // 30 min entre 2 recherches (connecte sans abo)
+if (!defined('BK_SEARCH_LIMIT_FREE'))   define('BK_SEARCH_LIMIT_FREE', 15);    // recherches/jour : CONNECTE sans abonnement
+if (!defined('BK_SEARCH_COOLDOWN'))     define('BK_SEARCH_COOLDOWN', 0);       // PLUS de cooldown : les connectes utilisent leur quota journalier sans delai entre 2 recherches
 if (!defined('BK_SEARCH_TRIAL_ANON'))   define('BK_SEARCH_TRIAL_ANON', 60);    // ANONYME : 60 s de recherche libre des l'arrivee, puis blocage
 // Compat : core/subscription.php lit BK_SEARCH_LIMIT_LOGGED
 if (!defined('BK_SEARCH_LIMIT_LOGGED')) define('BK_SEARCH_LIMIT_LOGGED', BK_SEARCH_LIMIT_FREE);
+
+// IMPORTANT : require au scope global du fichier (et donc du caller search.php).
+// Si on faisait ce require A L'INTERIEUR de bkSearchLimit(), les variables
+// $BK_PLANS / $BK_ACTIVE_STATUSES definies dans stripe_config.php deviendraient
+// LOCALES a la fonction. hasActiveSubscription() ferait alors `global $BK_ACTIVE_STATUSES`
+// et recupererait null, ce qui provoque un TypeError fatal sur in_array() en PHP 8
+// (et renvoie un 500 vide a l'utilisateur connecte qui a un abonnement) — bug
+// constate en prod sur api/search.php.
+require_once __DIR__ . '/subscription.php';
 
 /** IP reelle du visiteur (CloudFlare / proxy / direct). */
 function bkSearchClientIp() {
@@ -49,6 +60,13 @@ function bkSearchClientIp() {
  * }
  */
 function bkSearchLimit($conn, $consume = true) {
+    // Mode test super admin : on simule le quota du rôle choisi (visiteur,
+    // gratuit, abonné). Prime sur la détection réelle (y compris SA / localhost).
+    if (function_exists('bkTestRole')) {
+        $tr = bkTestRole();
+        if ($tr !== '') return bkSearchLimitTest($tr, $consume);
+    }
+
     $ip       = bkSearchClientIp();
     $isLogged = !empty($_COOKIE['bk_token']);
     $isSA     = !empty($_COOKIE['bk_sa_token']);
@@ -84,17 +102,22 @@ function bkSearchLimit($conn, $consume = true) {
 
     // Abonnement : Argent/Or/Platine = illimite, Bronze = quota etendu (sans cooldown)
     $planLimit = null; // null => aucun abonnement actif
+    $userId    = 0;    // id_user du connecte (sert de cle au compteur, voir plus bas)
     if ($isLogged && $conn && function_exists('getCurrentUser')) {
-        require_once __DIR__ . '/subscription.php';
+        // subscription.php est deja require au top du fichier — surtout pas ici,
+        // sinon $BK_PLANS / $BK_ACTIVE_STATUSES sont locaux a la fonction.
         $u = getCurrentUser($conn);
         if ($u && !empty($u['id_user'])) {
-            $info = getUserPlanInfo($conn, $u['id_user']);
+            $userId = (int)$u['id_user'];
+            $info = getUserPlanInfo($conn, $userId);
             if ($info) {
                 if ((int)$info['search_limit'] === -1) return $asUnlimited(); // Argent / Or / Platine
                 $planLimit = (int)$info['search_limit'];                       // Bronze
             }
         }
     }
+    // Connecte mais session introuvable (cookie obsolete) : on ne penalise pas, on laisse passer.
+    if ($isLogged && $userId === 0) return $asUnlimited();
 
     // Whitelist (Google, Hostinger, localhost) + bots / curl => illimite
     $wl = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.',
@@ -139,8 +162,11 @@ function bkSearchLimit($conn, $consume = true) {
     $res['cooldown_total'] = $cooldown;
 
     // --- Lecture du fichier compteur ---
+    // Cle = "u<id_user>" : compteur par utilisateur (et non par IP) pour ne pas
+    // partager le quota / cooldown entre deux comptes connectes derriere la meme IP.
     $file  = __DIR__ . '/../logs/.search_limits.php';
     $today = date('Y-m-d');
+    $key   = 'u' . $userId;
     $data  = [];
     if (file_exists($file)) {
         $raw = file_get_contents($file);
@@ -150,8 +176,8 @@ function bkSearchLimit($conn, $consume = true) {
     // Remise a zero quotidienne automatique
     if (($data['_date'] ?? '') !== $today) $data = ['_date' => $today];
 
-    $entry = $data[$ip] ?? ['c' => 0, 't' => 0];
-    if (!is_array($entry)) $entry = ['c' => (int)$entry, 't' => 0]; // compat ancien format {ip: int}
+    $entry = $data[$key] ?? ['c' => 0, 't' => 0];
+    if (!is_array($entry)) $entry = ['c' => (int)$entry, 't' => 0]; // compat ancien format
     $count = (int)($entry['c'] ?? 0);
     $last  = (int)($entry['t'] ?? 0);
     $now   = time();
@@ -180,7 +206,7 @@ function bkSearchLimit($conn, $consume = true) {
     // --- Consommation ---
     if ($consume) {
         $count++;
-        $data[$ip] = ['c' => $count, 't' => $now];
+        $data[$key] = ['c' => $count, 't' => $now];
         @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
         $res['used']      = $count;
         $res['remaining'] = max(0, $limit - $count);
@@ -188,6 +214,76 @@ function bkSearchLimit($conn, $consume = true) {
         if ($cooldown > 0) $res['cooldown_remaining'] = $cooldown;
     }
 
+    return $res;
+}
+
+/**
+ * Simulation du quota pour le « mode test » super admin.
+ * Isolé du vrai compteur : utilise des clés « test_<role> » dans le même fichier
+ * (chacune avec sa propre date) pour ne JAMAIS toucher au quota des vrais users.
+ */
+function bkSearchLimitTest($role, $consume = true) {
+    global $BK_PLANS;
+    $res = [
+        'blocked' => false, 'reason' => '', 'used' => 0,
+        'limit' => BK_SEARCH_LIMIT_FREE, 'remaining' => BK_SEARCH_LIMIT_FREE,
+        'cooldown_remaining' => 0, 'cooldown_total' => 0,
+        'anon_trial' => false, 'trial_remaining' => 0, 'trial_total' => 0,
+        'unlimited' => false, 'logged' => ($role !== 'visitor'), 'is_sa' => false,
+        'test_role' => $role,
+    ];
+
+    // Abonnés illimités
+    if (in_array($role, ['argent', 'or', 'platine'], true)) {
+        $res['unlimited'] = true;
+        return $res;
+    }
+
+    // Visiteur anonyme : découverte gratuite de 60 s puis blocage.
+    // On utilise un timer de test DÉDIÉ (bk_test_t0), remis à zéro à chaque
+    // activation du mode test depuis le panel → on simule une VRAIE première
+    // visite, sans dépendre du bk_anon_t0 réel de l'admin (souvent déjà expiré).
+    if ($role === 'visitor') {
+        $res['anon_trial']  = true;
+        $res['trial_total'] = BK_SEARCH_TRIAL_ANON;
+        $res['limit']       = 0;
+        $t0 = isset($_COOKIE['bk_test_t0']) ? (int)$_COOKIE['bk_test_t0'] : 0;
+        if ($t0 <= 0) { $res['trial_remaining'] = BK_SEARCH_TRIAL_ANON; return $res; }
+        $elapsed = time() - $t0;
+        $res['trial_remaining'] = max(0, BK_SEARCH_TRIAL_ANON - $elapsed);
+        if ($elapsed >= BK_SEARCH_TRIAL_ANON) { $res['blocked'] = true; $res['reason'] = 'trial'; }
+        return $res;
+    }
+
+    // free / bronze : quota journalier (compteur de test dédié)
+    $limit = ($role === 'bronze') ? (int)($BK_PLANS['bronze']['search_limit'] ?? 2000) : BK_SEARCH_LIMIT_FREE;
+    $res['limit'] = $limit;
+
+    $file  = __DIR__ . '/../logs/.search_limits.php';
+    $today = date('Y-m-d');
+    $key   = 'test_' . $role;
+    $data  = [];
+    if (file_exists($file)) {
+        $raw = file_get_contents($file);
+        $pos = strpos($raw, "\n");
+        if ($pos !== false) $data = json_decode(substr($raw, $pos + 1), true) ?: [];
+    }
+    $entry = $data[$key] ?? ['c' => 0, 't' => 0, 'd' => $today];
+    if (!is_array($entry) || ($entry['d'] ?? '') !== $today) $entry = ['c' => 0, 't' => 0, 'd' => $today];
+
+    $count = (int)$entry['c'];
+    $res['used']      = $count;
+    $res['remaining'] = max(0, $limit - $count);
+
+    if ($count >= $limit) { $res['blocked'] = true; $res['reason'] = 'daily'; return $res; }
+
+    if ($consume) {
+        $count++;
+        $data[$key] = ['c' => $count, 't' => time(), 'd' => $today];
+        @file_put_contents($file, "<?php die('Acces interdit'); ?>\n" . json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
+        $res['used']      = $count;
+        $res['remaining'] = max(0, $limit - $count);
+    }
     return $res;
 }
 

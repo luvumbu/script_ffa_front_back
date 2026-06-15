@@ -21,6 +21,73 @@
  *   api/search.php?nom=dupont&page=2&limit=20          Pagination
  */
 
+// ============ Filet de securite anti-500 (toujours actif) ============
+// Place AVANT config.php pour intercepter aussi les erreurs des fichiers includes.
+// Quand un fatal/exception survient, on emet un JSON {success:false, error:...}
+// au lieu d'une reponse vide 500 que le front interprete comme "Erreur de connexion".
+// Si ?debug=1, on inclut aussi le detail technique (fichier, ligne, trace, warnings).
+$_bkDbg = !empty($_GET['debug']);
+error_reporting(E_ALL);
+@ini_set('display_errors', '0'); // pas d'echo, sinon corrompt le JSON
+$GLOBALS['_bk_dbg_errs'] = [];
+set_error_handler(function($severity, $message, $file, $line) {
+    $GLOBALS['_bk_dbg_errs'][] = [
+        'severity' => $severity, 'message' => $message,
+        'file' => basename($file), 'line' => $line,
+    ];
+    return false;
+});
+set_exception_handler(function($e) use ($_bkDbg) {
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    $payload = [
+        'success' => false,
+        'error'   => 'Erreur serveur : ' . $e->getMessage(),
+    ];
+    if ($_bkDbg) {
+        $payload['debug']     = true;
+        $payload['exception'] = [
+            'class'   => get_class($e),
+            'message' => $e->getMessage(),
+            'file'    => basename($e->getFile()),
+            'line'    => $e->getLine(),
+            'trace'   => array_slice(explode("\n", $e->getTraceAsString()), 0, 8),
+        ];
+        $payload['errors'] = $GLOBALS['_bk_dbg_errs'] ?? [];
+    }
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+});
+ob_start();
+register_shutdown_function(function() use ($_bkDbg) {
+    $out = ob_get_clean();
+    $err = error_get_last();
+    $fatal = $err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true);
+    if (!$fatal) { echo $out; return; }
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    $payload = [
+        'success' => false,
+        'error'   => 'Erreur serveur : ' . $err['message'],
+    ];
+    if ($_bkDbg) {
+        $payload['debug'] = true;
+        $payload['fatal'] = [
+            'message' => $err['message'],
+            'file'    => basename($err['file']),
+            'line'    => $err['line'],
+            'type'    => $err['type'],
+        ];
+        $payload['errors']              = $GLOBALS['_bk_dbg_errs'] ?? [];
+        $payload['output_before_error'] = substr($out, 0, 1500);
+    }
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+});
+
 require_once __DIR__ . '/config.php';
 
 // ---- Rate limiting recherches : 5/jour + 30 min entre 2 recherches ----
@@ -181,7 +248,9 @@ if (!$strictNivEp && $epreuve !== '') {
 
 // Mode normal : niveau seul (best level global)
 if (!$strictNivEp && $niveau !== '') {
-    $hierarchy = ['IA','IB','IE','IR','IR2','N1','N2','N3','N4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
+    // Hierarchie complete FFA : IA>IB>IE > N1..N4 > IR/IR1..IR4 > R1..R6 > D1..D8.
+    // IR1/IR3/IR4 doivent y figurer sinon ces athletes (55k+) sont mal classes (cf api/liste.php).
+    $hierarchy = ['IA','IB','IE','N1','N2','N3','N4','IR','IR1','IR2','IR3','IR4','R1','R2','R3','R4','R5','R6','D1','D2','D3','D4','D5','D6','D7','D8'];
     $hierarchyList = "'" . implode("','", $hierarchy) . "'";
     $filterRanks = [];
     foreach (explode(',', $niveau) as $n) {

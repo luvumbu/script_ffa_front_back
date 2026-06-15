@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOKONZI — Schéma complet de la base de données</title>
+<link rel="stylesheet" href="doc_style.css">
+</head>
+<body>
+<div class="backbar">
+  <a href="documentation_technique.html">← Sommaire</a>
+  <span class="crumb">Documentation détaillée · Schéma de la base de données</span>
+</div>
+<div class="wrap">
+
+<h1>Schéma complet de la base de données</h1>
+<div class="subtitle">Les 29 tables MySQL, colonne par colonne, avec les relations et leur comportement de suppression</div>
+
+<div class="lead">
+La base est définie dans <code>core/dbCheck_athle.php</code> (le fichier qui exécute les <code>CREATE TABLE</code>).
+Tout est en <strong>InnoDB / UTF-8 MB4</strong> (support complet des accents et emojis). Les performances sont
+toujours stockées <strong>en entier</strong> (centièmes de seconde pour les courses, centimètres pour les
+sauts/lancers) <em>plus</em> une version texte « brute » pour l'affichage.
+</div>
+
+<div class="localtoc">
+  <a href="#cle">⚠️ Le double identifiant (à lire en premier)</a>
+  <a href="#diagramme">Diagramme des relations</a>
+  <a href="#ref">A · Tables de référence (6)</a>
+  <a href="#athletes">B · Table centrale : athletes</a>
+  <a href="#enfants">C · Tables « enfants » de l'athlète (9)</a>
+  <a href="#users">D · Utilisateurs & sessions (5)</a>
+  <a href="#analytics">E · Suivi & analytics (8)</a>
+  <a href="#delete">Comportement des suppressions</a>
+</div>
+
+<!-- ===================== -->
+<section id="cle">
+<h2>⚠️ Le double identifiant — la chose à comprendre avant tout</h2>
+<div class="box danger">
+  <div class="box-t">🚨 Chaque athlète a DEUX numéros</div>
+  <table style="margin-top:8px">
+    <tr><th>Colonne</th><th>Origine</th><th>Usage</th></tr>
+    <tr><td><code>athlete_id_externe</code></td><td>Le numéro venant d'<strong>athle.fr</strong> (la source)</td><td>Dans les <strong>URLs</strong> du site (<code>?id=</code>). C'est CELUI à utiliser dans le dashboard.</td></tr>
+    <tr><td><code>id_athlete</code></td><td>Numéro <strong>interne</strong> auto-incrémenté par MySQL (clé primaire)</td><td>Pour <strong>relier les tables</strong> entre elles (toutes les clés étrangères pointent dessus).</td></tr>
+  </table>
+  Toutes les tables « enfants » (records, médailles…) utilisent <code>id_athlete</code> (interne). Mais les tables
+  de suivi par email (<code>athlete_follows</code>) et les compteurs de vues utilisent <code>athlete_id_ext</code>
+  (externe). Confondre les deux est l'erreur n°1 du projet.
+</div>
+</section>
+
+<!-- ===================== -->
+<section id="diagramme">
+<h2>Diagramme des relations</h2>
+<div class="diagram">                          ┌──────────────┐
+        ┌─────────────────│   athletes   │── id_athlete (PK)
+        │                 │  + visible   │── athlete_id_externe (UNIQUE, = athle.fr)
+        │   FK CASCADE     └──────┬───────┘
+        │   (supprimer un        │ 1 athlète a plusieurs…
+        │    athlète supprime    │
+        │    tout en dessous)    ▼
+        │   ┌──────────────────────────────────────────────────────────┐
+        │   │ athlete_clubs · athlete_records · athlete_resultats         │
+        │   │ athlete_progressions · athlete_medailles · athlete_podiums  │
+        │   │ athlete_selections · athlete_niveaux (→ athlete_niv_perfs)  │
+        │   └───────────┬──────────────────────────────────────────────┘
+        │               │ ces enfants pointent AUSSI vers les référentiels
+        │               ▼  (FK SET NULL : supprimer un club ne supprime pas le record)
+        │   ┌──────────────────────────────────────────────────────────┐
+        │   │  clubs · epreuves · villes · competitions · categories      │
+        │   │  nationalites                                                │
+        │   └──────────────────────────────────────────────────────────┘
+        │
+        ▼
+   users ──(id_athlete, SET NULL)──► athletes      user_sessions ──CASCADE──► users</div>
+</section>
+
+<!-- ===================== -->
+<section id="ref">
+<h2>A · Tables de référence (les « listes »)</h2>
+<p>Elles contiennent les valeurs uniques réutilisées partout : un club, une épreuve, une ville n'existent qu'une fois.</p>
+
+<h3><code>villes</code> <span class="crumb">(lignes 19-30)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type</th><th>Rôle</th></tr>
+<tr><td>id_ville</td><td>INT UNSIGNED, PK, auto</td><td>Identifiant</td></tr>
+<tr><td>nom_ville</td><td>VARCHAR(150)</td><td>Nom (ex. « Paris »)</td></tr>
+<tr><td>pays_ville</td><td>CHAR(3)</td><td>Code pays ISO</td></tr>
+<tr><td>departement_ville</td><td>VARCHAR(100)</td><td>Département</td></tr>
+<tr><td>region_ville</td><td>VARCHAR(100)</td><td>Région</td></tr>
+</table>
+<p><strong>Clé unique :</strong> (nom_ville, pays_ville).</p>
+
+<h3><code>clubs</code> <span class="crumb">(lignes 39-54)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type</th><th>Rôle</th></tr>
+<tr><td>id_club</td><td>INT UNSIGNED, PK, auto</td><td>Identifiant</td></tr>
+<tr><td>nom_club</td><td>VARCHAR(200), UNIQUE</td><td>Nom du club</td></tr>
+<tr><td>departement_club / region_club</td><td>VARCHAR(100)</td><td>Localisation</td></tr>
+<tr><td>vues</td><td>INT UNSIGNED, défaut 0</td><td>Compteur de consultations</td></tr>
+</table>
+
+<h3><code>epreuves</code> <span class="crumb">(lignes 61-69)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type</th><th>Rôle</th></tr>
+<tr><td>id_epreuve</td><td>INT UNSIGNED, PK, auto</td><td>Identifiant</td></tr>
+<tr><td>nom_epreuve</td><td>VARCHAR(100), UNIQUE</td><td>Ex. « 100m », « Saut en longueur ». Attention : format BDD = <code>100m</code> (sans espace), haies avec hauteur <code>110m Haies (106)</code>.</td></tr>
+<tr><td>sexe_epreuve</td><td>CHAR(1)</td><td>'H' ou 'F'</td></tr>
+</table>
+
+<h3><code>competitions</code> <span class="crumb">(lignes 73-80)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type</th><th>Rôle</th></tr>
+<tr><td>id_competition</td><td>INT UNSIGNED, PK, auto</td><td>Identifiant</td></tr>
+<tr><td>nom_competition</td><td>VARCHAR(300), UNIQUE</td><td>Nom de la compétition</td></tr>
+</table>
+
+<h3><code>categories</code> <span class="crumb">(lignes 85-117) — pré-remplie</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type</th><th>Rôle</th></tr>
+<tr><td>id_categorie</td><td>INT UNSIGNED, PK, auto</td><td>Identifiant</td></tr>
+<tr><td>code_categorie</td><td>VARCHAR(5), UNIQUE</td><td>Code FFA</td></tr>
+<tr><td>nom_categorie</td><td>VARCHAR(50)</td><td>Libellé</td></tr>
+<tr><td>age_min / age_max</td><td>TINYINT UNSIGNED</td><td>Tranche d'âge</td></tr>
+</table>
+<p><strong>12 catégories insérées d'office :</strong> EA (4-7), PO (8-9), BE (10-11), MI (12-13), CA (14-15),
+JU (16-17), ES (18-22), SE (23-39), V1 (40-49), V2 (50-59), V3 (60-69), V4 (70-99).</p>
+
+<h3><code>nationalites</code> <span class="crumb">(lignes 121-129)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type</th><th>Rôle</th></tr>
+<tr><td>id_nationalite</td><td>INT UNSIGNED, PK, auto</td><td>Identifiant</td></tr>
+<tr><td>code_nationalite</td><td>CHAR(3), UNIQUE</td><td>ISO 3 lettres (FRA, MAR…)</td></tr>
+<tr><td>nom_nationalite</td><td>VARCHAR(100)</td><td>Libellé du pays</td></tr>
+</table>
+<p class="crumb">Non pré-remplie : les codes sont créés à la volée pendant le scraping.</p>
+</section>
+
+<!-- ===================== -->
+<section id="athletes">
+<h2>B · Table centrale : <code>athletes</code> <span class="crumb">(lignes 152-195)</span></h2>
+<table>
+<tr><th>Colonne</th><th>Type</th><th>Rôle</th></tr>
+<tr><td>id_athlete</td><td>INT UNSIGNED, PK, auto</td><td><strong>ID interne</strong> (clés étrangères)</td></tr>
+<tr><td>athlete_id_externe</td><td>INT UNSIGNED, UNIQUE</td><td><strong>ID athle.fr</strong> (URLs)</td></tr>
+<tr><td>nom_1_athlete … nom_4_athlete</td><td>VARCHAR(100)</td><td>Parties du nom (1 = famille, 2 = prénom…)</td></tr>
+<tr><td>nom_complet_athlete</td><td>VARCHAR(200)</td><td>Nom reconstruit</td></tr>
+<tr><td>date_naissance_athlete</td><td>DATE</td><td>Date complète (masquée dans l'API publique)</td></tr>
+<tr><td>annee_naissance_athlete</td><td>SMALLINT UNSIGNED</td><td>Année seule</td></tr>
+<tr><td>id_ville_naissance</td><td>INT UNSIGNED, FK→villes</td><td>Lieu de naissance</td></tr>
+<tr><td>taille_cm_athlete / poids_kg_athlete</td><td>SMALLINT UNSIGNED</td><td>Mensurations</td></tr>
+<tr><td>categorie_athlete</td><td>VARCHAR(10)</td><td>Code catégorie (dénormalisé)</td></tr>
+<tr><td>sexe_athlete</td><td>CHAR(1)</td><td>'H' ou 'F'</td></tr>
+<tr><td>nationalite_athlete</td><td>CHAR(3)</td><td>Code ISO (dénormalisé pour la perf)</td></tr>
+<tr><td>id_nationalite</td><td>INT UNSIGNED, FK→nationalites</td><td>Référence normalisée</td></tr>
+<tr><td>licence_athlete</td><td>VARCHAR(20)</td><td>Numéro de licence</td></tr>
+<tr><td>date_creation_athlete</td><td>TIMESTAMP</td><td>Date d'ajout en base</td></tr>
+<tr><td>vues</td><td>INT UNSIGNED, défaut 0</td><td>Compteur de consultations</td></tr>
+<tr><td><strong>visible</strong></td><td>TINYINT(1), défaut <strong>1</strong></td><td><strong>0 = profil masqué</strong> (signalement/retrait), 1 = public</td></tr>
+</table>
+<div class="box info">
+  <div class="box-t">ℹ️ Dénormalisation volontaire</div>
+  <code>nationalite_athlete</code> et <code>categorie_athlete</code> sont stockés en double (texte + clé étrangère).
+  C'est un choix de performance : les recherches filtrent directement sur le texte sans faire de jointure.
+</div>
+</section>
+
+<!-- ===================== -->
+<section id="enfants">
+<h2>C · Tables « enfants » de l'athlète</h2>
+<p>Toutes ont <code>id_athlete</code> en clé étrangère <strong>CASCADE</strong> (supprimer l'athlète les vide) et
+pointent vers les référentiels en <strong>SET NULL</strong>.</p>
+
+<h3><code>athlete_clubs</code> — adhésions par période <span class="crumb">(222-251)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type</th></tr>
+<tr><td>id_athlete_club (PK), id_athlete (FK), id_club (FK)</td><td>INT UNSIGNED</td></tr>
+<tr><td>annee_debut, annee_fin</td><td>SMALLINT UNSIGNED</td></tr>
+</table>
+
+<h3><code>athlete_records</code> — records personnels <span class="crumb">(445-512)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_record (PK), id_athlete, id_epreuve, id_categorie, id_club, id_ville</td><td>INT UNSIGNED + FK</td></tr>
+<tr><td>performance_record</td><td>INT UNSIGNED — perf en centièmes/cm</td></tr>
+<tr><td>performance_brut_record</td><td>VARCHAR(30) — texte original (« 10''48 »)</td></tr>
+<tr><td>date_record</td><td>DATE</td></tr>
+<tr><td>ligue_dept_record</td><td>VARCHAR(50)</td></tr>
+</table>
+
+<h3><code>athlete_resultats</code> — tous les résultats datés <span class="crumb">(544-569)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_resultat (PK), id_athlete, id_epreuve, id_ville</td><td>INT UNSIGNED + FK</td></tr>
+<tr><td>annee_resultat</td><td>SMALLINT — obligatoire</td></tr>
+<tr><td>date_resultat</td><td>DATE</td></tr>
+<tr><td>performance_resultat / performance_brut_resultat</td><td>INT / VARCHAR(30)</td></tr>
+<tr><td>vent_resultat</td><td>VARCHAR(10) — ex. « +2.1 »</td></tr>
+<tr><td>tour_resultat</td><td>VARCHAR(30) — « Finale », « Série »</td></tr>
+<tr><td>place_resultat</td><td>TINYINT — classement</td></tr>
+<tr><td><strong>niveau_resultat</strong></td><td>VARCHAR(10) — <strong>niveau D/R/N/I de ce résultat</strong></td></tr>
+<tr><td>points_resultat</td><td>SMALLINT — pour épreuves combinées</td></tr>
+</table>
+
+<h3><code>athlete_progressions</code> — évolution annuelle <span class="crumb">(363-441) — la plus grosse table</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_progression (PK), id_athlete, id_epreuve, id_categorie, id_club, id_ville</td><td>INT UNSIGNED + FK</td></tr>
+<tr><td>annee_progression</td><td>SMALLINT — obligatoire</td></tr>
+<tr><td>performance_progression / performance_brut_progression</td><td>INT / VARCHAR(30)</td></tr>
+<tr><td>vent_progression, date_progression, rang_perf_progression, ligue_dept_progression</td><td>détails de la perf</td></tr>
+</table>
+<div class="box warn">
+  <div class="box-t">⚠️ Progressions parfois déportées en fichier</div>
+  Cette table peut peser plus d'1 Go. Un système optionnel (<code>core/progressions_store.php</code>) la déporte en
+  fichier JSONL (<code>archives/athlete_progressions_live.jsonl</code>) selon <code>config/data_source.json</code>.
+  Voir la doc <a class="link" href="doc_scraping.html#progstore">scraping</a>.
+</div>
+
+<h3><code>athlete_medailles</code> <span class="crumb">(255-304)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_medaille (PK), id_athlete, id_competition, id_epreuve, id_ville</td><td>INT UNSIGNED + FK</td></tr>
+<tr><td>type_medaille</td><td>ENUM('or','argent','bronze','autre')</td></tr>
+<tr><td>annee_medaille</td><td>SMALLINT</td></tr>
+</table>
+
+<h3><code>athlete_podiums</code> — top 3 <span class="crumb">(516-540)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_podium (PK), id_athlete, id_epreuve, id_ville</td><td>INT UNSIGNED + FK</td></tr>
+<tr><td>annee_podium</td><td>SMALLINT</td></tr>
+<tr><td>niveau_competition</td><td>VARCHAR(30) — « National », « Régional »</td></tr>
+<tr><td>rang_podium</td><td>TINYINT — 1, 2 ou 3</td></tr>
+<tr><td>place_podium, performance_podium, performance_brut_podium, vent_podium, date_podium</td><td>détails</td></tr>
+</table>
+
+<h3><code>athlete_selections</code> — équipes de France <span class="crumb">(308-352)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_selection (PK), id_athlete, id_competition, id_epreuve</td><td>INT UNSIGNED + FK</td></tr>
+<tr><td>type_selection</td><td>VARCHAR(20)</td></tr>
+<tr><td>date_selection, duree_jours_selection, age_selection</td><td>contexte</td></tr>
+<tr><td>classement_selection, performance_selection, performance_brut_selection</td><td>résultat</td></tr>
+</table>
+
+<h3><code>athlete_niveaux</code> + <code>athlete_niv_perfs</code> <span class="crumb">(573-610)</span></h3>
+<p><code>athlete_niveaux</code> = le niveau d'un athlète pour une année (clé unique : id_athlete + annee_niveau).
+<code>athlete_niv_perfs</code> = les perfs détaillées qui justifient ce niveau (enfant, FK CASCADE vers le niveau).</p>
+<table>
+<tr><th>Table</th><th>Colonnes clés</th></tr>
+<tr><td>athlete_niveaux</td><td>id_niveau (PK), id_athlete, annee_niveau, <strong>code_niveau</strong> (N1, R3…), points_niveau, id_club</td></tr>
+<tr><td>athlete_niv_perfs</td><td>id_niveau_perf (PK), id_niveau (FK), id_epreuve, performance_niveau_perf, performance_brut_niveau_perf, <strong>code_perf_niveau</strong></td></tr>
+</table>
+</section>
+
+<!-- ===================== -->
+<section id="users">
+<h2>D · Utilisateurs & sessions</h2>
+
+<h3><code>users</code> <span class="crumb">(618-670)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_user (PK, auto)</td><td>INT UNSIGNED</td></tr>
+<tr><td>email</td><td>VARCHAR(255), UNIQUE</td></tr>
+<tr><td>password_hash</td><td>VARCHAR(255) — bcrypt, vide si OAuth</td></tr>
+<tr><td>nom, prenom</td><td>VARCHAR(100)</td></tr>
+<tr><td>role</td><td>ENUM('athlete','coach','club','admin'), défaut 'athlete'</td></tr>
+<tr><td>id_athlete</td><td>INT UNSIGNED, FK→athletes (lien optionnel)</td></tr>
+<tr><td>google_id</td><td>VARCHAR(255), UNIQUE — OAuth Google</td></tr>
+<tr><td>oauth_provider</td><td>VARCHAR(50) — « google »</td></tr>
+<tr><td>picture</td><td>TEXT — URL photo Google</td></tr>
+<tr><td>email_verified, locale, last_login, date_creation</td><td>métadonnées</td></tr>
+</table>
+
+<h3><code>user_sessions</code> <span class="crumb">(674-686)</span></h3>
+<table>
+<tr><th>Colonne</th><th>Type / Rôle</th></tr>
+<tr><td>id_session (PK), id_user (FK CASCADE)</td><td>INT UNSIGNED</td></tr>
+<tr><td>token</td><td>VARCHAR(64), UNIQUE — la valeur du cookie <code>bk_token</code></td></tr>
+<tr><td>expire_at</td><td>DATETIME — +30 jours</td></tr>
+<tr><td>created_at</td><td>TIMESTAMP</td></tr>
+</table>
+
+<h3>Autres tables comptes</h3>
+<table>
+<tr><th>Table</th><th>Rôle</th></tr>
+<tr><td><code>coach_athletes</code></td><td>Relation N-N : un coach suit plusieurs athlètes (clé unique id_coach+id_athlete)</td></tr>
+<tr><td><code>athlete_perfs_manuelles</code></td><td>Perfs saisies à la main (id_user = qui l'a saisie), avec created_at/updated_at</td></tr>
+<tr><td><code>password_resets</code></td><td>Tokens de réinitialisation de mot de passe (TTL 1 h, flag <code>used</code>)</td></tr>
+</table>
+</section>
+
+<!-- ===================== -->
+<section id="analytics">
+<h2>E · Suivi & analytics</h2>
+<table>
+<tr><th>Table</th><th>Rôle & colonnes clés</th></tr>
+<tr><td><code>logs</code> <span class="crumb">(733-759)</span></td><td>Toutes les actions utilisateur (tracking JS → MySQL). ts, ip, ua, sid, <strong>uid</strong> (id_user si connecté), page, action, detail, value, target, screen, lang, referrer, duration_ms. Index sur ts/action/sid/ip.</td></tr>
+<tr><td><code>search_tracking</code> <span class="crumb">(863-881)</span></td><td>Toutes les recherches/consultations. query_text, <strong>search_type</strong> ENUM(athlete/club/epreuve/ville/general), <strong>source</strong> ENUM(live_search/page_view/panel_open), entity_id, entity_name, result_count, page. 6 index. Source des « tops consultés ».</td></tr>
+<tr><td><code>athlete_follows</code> / <code>club_follows</code></td><td>Suivi par email. Clé unique (email + athlete_id_ext / club_id). Note : utilisent l'ID <strong>externe</strong>.</td></tr>
+<tr><td><code>email_subscribers</code></td><td>Newsletter / PDF. Clé unique (email + source).</td></tr>
+<tr><td><code>athlete_vues_ip</code> / <code>club_vues_ip</code></td><td>Vues uniques par IP (clé primaire composite ip + id). Évite de compter 10× la même IP.</td></tr>
+<tr><td><code>contact_messages</code> <span class="crumb">(888-897)</span></td><td>Messages de contact confirmés. ip, nom, email, message, <strong>lu</strong> (0/1), created_at.</td></tr>
+</table>
+<p class="crumb">D'autres tables sont créées à la volée par certains endpoints : <code>contact_confirm_tokens</code>,
+<code>profile_reports</code>, <code>profile_hide_tokens</code>, <code>email_verifications</code>,
+<code>sent_emails</code>, <code>athlete_scrape_log</code>.</p>
+</section>
+
+<!-- ===================== -->
+<section id="delete">
+<h2>Comportement des suppressions (très important)</h2>
+<div class="box danger">
+  <div class="box-t">🚨 Supprimer un athlète = effacer tout son palmarès</div>
+  La clé étrangère <code>id_athlete</code> est en <strong>ON DELETE CASCADE</strong> dans toutes les tables enfants.
+  <code>DELETE FROM athletes WHERE id_athlete = X</code> supprime <strong>automatiquement</strong> tous ses records,
+  résultats, médailles, etc. C'est aussi ce qu'utilise le scraping pour mettre à jour un athlète : il supprime ses
+  enfants puis réinsère tout.
+</div>
+<div class="box tip">
+  <div class="box-t">✅ Supprimer un club/épreuve/ville = sans danger pour les perfs</div>
+  Les clés étrangères vers les référentiels sont en <strong>ON DELETE SET NULL</strong>. Supprimer un club ne
+  supprime pas les records associés : leur colonne <code>id_club</code> devient simplement <code>NULL</code>.
+</div>
+<p>Pour masquer un profil sans rien supprimer, on met <code>visible = 0</code> (voir la gestion des signalements
+dans la doc principale).</p>
+</section>
+
+<div style="text-align:center;color:#6e7681;font-size:13px;padding:24px 0;border-top:1px solid var(--border)">
+  <a class="link" href="documentation_technique.html">← Retour au sommaire de la documentation</a>
+</div>
+</div>
+</body>
+</html>

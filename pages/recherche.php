@@ -110,8 +110,10 @@ $racine = dirname(__DIR__);
 <html lang="<?= Language::getLang() ?>">
 <head>
 <meta charset="UTF-8">
+<meta name="google-adsense-account" content="ca-pub-7899923856846249">
 <title><?= t('search_title') ?></title>
 <link rel="stylesheet" href="../css.css">
+<?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
 </head>
 <body>
 <div class="simpson-container">

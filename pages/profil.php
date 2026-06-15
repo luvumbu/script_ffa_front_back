@@ -75,21 +75,56 @@ if ($idAthlete <= 0) {
 require_once __DIR__ . '/../core/db.php';
 $_isProfileHidden = false;
 $_isAdmin = !empty($_COOKIE['bk_sa_token']);
+
+// Detection abonnement illimite (super admin ou abo Argent/Or/Platine)
+// En local, on force a false pour que le CTA reste visible pendant le dev
+$_isUnlimited = false;
+if (!BK_IS_LOCAL) {
+    if ($_isAdmin) {
+        $_isUnlimited = true;
+    } else {
+        @require_once __DIR__ . '/../core/search_limit.php';
+        if (function_exists('bkSearchLimit')) {
+            $_slInfo = bkSearchLimit($conn, false);
+            $_isUnlimited = !empty($_slInfo['unlimited']);
+        }
+    }
+}
 $_chkVis = $conn->query("SELECT visible, athlete_id_externe FROM athletes WHERE id_athlete = " . (int)$idAthlete);
+$_athleteIdExterne = 0;
+$_athleteRowFound = false;
 if ($_chkVis && $_chkRow = $_chkVis->fetch_assoc()) {
+    $_athleteRowFound = true;
     $_isProfileHidden = ((int)$_chkRow['visible'] === 0);
     $_athleteIdExterne = (int)$_chkRow['athlete_id_externe'];
 }
 
-// Si masque + admin → appeler l'API avec _all pour voir le profil
-if ($_isProfileHidden && $_isAdmin) {
-    $data = apiCall("$BASE_API/athlete.php?id_athlete=$idAthlete&_all=1");
-} else {
-    $data = apiCall("$BASE_API/athlete.php?id_athlete=$idAthlete");
+// Athlete absent de la BDD : peut etre une purge (DELETE) -> 410 si on retrouve une trace, sinon 404
+if (!$_athleteRowFound) {
+    // On ne peut pas mapper internal -> external apres DELETE, donc 410 generique
+    // (page non indexee par Google, c'est juste pour la propret&eacute; UX)
+    http_response_code(410);
+    header('X-Robots-Tag: noindex, nofollow, noarchive');
+    ?>
+<!DOCTYPE html>
+<html lang="fr"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <title>Profil inexistant &mdash; Bokonzi</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#080c14;color:#c9d1d9;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}.card{background:#111830;border:1px solid #1a2540;border-radius:16px;padding:40px 36px;max-width:500px;width:90%;text-align:center;}</style>
+</head><body><div class="card">
+    <div style="font-size:56px;margin-bottom:20px;">&#10067;</div>
+    <h2 style="color:#ef4444;font-size:22px;margin-bottom:12px;">Profil inexistant</h2>
+    <p style="color:#5a6580;font-size:14px;line-height:1.6;">Ce profil n'existe pas sur Bokonzi.</p>
+    <a href="../index.php" style="display:inline-block;margin-top:24px;padding:10px 24px;background:#1e2a3a;border:1px solid #2a3560;border-radius:8px;color:#a29bfe;text-decoration:none;font-size:14px;font-weight:600;">Retour a l'accueil</a>
+</div></body></html>
+    <?php
+    exit;
 }
 
-if ($_isProfileHidden && !$_isAdmin) {
-    http_response_code(404);
+// Profil masque (visible=0) : 410 Gone pour TOUT LE MONDE (plus de bypass admin)
+if ($_isProfileHidden) {
+    http_response_code(410);
     header('X-Robots-Tag: noindex, nofollow, noarchive');
     ?>
 <!DOCTYPE html>
@@ -98,7 +133,7 @@ if ($_isProfileHidden && !$_isAdmin) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow, noarchive">
-    <title>Profil non disponible — Bokonzi</title>
+    <title>Profil inexistant &mdash; Bokonzi</title>
     <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { background:#080c14; color:#c9d1d9; font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }
@@ -107,9 +142,9 @@ if ($_isProfileHidden && !$_isAdmin) {
 </head>
 <body>
 <div class="card">
-    <div style="font-size:56px;margin-bottom:20px;">&#128683;</div>
-    <h2 style="color:#ef4444;font-size:22px;margin-bottom:12px;">Ce profil n'est plus disponible</h2>
-    <p style="color:#5a6580;font-size:14px;line-height:1.6;">Ce profil a ete retire a la demande de l'interesse(e) ou suite a un signalement.</p>
+    <div style="font-size:56px;margin-bottom:20px;">&#10067;</div>
+    <h2 style="color:#ef4444;font-size:22px;margin-bottom:12px;">Profil inexistant</h2>
+    <p style="color:#5a6580;font-size:14px;line-height:1.6;">Ce profil n'existe pas sur Bokonzi.</p>
     <a href="../index.php" style="display:inline-block;margin-top:24px;padding:10px 24px;background:#1e2a3a;border:1px solid #2a3560;border-radius:8px;color:#a29bfe;text-decoration:none;font-size:14px;font-weight:600;">Retour a l'accueil</a>
 </div>
 </body>
@@ -117,6 +152,9 @@ if ($_isProfileHidden && !$_isAdmin) {
     <?php
     exit;
 }
+
+// Profil normal : charger les donnees via API
+$data = apiCall("$BASE_API/athlete.php?id_athlete=$idAthlete");
 
 // --- Limite offre gratuite : 1 fiche profil par jour + minuteur 2 min ---
 require_once __DIR__ . '/../core/profile_gate.php';
@@ -371,6 +409,7 @@ if (!$meilleurNiv && !empty($identite['meilleur_niveau'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-adsense-account" content="ca-pub-7899923856846249">
     <title><?= $ogTitle ?></title>
 <?= $seo['meta'] ?>
 <?= $seo['jsonld'] ?>
@@ -429,6 +468,39 @@ if (!$meilleurNiv && !empty($identite['meilleur_niveau'])) {
     .btn-dashboard:hover { border-color: #6c5ce7; background: #6c5ce720; }
     .btn-report-pub { border-color: #48505840; color: #8b949e; background: #30363d; }
     .btn-report-pub:hover { border-color: #da3636; color: #f85149; background: #da363620; }
+    .btn-unlock-premium-pub {
+        padding: 9px 22px;
+        border-radius: 8px;
+        border: 1px solid #f59e0b;
+        background: linear-gradient(135deg, #ffd700 0%, #fbbf24 50%, #f59e0b 100%);
+        color: #1a1a2e;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        text-decoration: none;
+        display: inline-block;
+        line-height: 1.2;
+        cursor: pointer;
+        box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7), 0 4px 14px rgba(245, 158, 11, 0.45);
+        animation: bkUnlockPulse 1.4s ease-in-out infinite;
+        transition: transform 0.2s ease, filter 0.2s ease;
+    }
+    .btn-unlock-premium-pub:hover {
+        transform: translateY(-2px) scale(1.05);
+        filter: brightness(1.1);
+        color: #0d1117;
+    }
+    @keyframes bkUnlockPulse {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.75), 0 4px 14px rgba(245, 158, 11, 0.45);
+            filter: brightness(1);
+        }
+        50% {
+            box-shadow: 0 0 0 12px rgba(255, 215, 0, 0), 0 6px 20px rgba(245, 158, 11, 0.6);
+            filter: brightness(1.15);
+        }
+    }
     .report-overlay {
         display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center;
@@ -499,6 +571,7 @@ if (!$meilleurNiv && !empty($identite['meilleur_niveau'])) {
         .profil-hero h1 { font-size: 20px; }
     }
     </style>
+    <?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
 </head>
 <body>
 <?php include __DIR__ . '/../nav.php'; ?>
@@ -520,6 +593,12 @@ if (!$meilleurNiv && !empty($identite['meilleur_niveau'])) {
 <?php endif; ?>
 
 <div class="profil-container">
+    <?php if (!empty($i['admin_note'])): ?>
+    <div style="background:linear-gradient(135deg,#fbbf2415,#f59e0b18);border:1px solid #f59e0b;border-left:4px solid #fbbf24;border-radius:10px;padding:12px 18px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;">
+        <span style="font-size:22px;line-height:1;">&#128221;</span>
+        <div style="color:#fbbf24;font-size:14px;line-height:1.55;font-weight:500;white-space:pre-line;"><?= htmlspecialchars($i['admin_note']) ?></div>
+    </div>
+    <?php endif; ?>
     <!-- Hero -->
     <div class="profil-hero">
         <div class="avatar"><?= mb_strtoupper(mb_substr($i['nom_complet'], 0, 2)) ?></div>
@@ -550,14 +629,42 @@ if (!$meilleurNiv && !empty($identite['meilleur_niveau'])) {
             <button class="btn-share" onclick="copyLink()">Copier le lien</button>
             <a class="btn-dashboard" href="../index.php?page=profil&id=<?= $i['athlete_id'] ?>">Voir sur le Dashboard &#8599;</a>
             <button class="btn-share btn-report-pub" onclick="openReportModal()">&#9888; Signaler</button>
+            <?php
+            require_once __DIR__ . '/../core/athlete_purge.php';
+            if (bkUserCanPurge($conn)):
+                $_admVisP = $conn->query("SELECT visible FROM athletes WHERE athlete_id_externe = " . (int)($_athleteIdExterne ?? 0));
+                $_admHiddenP = false;
+                if ($_admVisP && $_admRowP = $_admVisP->fetch_assoc()) {
+                    $_admHiddenP = ((int)$_admRowP['visible'] === 0);
+                }
+                $_admExtP = (int)($_athleteIdExterne ?? 0);
+                $_admNameP = htmlspecialchars($i['nom_complet'] ?? '', ENT_QUOTES);
+                if (!$_admHiddenP): ?>
+            <button onclick="adminSoftHideProfile(<?= $_admExtP ?>, '<?= $_admNameP ?>')" style="background:linear-gradient(135deg,#f59e0b,#b45309);color:#fff;border:1px solid #fbbf24;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;" title="ADMIN : Effacer du referencement (reversible)">&#128584; Masquer (admin)</button>
+                <?php else: ?>
+            <button onclick="adminRestoreProfile(<?= $_admExtP ?>, '<?= $_admNameP ?>')" style="background:linear-gradient(135deg,#10b981,#047857);color:#fff;border:1px solid #34d399;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;" title="ADMIN : Restaurer">&#128274; Restaurer (admin)</button>
+                <?php endif; ?>
+            <button onclick="adminPurgeProfile(<?= $_admExtP ?>, '<?= $_admNameP ?>')" style="background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:1px solid #ef4444;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;" title="ADMIN : DETRUIRE definitivement (irreversible)">&#128465; Detruire (admin)</button>
+            <?php endif; ?>
+            <?php if (!$_isUnlimited): ?>
+            <a class="btn-unlock-premium-pub" href="https://buy.stripe.com/bJebJ21lgcEl8JZ4XwdnW0L" target="_blank" rel="noopener" title="Acceder a toutes les informations detaillees de ce profil">&#128274; D&eacute;bloquer le profil complet</a>
+            <?php endif; ?>
         </div>
     </div>
 
     <!-- Description -->
-    <?php if (!empty($bio)): ?>
+    <?php
+        $_bioOverride = isset($i['bio_override']) ? trim((string)$i['bio_override']) : '';
+        $_hasBio = ($_bioOverride !== '') || !empty($bio);
+    ?>
+    <?php if ($_hasBio): ?>
     <div class="section-card">
         <h2>&#128221; À propos</h2>
+        <?php if ($_bioOverride !== ''): ?>
+        <p class="bio-text" style="white-space:pre-line;"><?= htmlspecialchars($_bioOverride) ?></p>
+        <?php else: ?>
         <p class="bio-text"><?= implode(' ', $bio) ?></p>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
 
@@ -889,7 +996,7 @@ if (!$meilleurNiv && !empty($identite['meilleur_niveau'])) {
             <option value="autre">Autre</option>
         </select>
         <div id="reportRetraitHint" style="display:none;background:#ef444415;border:1px solid #ef444440;border-radius:8px;padding:10px 14px;margin:8px 0 12px;">
-            <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0;line-height:1.5;">&#9888; L'email est obligatoire pour ce motif. Vous recevrez un lien de confirmation : un seul clic et votre profil sera masque immediatement.</p>
+            <p style="color:#ef4444;font-size:13px;font-weight:600;margin:0;line-height:1.5;">&#9888; L'email est obligatoire pour ce motif. Vous recevrez un lien de confirmation : un seul clic et votre profil sera <strong>retire des resultats de recherche et de Google</strong>. Vos donnees sont conservees, restauration possible sur demande.</p>
         </div>
         <label>Details (facultatif)</label>
         <textarea id="reportMessage" placeholder="Precisez votre demande..." maxlength="2000"></textarea>
@@ -913,6 +1020,90 @@ function copyLink() {
 var _athleteId = <?= (int)$i['athlete_id'] ?>;
 var _athleteName = <?= json_encode($i['nom_complet']) ?>;
 var _apiBase = <?= json_encode($BASE_API_JS) ?>;
+
+// === Admin : Masquer un profil (soft delete, reversible) ===
+function adminSoftHideProfile(athleteIdExt, athleteName) {
+    var msg = "MASQUER LE PROFIL (action reversible)\n\n"
+            + athleteName + " (ID " + athleteIdExt + ")\n\n"
+            + "Effets :\n"
+            + "  • Disparait des resultats Google (410 Gone)\n"
+            + "  • Disparait de la recherche, listes, stats, sitemap\n"
+            + "  • Plus accessible via son URL directe\n\n"
+            + "Donnees conservees en BDD. Restauration possible en 1 clic.\n\n"
+            + "Continuer ?";
+    if (!confirm(msg)) return;
+    fetch('../api/report.php?soft_hide=' + encodeURIComponent(athleteIdExt), { credentials: 'same-origin' })
+        .then(function(r) { return r.json().then(function(j) { return { status: r.status, json: j }; }); })
+        .then(function(res) {
+            if (res.json && res.json.success) {
+                alert('Profil ' + athleteName + ' masque.\n'
+                    + (res.json.affected || 0) + ' ligne(s) BDD mises a jour\n'
+                    + (res.json.cache_cleared || 0) + ' fichier(s) cache vides\n\n'
+                    + 'Pour restaurer : reviens sur ce profil et clique "Restaurer".');
+                window.location.reload();
+            } else {
+                alert('Erreur : ' + (res.json && res.json.error ? res.json.error : 'HTTP ' + res.status));
+            }
+        })
+        .catch(function(err) { alert('Erreur reseau : ' + err.message); });
+}
+
+// === Admin : Restaurer un profil masque ===
+function adminRestoreProfile(athleteIdExt, athleteName) {
+    if (!confirm('Restaurer le profil ' + athleteName + ' (le rendre a nouveau visible) ?')) return;
+    fetch('../api/report.php?restore=' + encodeURIComponent(athleteIdExt), { credentials: 'same-origin' })
+        .then(function(r) { return r.json().then(function(j) { return { status: r.status, json: j }; }); })
+        .then(function(res) {
+            if (res.json && res.json.success) {
+                alert('Profil ' + athleteName + ' restaure.\nRechargement...');
+                window.location.reload();
+            } else {
+                alert('Erreur : ' + (res.json && res.json.error ? res.json.error : 'HTTP ' + res.status));
+            }
+        })
+        .catch(function(err) { alert('Erreur reseau : ' + err.message); });
+}
+
+// === Admin : suppression definitive d'un profil ===
+function adminPurgeProfile(athleteIdExt, athleteName) {
+    var msg = "⚠ SUPPRESSION DEFINITIVE\n\n"
+            + "Vous allez supprimer DEFINITIVEMENT :\n"
+            + "  " + athleteName + " (ID externe " + athleteIdExt + ")\n\n"
+            + "Cette action va :\n"
+            + "  • Effacer toutes les donnees (records, progressions, resultats, medailles, podiums)\n"
+            + "  • Supprimer le compte utilisateur lie si existe\n"
+            + "  • Blacklister l'athlete (empeche tout re-scraping futur)\n"
+            + "  • Retirer de Google (HTTP 410 Gone)\n\n"
+            + "IRREVERSIBLE. Continuer ?";
+    if (!confirm(msg)) return;
+    var confirm2 = prompt('Pour confirmer, tapez SUPPRIMER (en majuscules) :');
+    if (confirm2 !== 'SUPPRIMER') {
+        alert('Suppression annulee.');
+        return;
+    }
+    fetch('../api/report.php?hide_athlete=' + encodeURIComponent(athleteIdExt), { credentials: 'same-origin' })
+        .then(function(r) { return r.json().then(function(j) { return { status: r.status, json: j }; }); })
+        .then(function(res) {
+            if (res.json && res.json.success) {
+                var d = res.json.detail || {};
+                var summary = 'Profil ' + athleteName + ' supprime.\n\n';
+                if (d.deleted) {
+                    if (d.deleted.athletes) summary += '• ' + d.deleted.athletes + ' ligne(s) athletes\n';
+                    if (d.deleted.users) summary += '• ' + d.deleted.users + ' compte(s) user lie(s)\n';
+                    if (d.deleted.nom_et_liens) summary += '• ' + d.deleted.nom_et_liens + ' entree(s) nom_et_liens\n';
+                    if (d.deleted.cache_files) summary += '• ' + d.deleted.cache_files + ' fichier(s) cache\n';
+                }
+                summary += '\nRedirection vers l\'accueil...';
+                alert(summary);
+                window.location.href = '../index.php';
+            } else {
+                alert('Erreur : ' + (res.json && res.json.error ? res.json.error : 'reponse invalide (HTTP ' + res.status + ')'));
+            }
+        })
+        .catch(function(err) {
+            alert('Erreur reseau : ' + err.message);
+        });
+}
 
 function openReportModal() {
     document.getElementById('reportReason').value = '';

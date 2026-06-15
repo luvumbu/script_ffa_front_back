@@ -48,6 +48,7 @@ if ($id && is_numeric($id)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-adsense-account" content="ca-pub-7899923856846249">
     <title><?= $seoTags ? $seoTags['title'] : ($id ? "Athlète #$id — Bokonzi" : "Recherche Athlètes — Bokonzi") ?></title>
 <?php if ($seoTags): ?>
 <?= $seoTags['meta'] ?>
@@ -119,6 +120,7 @@ if ($id && is_numeric($id)) {
             h2 { font-size: 16px; }
         }
     </style>
+    <?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
 </head>
 <body>
 <?php include __DIR__ . '/../nav.php'; ?>

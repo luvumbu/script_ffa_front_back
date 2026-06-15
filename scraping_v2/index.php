@@ -67,18 +67,23 @@ $statsAnnee = $tableActive ? $reader->compterParAnnee($tableActive) : [];
 
 // Selection d'annees : tableau d'annees cochees
 // - Si ?annees[]=YYYY est present → on prend celles-la
-// - Sinon : par defaut, toutes les annees >= 2024 sont cochees
+// - Si ?user_picked=1 (pose par bkSyncUrl du JS) → on respecte le choix de l'utilisateur,
+//   meme si vide. Sans ce marqueur, on ne sait pas distinguer "premier chargement"
+//   de "utilisateur a tout decoche", et on retomberait sur le defaut alors qu'il a
+//   explicitement choisi 0 annee.
+// - Sinon (premier chargement non interactif) : toutes les annees >= 2024 sont cochees
 $anneesSelectionnees = [];
+$userPicked          = !empty($_GET['user_picked']);
 if (isset($_GET['annees']) && is_array($_GET['annees'])) {
     foreach ($_GET['annees'] as $a) {
         $a = (int)$a;
         if ($a > 1900 && $a < 2100) $anneesSelectionnees[] = $a;
     }
-} elseif (isset($_GET['table'])) {
-    // L'utilisateur a soumis le formulaire mais aucune case cochee → liste vide
+} elseif ($userPicked || isset($_GET['table'])) {
+    // L'utilisateur a interagi avec les cases (ou submit du formulaire) → on respecte sa selection vide
     $anneesSelectionnees = [];
 } else {
-    // Premier chargement : par defaut on coche les annees >= 2024
+    // Premier chargement strict : par defaut on coche les annees >= 2024
     foreach (array_keys($statsAnnee) as $an) {
         if ($an >= 2024) $anneesSelectionnees[] = $an;
     }
@@ -232,7 +237,7 @@ if ($runnerRunning) {
             <button type="button" onclick="bkAnneesMin(2024)" style="padding:3px 10px;background:#1e3a8a;border:1px solid #60a5fa;color:#93c5fd;border-radius:4px;cursor:pointer;font-size:11px;">&ge; 2024</button>
             <button type="button" onclick="bkAnneesMin(2020)" style="padding:3px 10px;background:#1e3a8a;border:1px solid #60a5fa;color:#93c5fd;border-radius:4px;cursor:pointer;font-size:11px;">&ge; 2020</button>
             <span style="color:#6b7280;font-size:11px;margin-left:auto;">
-                <?= count($anneesSelectionnees) ?> / <?= count($statsAnnee) ?> cochees
+                <span id="bkAnneesCount"><?= count($anneesSelectionnees) ?> / <?= count($statsAnnee) ?> cochees</span>
                 &mdash; <strong style="color:#34d399;"><?= $lignesFiltrees ?></strong> / <?= $lignesTotales ?> lignes
             </span>
         </div>
@@ -374,12 +379,14 @@ if ($runnerRunning) {
 function bkAnneesAll(state) {
     document.querySelectorAll('input[name="annees[]"]').forEach(cb => cb.checked = state);
     bkRefreshLabels();
+    bkSyncUrl();
 }
 function bkAnneesMin(min) {
     document.querySelectorAll('input[name="annees[]"]').forEach(cb => {
         cb.checked = parseInt(cb.dataset.annee) >= min;
     });
     bkRefreshLabels();
+    bkSyncUrl();
 }
 function bkRefreshLabels() {
     document.querySelectorAll('label.bk-annee').forEach(lbl => {
@@ -396,7 +403,33 @@ function bkRefreshLabels() {
         }
     });
 }
-document.querySelectorAll('input[name="annees[]"]').forEach(cb => cb.addEventListener('change', bkRefreshLabels));
+// Synchronise l'URL avec l'etat reel des cases (sans recharger la page).
+// Indispensable pour que le bouton DEMARRER (POST) et l'auto-refresh (Refresh header)
+// utilisent la selection courante au lieu de la valeur par defaut PHP.
+function bkSyncUrl() {
+    const params = new URLSearchParams();
+    const tbl = document.querySelector('select[name="table"]');
+    if (tbl && tbl.value) params.set('table', tbl.value);
+    document.querySelectorAll('input[name="annees[]"]:checked').forEach(cb => {
+        params.append('annees[]', cb.value);
+    });
+    // Marqueur explicite : "l'utilisateur a interagi avec les cases".
+    // Empeche PHP de retomber sur le defaut ">=2024" quand l'utilisateur a tout decoche.
+    params.set('user_picked', '1');
+    const url = window.location.pathname + '?' + params.toString();
+    history.replaceState(null, '', url);
+    // Met aussi a jour le compteur "X / Y cochees" affiche en haut a droite
+    bkRefreshCounter();
+}
+function bkRefreshCounter() {
+    const allBoxes = document.querySelectorAll('input[name="annees[]"]');
+    const checked  = document.querySelectorAll('input[name="annees[]"]:checked');
+    const counter  = document.getElementById('bkAnneesCount');
+    if (counter) counter.textContent = checked.length + ' / ' + allBoxes.length + ' cochees';
+}
+document.querySelectorAll('input[name="annees[]"]').forEach(cb => {
+    cb.addEventListener('change', () => { bkRefreshLabels(); bkSyncUrl(); });
+});
 </script>
 
 <?php if ($analyse): ?>

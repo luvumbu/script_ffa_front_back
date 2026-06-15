@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOKONZI — Référence complète de l'API</title>
+<link rel="stylesheet" href="doc_style.css">
+</head>
+<body>
+<div class="backbar">
+  <a href="documentation_technique.html">← Sommaire</a>
+  <span class="crumb">Documentation détaillée · Référence de l'API REST</span>
+</div>
+<div class="wrap">
+
+<h1>Référence complète de l'API REST</h1>
+<div class="subtitle">Chaque endpoint, ses paramètres, sa réponse, son cache et sa protection</div>
+
+<div class="lead">
+Tous les endpoints sont dans <code>api/</code>. Chacun commence par <code>require config.php</code> (en-têtes JSON +
+CORS + connexion <code>$conn</code> + auth + <code>logIp()</code>). La convention de réponse est
+<code>{ "success": true, … }</code> ou <code>{ "success": false, "error": "…" }</code>.
+</div>
+
+<div class="localtoc">
+  <a href="#legende">Légende des badges</a>
+  <a href="#config">config.php (le socle)</a>
+  <a href="#athlete">athlete.php</a>
+  <a href="#search">search.php</a>
+  <a href="#nom">nom.php</a>
+  <a href="#liste">liste.php</a>
+  <a href="#club_stats">club_stats.php</a>
+  <a href="#epreuve_ville">epreuve_stats / ville_stats</a>
+  <a href="#classement">classement.php</a>
+  <a href="#stats">stats.php / top_searched.php</a>
+  <a href="#listes">clubs / epreuves / villes</a>
+  <a href="#similar">similar.php</a>
+  <a href="#follow">follow.php</a>
+  <a href="#contact">contact.php</a>
+  <a href="#report">report.php</a>
+  <a href="#track">search_track.php</a>
+  <a href="#quota">quota.php</a>
+  <a href="#auth">auth/ (connexion)</a>
+  <a href="#autres">Autres endpoints</a>
+</div>
+
+<section id="legende">
+<h2>Légende</h2>
+<p>
+<span class="tag t-get">GET</span> requête de lecture &nbsp;
+<span class="tag t-post">POST</span> envoi de données &nbsp;
+<span class="tag t-cache">CACHE 24h</span> met en cache &nbsp;
+<span class="tag t-none">QUOTA</span> soumis au quota de recherche
+</p>
+</section>
+
+<section id="config">
+<h2><code>config.php</code> — le socle (jamais appelé directement)</h2>
+<ul>
+  <li>Bloque l'accès direct (403 si on ouvre <code>config.php</code> seul).</li>
+  <li>En-têtes CORS : <code>Access-Control-Allow-Origin: *</code>, méthodes GET/POST/PUT/DELETE/OPTIONS. Répond 204 au preflight OPTIONS.</li>
+  <li>En-tête <code>Content-Type: application/json; charset=utf-8</code>.</li>
+  <li>Définit <code>BK_API_KEY = 'bk_s3cr3t_2026_xK9mP'</code>.</li>
+  <li>Inclut <code>core/db.php</code> ($conn), <code>core/auth.php</code>, <code>core/ip_logger.php</code> + <code>logIp()</code>.</li>
+  <li>En local, relâche <code>max_execution_time</code> à 300 s (MySQL non optimisé).</li>
+  <li>Fournit <code>jsonResponse($data, $code)</code> : envoie le JSON et ferme la connexion.</li>
+</ul>
+</section>
+
+<!-- ATHLETE -->
+<section id="athlete">
+<div class="endpoint">
+<h2><code>athlete.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE 24h</span></h2>
+<p>Fiche complète d'un athlète (objet unique, pas un tableau). Charge identité, clubs, records, progressions,
+résultats, médailles, podiums, sélections, niveaux. Calcule à la volée les niveaux FFA manquants à partir du barème.</p>
+<h4>Paramètres (un seul des trois identifiants requis)</h4>
+<table>
+<tr><th>Param</th><th>Type</th><th>Rôle</th></tr>
+<tr><td><code>id</code></td><td>int</td><td>ID <strong>externe</strong> (athle.fr) — le plus courant</td></tr>
+<tr><td><code>id_athlete</code></td><td>int</td><td>ID <strong>interne</strong> BDD</td></tr>
+<tr><td><code>licence</code></td><td>string</td><td>Numéro de licence</td></tr>
+<tr><td><code>_all</code></td><td>int</td><td>Admin : force l'affichage même si <code>visible=0</code></td></tr>
+<tr><td><code>nocache</code></td><td>int</td><td>Bypass cache</td></tr>
+</table>
+<p><strong>Réponse :</strong> <code>{ success, visible, identite{…}, clubs[], records[], progressions[], resultats[],
+medailles[], podiums[], selections[], niveaux[] }</code>. Si masqué : <code>visible:false</code>.</p>
+</div>
+</section>
+
+<!-- SEARCH -->
+<section id="search">
+<div class="endpoint">
+<h2><code>search.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE 24h</span> <span class="tag t-none">QUOTA</span></h2>
+<p>Recherche multi-critères. <strong>Au moins un filtre requis.</strong> Soumise au quota de recherche
+(<a class="link" href="documentation_technique.html#quotas">section 12</a>). Renvoie 429 si bloquée.</p>
+<h4>Les 17 paramètres de filtrage</h4>
+<table>
+<tr><th>Param</th><th>Rôle</th></tr>
+<tr><td><code>nom</code></td><td>Recherche dans le nom complet — découpée en mots, chaque mot = un <code>LIKE</code> combiné en AND (ordre libre)</td></tr>
+<tr><td><code>nom1</code> / <code>nom2</code></td><td>Nom de famille / prénom séparément</td></tr>
+<tr><td><code>club</code></td><td>Nom du club (JOIN athlete_clubs)</td></tr>
+<tr><td><code>categorie</code></td><td>Code FFA (SE, ES, JU…)</td></tr>
+<tr><td><code>sexe</code></td><td>M ou F</td></tr>
+<tr><td><code>nationalite</code></td><td>Code ISO 3 lettres</td></tr>
+<tr><td><code>epreuve</code></td><td>Nom d'épreuve (partiel)</td></tr>
+<tr><td><code>ville</code></td><td>Nom de ville</td></tr>
+<tr><td><code>competition</code></td><td>Nom de compétition</td></tr>
+<tr><td><code>medaille</code></td><td>or / argent / bronze</td></tr>
+<tr><td><code>annee</code></td><td>Année de résultat</td></tr>
+<tr><td><code>licence</code></td><td>Numéro de licence</td></tr>
+<tr><td><code>niveau</code></td><td>Code niveau (IA, N1, R3…)</td></tr>
+<tr><td><code>multi_clubs</code></td><td>1 = athlètes ayant changé de club</td></tr>
+<tr><td><code>multi_disciplines</code></td><td>1 = athlètes avec plusieurs épreuves</td></tr>
+<tr><td><code>ep_type</code></td><td>sprint, demi-fond, fond, haies, sauts, lancers, combines, marche, route</td></tr>
+<tr><td><code>page</code> / <code>limit</code></td><td>Pagination (limit max 100)</td></tr>
+<tr><td><code>debug</code></td><td>1 = trace d'erreur détaillée</td></tr>
+</table>
+<p><strong>Réponse :</strong> <code>{ success, total, page, limit, total_pages, athletes[…], niveaux[],
+search_used, search_limit, remaining, … }</code>. Chaque athlète inclut <code>top_records[5]</code> et son
+<code>top_niveau</code>.</p>
+<div class="box info"><div class="box-t">ℹ️</div>Les clubs de plus de 5000 athlètes sont exclus, sauf si on filtre explicitement sur un club.</div>
+</div>
+</section>
+
+<!-- NOM -->
+<section id="nom">
+<div class="endpoint">
+<h2><code>nom.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE</span></h2>
+<p>Recherche par <strong>nom de famille</strong>, en 4 modes selon les paramètres :</p>
+<table>
+<tr><th>Mode</th><th>Param</th><th>Résultat</th><th>Cache</th></tr>
+<tr><td>1 · Top noms</td><td>(aucun)</td><td>Top 100 des noms les plus fréquents <code>{nom, count, M, F}</code></td><td>24 h</td></tr>
+<tr><td>2 · Autocomplete</td><td><code>search=mart</code></td><td>Live (min 2 car.), préfixe prioritaire, limit 20</td><td>1 h</td></tr>
+<tr><td>3 · Détail d'un nom</td><td><code>q=luvumbu</code></td><td>Stats agrégées SQL sur tout le nom + liste (max 500)</td><td>24 h</td></tr>
+<tr><td>4 · Deep search</td><td><code>level=IA&min=10&or_better=0/1</code></td><td>Noms ayant ≥ min personnes à ce niveau</td><td>24 h</td></tr>
+</table>
+<p>Le mode 3 renvoie des stats riches : <code>by_sex, by_categorie, by_nationalite, by_age_range,
+by_niveau_famille, by_niveau_codes, top_clubs, top_epreuves, top_villes_naissance, age_moyen, niveau_moyen</code>.
+Le mode 4 renvoie aussi un objet <code>scan</code> (preuve d'exécution : nombre d'athlètes scannés, durée…).</p>
+</div>
+</section>
+
+<!-- LISTE -->
+<section id="liste">
+<div class="endpoint">
+<h2><code>liste.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE 24h</span></h2>
+<p>Liste paginée d'athlètes avec tri et filtres (utilisée par la page Athlètes).</p>
+<table>
+<tr><th>Param</th><th>Défaut</th><th>Rôle</th></tr>
+<tr><td><code>page</code> / <code>limit</code></td><td>1 / 50</td><td>Pagination (limit max 200)</td></tr>
+<tr><td><code>ordre</code></td><td>nom</td><td>nom, date, id, recent, medailles, podiums, selections, records, random</td></tr>
+<tr><td><code>niveau</code></td><td>—</td><td>Filtre par code niveau</td></tr>
+<tr><td><code>niveau_match</code></td><td>best</td><td><code>best</code> (meilleur niveau strict) ou <code>any</code> (a touché ce niveau)</td></tr>
+<tr><td><code>niveau_strict_ep</code></td><td>0</td><td>Niveau X <em>sur l'épreuve Y</em>, pas global</td></tr>
+<tr><td><code>epreuve</code></td><td>—</td><td>Une ou plusieurs (séparées par <code>|</code>)</td></tr>
+<tr><td><code>club</code>, <code>sexe</code></td><td>—</td><td>Filtres</td></tr>
+<tr><td><code>recent_year_min</code> / <code>annee_exact</code></td><td>0</td><td>Filtre par année (via WHERE EXISTS pour la perf)</td></tr>
+</table>
+<div class="box warn"><div class="box-t">⚠️ Perf</div>Le filtre année utilise <code>WHERE EXISTS</code> (et non <code>HAVING</code> ni <code>IN (UNION)</code>) : sur Hostinger, <code>IN (UNION SELECT)</code> provoque des timeouts (~74 s).</div>
+</div>
+</section>
+
+<!-- CLUB_STATS -->
+<section id="club_stats">
+<div class="endpoint">
+<h2><code>club_stats.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE 24h</span></h2>
+<p>Toutes les statistiques d'un club (alimente le panneau club, 5 onglets).</p>
+<table>
+<tr><th>Param</th><th>Rôle</th></tr>
+<tr><td><code>id</code> ou <code>nom</code></td><td>Identification du club</td></tr>
+<tr><td><code>annee</code></td><td>Filtre par année</td></tr>
+<tr><td><code>rp</code> / <code>ep</code> / <code>pp</code></td><td>Pages records (10) / épreuves (50) / perfs (20)</td></tr>
+<tr><td><code>nationalite</code> / <code>sexe</code> / <code>categorie</code></td><td>Filtres athlètes → injectés dans le filtre universel <code>$athFilter</code> appliqué à ~30 requêtes</td></tr>
+<tr><td><code>nat_detail</code></td><td>Codes nationalités pour comparaison détaillée</td></tr>
+<tr><td><code>perso</code></td><td>Mode records personnels (relâche le filtre période)</td></tr>
+<tr><td><code>nocache</code></td><td>Bypass cache</td></tr>
+</table>
+<p><strong>Renvoie aussi :</strong> <code>niveaux_par_annee</code> (D/R/N/I par année), <code>annees_disponibles</code>.</p>
+</div>
+</section>
+
+<!-- EPREUVE/VILLE -->
+<section id="epreuve_ville">
+<div class="endpoint">
+<h2><code>epreuve_stats.php</code> & <code>ville_stats.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE 24h</span></h2>
+<p><strong>epreuve_stats.php</strong> (<code>nom</code> requis, + <code>page/limit/sexe/categorie</code>) : détecte
+automatiquement temps vs distance pour le tri. Renvoie total_athletes, par_sexe, par_categorie, nationalites,
+records paginés, médailles, podiums, top_clubs, top_villes, niveaux_resultats, sélections, progressions.</p>
+<p><strong>ville_stats.php</strong> (<code>nom</code> requis, + <code>page/limit</code>, <code>niv=D3,D2,R1</code>,
+<code>nat=FRA,MAR</code>, <code>ans=2023,2024</code>) : stats d'une ville avec filtres niveaux/nationalités/années.</p>
+</div>
+</section>
+
+<!-- CLASSEMENT -->
+<section id="classement">
+<div class="endpoint">
+<h2><code>classement.php</code> <span class="tag t-get">GET</span> <span class="tag t-none">SANS CACHE (temps réel)</span></h2>
+<p>Classement par épreuve, meilleure perf par athlète (<code>ROW_NUMBER()</code>). Pas de cache car temps réel.</p>
+<table>
+<tr><th>Param</th><th>Rôle</th></tr>
+<tr><td><code>epreuve</code></td><td>int, requis (id_epreuve)</td></tr>
+<tr><td><code>sexe</code>, <code>categorie</code>, <code>annee</code></td><td>Filtres</td></tr>
+<tr><td><code>limit</code>, <code>offset</code></td><td>Pagination</td></tr>
+</table>
+</div>
+</section>
+
+<!-- STATS -->
+<section id="stats">
+<div class="endpoint">
+<h2><code>stats.php</code> & <code>top_searched.php</code> <span class="tag t-get">GET</span></h2>
+<p><strong>stats.php</strong> : stats globales du site. <code>detail=1</code> ajoute les tops (clubs/épreuves/athlètes/villes
+avec niveaux_pct), <code>top=N</code> (10-200), <code>nocache=1</code>. Score athlète = médailles×5 + podiums×3 +
+sélections×4 + records.</p>
+<p><strong>top_searched.php</strong> (cache 10 min) : clubs/athlètes les plus consultés. <code>type=clubs|athletes</code>
+(requis), <code>limit</code> (max 50), <code>days=1|7|30|365</code>. Lit <code>search_tracking</code>
+(<code>COUNT(DISTINCT ip)</code> = vues). <code>?reset=athletes|clubs|all&bk_key=…</code> réinitialise.</p>
+</div>
+</section>
+
+<!-- LISTES -->
+<section id="listes">
+<div class="endpoint">
+<h2><code>clubs.php</code> · <code>epreuves.php</code> · <code>villes.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE 24h</span></h2>
+<p>Listes paginées des référentiels. Paramètres communs : <code>nom=</code> (recherche), <code>has_athletes=1</code>,
+<code>page</code>, <code>limit</code>. <code>clubs.php</code> a <code>max_athletes=5000</code>. <strong>clubs.php</strong>
+et <strong>villes.php</strong> appliquent le quota de recherche quand <code>nom=</code> est présent.</p>
+</div>
+</section>
+
+<!-- SIMILAR -->
+<section id="similar">
+<div class="endpoint">
+<h2><code>similar.php</code> <span class="tag t-get">GET</span> <span class="tag t-cache">CACHE 24h</span></h2>
+<p>Profils similaires. <code>id</code> (externe, requis), <code>mode=niveau|perf|epreuve|niveau_sup|niveau_inf</code>,
+<code>ep=ID</code> (mode épreuve). Regroupe par club (5 athlètes max/club), même sexe. Utilise le barème FFA.</p>
+</div>
+</section>
+
+<!-- FOLLOW -->
+<section id="follow">
+<div class="endpoint">
+<h2><code>follow.php</code> <span class="tag t-get">GET</span> <span class="tag t-post">POST</span></h2>
+<p><strong>POST</strong> = toggle suivre/ne plus suivre. <strong>GET</strong> = vérifier le statut.</p>
+<pre><code><span class="cm">// POST body</span>
+{ <span class="st">"athlete_id"</span>: 548525, <span class="st">"email"</span>: <span class="st">"x@y.com"</span> }   <span class="cm">// ou "club_id"</span>
+<span class="cm">// Réponse</span>
+{ <span class="st">"success"</span>: true, <span class="st">"following"</span>: true, <span class="st">"count"</span>: 42 }</code></pre>
+<p>Si l'utilisateur est connecté (cookie <code>bk_token</code>), l'email est auto-détecté. Tables
+<code>athlete_follows</code> / <code>club_follows</code> (avec l'ID externe).</p>
+</div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact">
+<div class="endpoint">
+<h2><code>contact.php</code> <span class="tag t-get">GET (admin)</span> <span class="tag t-post">POST (user)</span></h2>
+<div class="box info"><div class="box-t">ℹ️</div>N'inclut <strong>PAS</strong> config.php → reste accessible même si l'IP est bloquée.</div>
+<p><strong>POST</strong> (nom, email <strong>obligatoire</strong>, message) : envoie un email de confirmation. Le message
+n'est enregistré (<code>contact_messages</code>) qu'après clic sur le lien (<code>auth/confirm_contact.php</code>).
+Rate limit : 3/jour/IP.</p>
+<p><strong>GET admin</strong> (cookie <code>bk_sa_token</code>) : <code>?mark_read=ID</code>, <code>?mark_unread=ID</code>,
+<code>?delete=ID</code>, <code>?delete_token=ID</code>, <code>?unban_ip=X</code>. <strong>POST admin</strong> :
+<code>action=reply</code> (répondre), <code>action=send_to_user</code> (mail à un inscrit).</p>
+</div>
+</section>
+
+<!-- REPORT -->
+<section id="report">
+<div class="endpoint">
+<h2><code>report.php</code> <span class="tag t-get">GET (admin)</span> <span class="tag t-post">POST (signalement)</span></h2>
+<p><strong>POST</strong> = signaler un profil (5 motifs : retrait, donnees_incorrectes, usurpation, vie_privee, autre).
+Si motif = retrait + email → envoie un lien de masquage self-service (<code>auth/confirm_hide.php</code> → <code>visible=0</code>).
+<strong>GET admin</strong> : <code>?hide_athlete=ID</code>, <code>?show_athlete=ID</code>, <code>?mark_read=ID</code>,
+<code>?resolve=ID</code>, <code>?delete=ID</code>. Toute action sur la visibilité vide le cache de l'athlète.</p>
+</div>
+</section>
+
+<!-- TRACK -->
+<section id="track">
+<div class="endpoint">
+<h2><code>search_track.php</code> <span class="tag t-post">POST</span></h2>
+<p>Endpoint léger qui reçoit le tracking JS (via <code>sendBeacon</code>). Body JSON :
+<code>{ q, type, source, entity_id, entity_name, results, pg }</code>. Insère dans <code>search_tracking</code>.
+Nettoyage probabiliste : 1 % de chance de supprimer les enregistrements de plus de 90 jours. Renvoie <code>{ok:true}</code>.</p>
+</div>
+</section>
+
+<!-- QUOTA -->
+<section id="quota">
+<div class="endpoint">
+<h2><code>quota.php</code> <span class="tag t-get">GET</span></h2>
+<p>Statut du quota de recherche en <strong>lecture seule</strong> (ne consomme rien). Appelle
+<code>bkSearchLimit($conn, false)</code> + <code>bkSlFields()</code>. Sert à rafraîchir le badge de quota dans la nav.
+Renvoie : <code>search_used, search_limit, cooldown_remaining, anon_trial, trial_remaining, logged, is_sa, unlimited</code>.</p>
+</div>
+</section>
+
+<!-- AUTH -->
+<section id="auth">
+<h2>Sous-dossier <code>auth/</code> — connexion</h2>
+<table>
+<tr><th>Endpoint</th><th>Méthode</th><th>Rôle</th></tr>
+<tr><td><code>login.php</code></td><td>POST</td><td>Connexion. Détecte le super admin (= credentials BDD → cookie <code>bk_sa_token</code> 7 j). Rate limit 5 essais/jour/IP, blocage 24 h.</td></tr>
+<tr><td><code>register.php</code></td><td>POST</td><td>Inscription email (email/nom/prénom/mdp). Crée le user (rôle athlete).</td></tr>
+<tr><td><code>logout.php</code></td><td>POST</td><td>Supprime la session + cookies.</td></tr>
+<tr><td><code>me.php</code></td><td>GET</td><td>Renvoie l'utilisateur connecté (ou authenticated:false).</td></tr>
+<tr><td><code>google_login.php</code></td><td>GET</td><td>Démarre le flux Google (génère le state CSRF, redirige).</td></tr>
+<tr><td><code>google_callback.php</code></td><td>GET</td><td>Retour Google : échange le code, crée/lie le compte, ouvre la session.</td></tr>
+<tr><td><code>forgot_password.php</code></td><td>POST</td><td>Demande de réinitialisation (token 1 h). Réponse toujours « succès » (sécurité).</td></tr>
+<tr><td><code>reset_password.php</code></td><td>POST</td><td>Réinitialise le mot de passe via token. Invalide toutes les sessions.</td></tr>
+<tr><td><code>verify_email.php</code></td><td>GET</td><td>Valide l'email via token → email_verified=1.</td></tr>
+<tr><td><code>confirm_contact.php</code></td><td>GET</td><td>Confirme l'envoi d'un message de contact.</td></tr>
+<tr><td><code>confirm_hide.php</code></td><td>GET</td><td>Masque un profil (visible=0) après clic sur le lien de retrait.</td></tr>
+</table>
+<div class="box tip"><div class="box-t">✅ Sécurité auth</div>Les endpoints d'authentification utilisent des <strong>requêtes préparées</strong> (<code>prepare()</code> + <code>bind_param()</code>) — protection contre l'injection SQL. Les endpoints de lecture (recherche, stats) utilisent souvent <code>real_escape_string()</code> sur des entrées déjà validées/échappées.</div>
+</section>
+
+<!-- AUTRES -->
+<section id="autres">
+<h2>Autres endpoints</h2>
+<table>
+<tr><th>Endpoint</th><th>Rôle</th></tr>
+<tr><td><code>subscribe.php</code></td><td>POST — collecte email (newsletter/PDF), table email_subscribers</td></tr>
+<tr><td><code>performances.php</code></td><td>CRUD perfs manuelles (auth requise pour POST/PUT/DELETE)</td></tr>
+<tr><td><code>epreuve_records.php</code></td><td>Records paginés par épreuve</td></tr>
+<tr><td><code>ville_epreuves.php</code></td><td>Épreuves organisées par ville</td></tr>
+<tr><td><code>competitions.php</code></td><td>Liste des compétitions</td></tr>
+<tr><td><code>niveaux_stats.php</code></td><td>Distribution des niveaux (histogramme)</td></tr>
+<tr><td><code>geocode.php</code></td><td>Géocodage des lieux (carte du profil), cache logs/.geocode.php</td></tr>
+<tr><td><code>log.php</code></td><td>POST batch des logs JS → table logs ; GET = lecture</td></tr>
+<tr><td><code>admin_athlete.php</code> / <code>admin_style.php</code></td><td>Édition profil / style (admin)</td></tr>
+<tr><td><code>same_day_perf.php</code>, <code>athlete_socials.php</code>, <code>composition.php</code></td><td>Fonctions annexes du profil</td></tr>
+</table>
+</section>
+
+<div style="text-align:center;color:#6e7681;font-size:13px;padding:24px 0;border-top:1px solid var(--border)">
+  <a class="link" href="documentation_technique.html">← Retour au sommaire</a> &nbsp;·&nbsp;
+  <a class="link" href="doc_bdd.html">Schéma BDD →</a>
+</div>
+</div>
+</body>
+</html>

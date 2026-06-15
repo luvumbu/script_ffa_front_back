@@ -16,6 +16,7 @@ $conn->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-adsense-account" content="ca-pub-7899923856846249">
     <title>Mes Performances - Bokonzi</title>
     <link rel="stylesheet" href="../dashboard.css">
     <style>
@@ -199,6 +200,7 @@ $conn->close();
         .form-grid { grid-template-columns: 1fr; }
     }
     </style>
+    <?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
 </head>
 <body>
 <?php include dirname(__DIR__) . '/nav.php'; ?>

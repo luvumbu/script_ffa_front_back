@@ -6,6 +6,20 @@
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../../core/auth.php';
+require_once __DIR__ . '/../../core/paths.php';
+
+// === Identifiants super admin attendus ===
+// IMPORTANT : a capturer AVANT que $password ne soit ecrase par l'input (plus bas).
+// En local, core/db.php a charge credentials_local.php => $username/$password = root/"" (creds MySQL).
+// On utilise alors $localAuthUser/$localAuthPass dedies a l'auth (ex: root/root).
+// En prod, on garde les identifiants BDD ($username/$password).
+if (defined('BK_IS_LOCAL') && BK_IS_LOCAL && !empty($GLOBALS['localAuthUser'])) {
+    $ADMIN_USER = $GLOBALS['localAuthUser'];
+    $ADMIN_PASS = $GLOBALS['localAuthPass'] ?? '';
+} else {
+    $ADMIN_USER = $username;
+    $ADMIN_PASS = $password;
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['success' => false, 'error' => 'Methode POST requise'], 405);
@@ -62,8 +76,8 @@ $input = json_decode(file_get_contents('php://input'), true);
 $email    = trim($input['email'] ?? '');
 $password = $input['password'] ?? '';
 
-if (empty($email) || empty($password)) {
-    jsonResponse(['success' => false, 'error' => 'Identifiant et mot de passe requis'], 400);
+if (empty($email)) {
+    jsonResponse(['success' => false, 'error' => 'Identifiant requis'], 400);
 }
 
 // Fonction pour enregistrer un echec
@@ -93,9 +107,8 @@ function clearAttempts($attemptsFile, &$attempts, $ip) {
     file_put_contents($attemptsFile, "<?php die('Acces interdit'); ?>\n" . json_encode($attempts, JSON_PRETTY_PRINT));
 }
 
-// === SUPER ADMIN : login avec identifiants BDD ===
-require_once __DIR__ . '/../../core/credentials.php';
-if ($email === $username && $password === $GLOBALS['password']) {
+// === SUPER ADMIN : login avec identifiants dedies (captures plus haut) ===
+if ($email === $ADMIN_USER && hash_equals($ADMIN_PASS, $password)) {
     // Succes → effacer les tentatives
     clearAttempts($attemptsFile, $attempts, $ip);
 

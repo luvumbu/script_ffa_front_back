@@ -37,7 +37,48 @@ $RUNNING_FLAG  = __DIR__ . '/refresh_existing_running.flag';
 $PROGRESS_FILE = __DIR__ . '/refresh_existing_progress.txt';
 $TARGETS_FILE  = __DIR__ . '/refresh_existing_targets.json';
 $STATS_FILE    = __DIR__ . '/refresh_existing_stats.json';
+$LOG_FILE      = __DIR__ . '/refresh_existing_log.json';
+$LOG_MAX       = 200; // garde les 200 dernieres entrees (rolling buffer)
 
+/**
+ * Append une entree au log live et garde uniquement les LOG_MAX dernieres.
+ * Lu par l'AJAX (?api=log) pour affichage temps reel.
+ */
+function appendLiveLog($logFile, $entry, $max = 200) {
+    $log = [];
+    if (file_exists($logFile)) {
+        $raw = @file_get_contents($logFile);
+        if ($raw) $log = @json_decode($raw, true) ?: [];
+    }
+    $log[] = $entry;
+    if (count($log) > $max) $log = array_slice($log, -$max);
+    @file_put_contents($logFile, json_encode($log, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+// ====================================================================
+// Endpoint AJAX : log live + stats (lecture seule, fichiers uniquement,
+// pas besoin de connexion BDD — appele en boucle toutes les 1.5s)
+// ====================================================================
+if (($_GET['api'] ?? '') === 'log') {
+    header('Content-Type: application/json; charset=utf-8');
+    $log         = file_exists($LOG_FILE)      ? @json_decode(file_get_contents($LOG_FILE), true) ?: []         : [];
+    $globalStats = file_exists($STATS_FILE)    ? @json_decode(file_get_contents($STATS_FILE), true) ?: []       : [];
+    $progress    = file_exists($PROGRESS_FILE) ? (int)@file_get_contents($PROGRESS_FILE)                        : 0;
+    $isRunning   = file_exists($RUNNING_FLAG);
+    $targets     = file_exists($TARGETS_FILE)  ? @json_decode(file_get_contents($TARGETS_FILE), true) ?: []     : [];
+    echo json_encode([
+        'running'  => $isRunning,
+        'progress' => $progress,
+        'total'    => count($targets),
+        'pct'      => count($targets) > 0 ? round($progress / count($targets) * 100, 1) : 0,
+        'stats'    => array_merge(['updated' => 0, 'inserted' => 0, 'errors' => 0, 'http503' => 0], $globalStats),
+        'log'      => $log,
+        'now'      => date('H:i:s'),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// Connexion BDD (apres l'endpoint API qui n'en a pas besoin)
 $conn = new mysqli('localhost', $username, $password, $dbname);
 if ($conn->connect_error) die('DB error: ' . $conn->connect_error);
 $conn->set_charset('utf8mb4');
@@ -54,6 +95,7 @@ if (isset($_GET['start']) || isset($_POST['start']) || $autostart) {
         @unlink($PROGRESS_FILE);
         @unlink($TARGETS_FILE);
         @unlink($STATS_FILE);
+        @unlink($LOG_FILE);
     }
     header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?') . "?since=$sinceDate");
     exit;
@@ -67,6 +109,8 @@ if (isset($_GET['reset'])) {
     @unlink($RUNNING_FLAG);
     @unlink($PROGRESS_FILE);
     @unlink($TARGETS_FILE);
+    @unlink($STATS_FILE);
+    @unlink($LOG_FILE);
     header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
     exit;
 }
@@ -156,6 +200,127 @@ $pct = $total > 0 ? round($progress / $total * 100, 1) : 0;
         <a class="btn danger" href="?stop=1">ARRETER</a>
     <?php endif; ?>
 
+    <!-- ============================================================== -->
+    <!-- LIVE CONSOLE : log athlete-par-athlete, mis a jour toutes les 1.5s -->
+    <!-- ============================================================== -->
+    <div style="margin-top:24px;background:#0d1320;border:1px solid #1a2540;border-radius:10px;padding:16px;">
+        <h3 style="margin:0 0 12px;color:#a29bfe;">Live console <span id="liveDot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#34d399;animation:pulse 1.5s infinite;vertical-align:middle;margin-left:6px;"></span></h3>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">
+            <div class="stat" style="background:#0a2818;border-color:#34d399;display:block;text-align:center;">
+                <div style="color:#6ee7b7;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Nouveaux (NEW)</div>
+                <b id="liveNew" style="color:#34d399;font-size:22px;">0</b>
+            </div>
+            <div class="stat" style="background:#1a1a3a;border-color:#a29bfe;display:block;text-align:center;">
+                <div style="color:#c4b5fd;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Mis a jour (MAJ)</div>
+                <b id="liveUpdated" style="color:#a29bfe;font-size:22px;">0</b>
+            </div>
+            <div class="stat" style="background:#2a1a1a;border-color:#f87171;display:block;text-align:center;">
+                <div style="color:#fca5a5;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Erreurs</div>
+                <b id="liveErrors" style="color:#f87171;font-size:22px;">0</b>
+            </div>
+            <div class="stat" style="background:#0a1e2a;border-color:#60a5fa;display:block;text-align:center;">
+                <div style="color:#93c5fd;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Avancement</div>
+                <b id="livePct" style="color:#60a5fa;font-size:22px;">0%</b>
+                <div style="color:#8b949e;font-size:10px;"><span id="liveDone">0</span> / <span id="liveTotal">0</span></div>
+            </div>
+        </div>
+
+        <div style="background:#000;border-radius:6px;padding:10px;max-height:340px;overflow-y:auto;font-family:'JetBrains Mono','Consolas',monospace;font-size:11.5px;line-height:1.6;" id="liveLog">
+            <div style="color:#8b949e;">[En attente du premier athlete...]</div>
+        </div>
+
+        <div style="margin-top:8px;font-size:11px;color:#8b949e;">
+            <span id="liveStatus">--</span>
+            <span style="float:right;">Derniere maj : <span id="liveTs">--</span></span>
+        </div>
+    </div>
+    <style>
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1);} 50% { opacity:0.4; transform:scale(0.9);} }
+    .log-new { color:#34d399; }
+    .log-upd { color:#a29bfe; }
+    .log-err { color:#f87171; }
+    .log-fetcherr { color:#fbbf24; }
+    .log-name { color:#fff; font-weight:600; }
+    .log-meta { color:#8b949e; }
+    .log-link { color:#60a5fa; text-decoration:none; }
+    .log-link:hover { text-decoration:underline; }
+    </style>
+    <script>
+    (function() {
+        var lastSeenPos = -1;
+        function fmt(n) { return Number(n||0).toLocaleString('fr-FR'); }
+        function tagClass(action) {
+            if (action === 'NEW') return 'log-new';
+            if (action === 'MAJ') return 'log-upd';
+            if (action === 'ERR_FETCH') return 'log-fetcherr';
+            return 'log-err';
+        }
+        function tagLabel(action) {
+            if (action === 'NEW')       return 'NEW';
+            if (action === 'MAJ')       return 'MAJ';
+            if (action === 'ERR_FETCH') return 'FETCH KO';
+            return 'ERR';
+        }
+        function renderEntry(e) {
+            var cls   = tagClass(e.action);
+            var label = tagLabel(e.action);
+            var name  = e.name ? '<span class="log-name">' + escHtml(e.name) + '</span>' : '<span class="log-meta">(sans nom)</span>';
+            var meta  = '';
+            if (e.action === 'NEW' || e.action === 'MAJ') {
+                meta = ' <span class="log-meta">R:' + e.records + ' P:' + e.progressions + ' M:' + e.medailles + ' S:' + e.selections + ' C:' + e.clubs + '</span>';
+            } else if (e.msg) {
+                meta = ' <span class="log-meta">' + escHtml(e.msg) + '</span>';
+            }
+            var link = ' <a href="' + e.url + '" target="_blank" rel="noopener" class="log-link" title="Voir sur athle.fr">[#' + e.id_ext + ']</a>';
+            return '<div class="' + cls + '">[' + e.ts + '] <b>[' + label + ']</b> ' + name + link + meta + '</div>';
+        }
+        function escHtml(s) {
+            return String(s).replace(/[&<>"']/g, function(c) {
+                return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+            });
+        }
+        function refresh() {
+            fetch('?api=log&t=' + Date.now())
+              .then(function(r) { return r.json(); })
+              .then(function(d) {
+                if (!d) return;
+                document.getElementById('liveNew').textContent     = fmt(d.stats.inserted);
+                document.getElementById('liveUpdated').textContent = fmt(d.stats.updated);
+                document.getElementById('liveErrors').textContent  = fmt(d.stats.errors);
+                document.getElementById('liveDone').textContent    = fmt(d.progress);
+                document.getElementById('liveTotal').textContent   = fmt(d.total);
+                document.getElementById('livePct').textContent     = d.pct + '%';
+                document.getElementById('liveTs').textContent      = d.now;
+                document.getElementById('liveStatus').innerHTML    = d.running
+                    ? '<span style="color:#34d399;">SCRAPING ACTIF</span>'
+                    : '<span style="color:#8b949e;">arrete</span>';
+                document.getElementById('liveDot').style.background = d.running ? '#34d399' : '#8b949e';
+
+                var box  = document.getElementById('liveLog');
+                var html = '';
+                if (!d.log || d.log.length === 0) {
+                    html = '<div style="color:#8b949e;">[En attente du premier athlete...]</div>';
+                } else {
+                    var lastEntries = d.log.slice(-80);
+                    for (var i = 0; i < lastEntries.length; i++) html += renderEntry(lastEntries[i]);
+                }
+                // Conserve le scroll en bas s'il y a une nouvelle entree
+                var lastPos = d.log && d.log.length ? d.log[d.log.length - 1].pos : -1;
+                var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 50;
+                box.innerHTML = html;
+                if (lastPos !== lastSeenPos && atBottom) {
+                    box.scrollTop = box.scrollHeight;
+                    lastSeenPos = lastPos;
+                }
+              })
+              .catch(function() { /* silencieux */ });
+        }
+        refresh();
+        setInterval(refresh, 1500);
+    })();
+    </script>
+
 <?php
 // ====================================================================
 // Boucle de scraping
@@ -206,6 +371,14 @@ while ((microtime(true) - $start) < $TIME_LIMIT) {
                 // Detection 503 / page d'erreur courte
                 $bil = $allPages['bilans'] ?? '';
                 if (strpos($bil, '503') !== false || strlen($bil) < 1000) $http503++;
+                appendLiveLog($LOG_FILE, [
+                    'ts'     => date('H:i:s'),
+                    'pos'    => $progress,
+                    'id_ext' => $idExt,
+                    'name'   => '',
+                    'action' => 'ERR_FETCH',
+                    'url'    => "https://athle.fr/athletes/$idExt/bilans",
+                ], $LOG_MAX);
                 $progress++;
                 continue;
             }
@@ -235,16 +408,42 @@ while ((microtime(true) - $start) < $TIME_LIMIT) {
             insertAthleteData($scraper, $conn, $cache);
             ob_end_clean();
 
-            $nbR = count($scraper->records);
-            $nbP = count($scraper->progressions);
-            $nbS = count($scraper->selections);
-            $tag = $wasExisting ? 'MAJ' : 'NEW';
+            $nbR  = count($scraper->records);
+            $nbP  = count($scraper->progressions);
+            $nbS  = count($scraper->selections);
+            $nbM  = count($scraper->medailles);
+            $nbC  = count($scraper->clubs);
+            $name = trim($scraper->identite['nom_complet'] ?? '');
+            $tag  = $wasExisting ? 'MAJ' : 'NEW';
             echo "<span class='ok'>[$progress] id=$idExt $tag — R:$nbR P:$nbP S:$nbS</span>\n";
+            // Append live log (lu par ?api=log via AJAX)
+            appendLiveLog($LOG_FILE, [
+                'ts'           => date('H:i:s'),
+                'pos'          => $progress,
+                'id_ext'       => $idExt,
+                'name'         => $name,
+                'action'       => $tag,
+                'records'      => $nbR,
+                'progressions' => $nbP,
+                'selections'   => $nbS,
+                'medailles'    => $nbM,
+                'clubs'        => $nbC,
+                'url'          => "https://athle.fr/athletes/$idExt/bilans",
+            ], $LOG_MAX);
             if ($wasExisting) $updated++;
             else              $inserted++;
         } catch (Throwable $e) {
             echo "<span class='err'>[$progress] id=$idExt ERR " . htmlspecialchars($e->getMessage()) . "</span>\n";
             $errors++;
+            appendLiveLog($LOG_FILE, [
+                'ts'     => date('H:i:s'),
+                'pos'    => $progress,
+                'id_ext' => $idExt,
+                'name'   => '',
+                'action' => 'ERR',
+                'msg'    => substr($e->getMessage(), 0, 200),
+                'url'    => "https://athle.fr/athletes/$idExt/bilans",
+            ], $LOG_MAX);
         }
         $processed++;
         $progress++;

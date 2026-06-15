@@ -190,9 +190,18 @@ class ScrapingRunner
             return $progress;
         }
 
+        // Preload blacklist (set d'IDs purges definitivement, on les ignore)
+        $blacklist = [];
+        $resBl = @$this->conn->query("SELECT athlete_id_ext FROM athlete_blacklist");
+        if ($resBl) {
+            while ($rowBl = $resBl->fetch_assoc()) $blacklist[(int)$rowBl['athlete_id_ext']] = true;
+            $resBl->free();
+        }
+
         $cycleStart = microtime(true);
         $cycleInserts = 0;
         $cyclePages = 0;
+        $cycleSkipped = 0;
         $logLines = [];
 
         while ((microtime(true) - $cycleStart) < $maxSeconds) {
@@ -220,18 +229,24 @@ class ScrapingRunner
                 $progress['stats']['fetch_errors']++;
                 $logLines[] = "FETCH KO #{$cur['id']} p$page (HTTP {$r['http_code']})";
             } else {
-                // INSERT chaque athlete
+                // INSERT chaque athlete (skip si blackliste = athlete purge volontairement)
                 $nbInsertsPage = 0;
+                $nbSkipped = 0;
                 foreach ($r['athletes'] as $a) {
                     $url = "https://athle.fr" . $a['url_fiche'];
+                    if ($blacklist && preg_match('#/athletes/(\d+)/#', $url, $m) && isset($blacklist[(int)$m[1]])) {
+                        $nbSkipped++;
+                        continue;
+                    }
                     $stmt->bind_param('s', $url);
                     if ($stmt->execute()) {
                         $nbInsertsPage++;
                         $progress['stats']['athletes_inserts']++;
                     }
                 }
-                $logLines[] = "OK #{$cur['id']} p$page → {$nbInsertsPage} INSERT (HTTP 200, " . count($r['athletes']) . " trouves)";
+                $logLines[] = "OK #{$cur['id']} p$page → {$nbInsertsPage} INSERT" . ($nbSkipped > 0 ? " ({$nbSkipped} blacklist)" : "") . " (HTTP 200, " . count($r['athletes']) . " trouves)";
                 $cycleInserts += $nbInsertsPage;
+                $cycleSkipped += $nbSkipped;
             }
             $cyclePages++;
             $progress['stats']['pages_traitees']++;

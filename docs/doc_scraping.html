@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOKONZI — Le pipeline de scraping en détail</title>
+<link rel="stylesheet" href="doc_style.css">
+</head>
+<body>
+<div class="backbar">
+  <a href="documentation_technique.html">← Sommaire</a>
+  <span class="crumb">Documentation détaillée · Pipeline de scraping</span>
+</div>
+<div class="wrap">
+
+<h1>Le pipeline de scraping, pas à pas</h1>
+<div class="subtitle">Comment une donnée passe d'une page HTML d'athle.fr jusqu'à la base de données</div>
+
+<div class="lead">
+Le scraping est le système le plus complexe du projet. Il <strong>télécharge</strong> les pages d'athle.fr,
+les <strong>parse</strong> (extrait les infos du HTML), <strong>convertit</strong> les performances en nombres, puis
+<strong>insère</strong> tout en base de façon optimisée. Cette page suit ce chemin de bout en bout.
+</div>
+
+<div class="localtoc">
+  <a href="#flux">Le flux complet</a>
+  <a href="#orchestrateur">1 · L'orchestrateur (scraper.php)</a>
+  <a href="#parallel">2 · Le téléchargement parallèle</a>
+  <a href="#scraper">3 · Le parseur (AthleteScraper)</a>
+  <a href="#perf">4 · performanceToInt() — les 7 patterns</a>
+  <a href="#identite">5 · Découpage du nom & catégorie</a>
+  <a href="#insert">6 · L'insertion optimisée</a>
+  <a href="#progstore">7 · Progressions en fichier</a>
+  <a href="#reprise">8 · Reprise après interruption</a>
+</div>
+
+<section id="flux">
+<h2>Le flux complet</h2>
+<div class="diagram">  athle.fr (3 pages HTML par athlète : bilans / records / selections)
+        │
+        │  ① scrapeParallel() — curl_multi : 7 athlètes × 3 pages = 21 requêtes EN PARALLÈLE
+        ▼
+  HTML brut
+        │
+        │  ② AthleteScraper — parse le HTML → 9 tableaux structurés
+        │     (identite, clubs, medailles, selections, progressions,
+        │      records, podiums, resultats, niveaux)
+        │
+        │  ③ performanceToInt() — « 10''48 » → 1048 (centièmes/cm)
+        ▼
+  Données propres
+        │
+        │  ④ insertAthleteData() — cache mémoire + batch INSERT (9 sections)
+        │     si l'athlète existe : DELETE CASCADE des enfants puis réinsert
+        ▼
+  MySQL  +  copie JSON dans src/{id}.php</div>
+</section>
+
+<section id="orchestrateur">
+<h2>1 · L'orchestrateur — <code>scraping/scraper.php</code></h2>
+<table>
+<tr><th>Élément</th><th>Détail</th></tr>
+<tr><td>Constantes</td><td><code>$TIME_LIMIT = 25</code> s par cycle, <code>$PARALLEL = 7</code> athlètes par lot</td></tr>
+<tr><td>Démarrer / Arrêter</td><td>Fichier <code>scraping_running.flag</code> : <code>?start_scraping</code> le crée, <code>?stop_scraping</code> le supprime. Le flag survit à la fermeture du navigateur.</td></tr>
+<tr><td>Auto-refresh</td><td>À la fin d'un cycle de 25 s, <code>header("Refresh: 1")</code> recharge la page → cycle suivant. S'arrête quand tout est traité (flag supprimé).</td></tr>
+<tr><td>Skip BDD</td><td>Au démarrage, charge tous les <code>athlete_id_externe</code> déjà en base dans un tableau mémoire → ignore les athlètes déjà présents <strong>sans même les télécharger</strong>.</td></tr>
+<tr><td>Mode test</td><td><code>?test_url=ID</code> (ou URL) scrape 1 seul athlète et affiche ses stats. <code>&skip_bdd</code> = sans insérer, <code>&force</code> = réinsère même si déjà présent.</td></tr>
+</table>
+<h4>Le cycle (toutes les 25 s)</h4>
+<ol class="steps">
+<li>Charge les URLs depuis la table <code>nom_et_liens</code> (cache <code>urls_cache.json</code>).</li>
+<li>Collecte 7 athlètes <em>non présents en base</em> à partir de la position sauvegardée (<code>progress.txt</code>).</li>
+<li><code>scrapeParallel()</code> télécharge leurs 21 pages.</li>
+<li>Pour chacun : parse → JSON <code>src/{id}.php</code> → <code>insertAthleteData()</code>.</li>
+<li>Sauvegarde la position dans <code>progress.txt</code>, échecs dans <code>failed.json</code>.</li>
+<li><code>sleep(1)</code> (throttle athle.fr) puis recharge.</li>
+</ol>
+</section>
+
+<section id="parallel">
+<h2>2 · Le téléchargement parallèle — <code>scrapeParallel()</code></h2>
+<p>Dans <code>scraping/scrape_functions.php</code>. Signature :
+<code>scrapeParallel(array $athleteIds, string $baseUrl = "https://athle.fr/athletes/")</code>.</p>
+<ul>
+  <li>Crée un handle <strong>curl_multi</strong> pour chaque combinaison athlète × section (bilans / records / selections).</li>
+  <li>Total = N × 3 requêtes lancées <strong>simultanément</strong>. Timeout 15 s par requête.</li>
+  <li>Attend que tout soit fini, ne garde que les réponses HTTP 200.</li>
+</ul>
+<pre><code><span class="cm">// Structure de retour</span>
+[
+  548525 => [ <span class="st">'bilans'</span> => html|null, <span class="st">'records'</span> => html|null, <span class="st">'selections'</span> => html|null ],
+  2643370 => [ ... ],
+]</code></pre>
+<div class="box tip"><div class="box-t">✅ Pourquoi parallèle ?</div>Télécharger 21 pages une par une prendrait ~21 × le temps réseau. En parallèle, on attend seulement la plus lente. Gain : ~3,5 jours pour 300k athlètes au lieu de ~17 jours en séquentiel.</div>
+</section>
+
+<section id="scraper">
+<h2>3 · Le parseur — <code>Class/AthleteScraper.php</code></h2>
+<p>Une classe qui prend l'HTML brut et en extrait 9 tableaux. <code>scrapeAll()</code> orchestre l'extraction.</p>
+<table>
+<tr><th>Méthode</th><th>Ce qu'elle extrait</th></tr>
+<tr><td><code>extractIdentite()</code></td><td>Nom (via <code>splitNomPrenom</code>), date/lieu de naissance, taille/poids, catégorie/sexe/nationalité (regex <code>SE/M/FRA</code>), licence</td></tr>
+<tr><td><code>extractProgressions()</code></td><td>Meilleures perfs par saison (section_4). Détecte l'épreuve courante, l'année, extrait le vent, appelle <code>performanceToInt()</code> et <code>getCategorieCode()</code></td></tr>
+<tr><td><code>extractClubs()</code></td><td><strong>Déduit</strong> les clubs depuis les progressions (athle.fr n'a pas de section clubs). Min/max année par club.</td></tr>
+<tr><td><code>extractRecords()</code></td><td>Records personnels (très similaire aux progressions)</td></tr>
+<tr><td><code>extractMedailles()</code></td><td>Regex sur « Médaille d'or/argent/bronze », extrait lieu/pays/compétition</td></tr>
+<tr><td><code>extractPodiums()</code></td><td>section_6 : « Champion » → rang 1, « Vice champion » → 2, « 3ème » → 3</td></tr>
+<tr><td><code>extractResultats()</code></td><td>section_3 : tous les résultats de l'année avec date complète</td></tr>
+<tr><td><code>extractSelections()</code></td><td>Sélections équipe de France (header + résultat appariés)</td></tr>
+<tr><td><code>extractNiveaux()</code></td><td>section_9 : <code>N2 (28 pts)</code> → code + points + perfs justificatives</td></tr>
+</table>
+</section>
+
+<section id="perf">
+<h2>4 · <code>performanceToInt()</code> — les 7 patterns (à comprendre absolument)</h2>
+<p>Fonction statique (lignes ~1014-1060) qui convertit une performance texte en <strong>entier</strong> : centièmes de
+seconde pour les courses, centimètres pour les sauts/lancers. Les 7 patterns sont testés <strong>dans cet ordre</strong> :</p>
+<table>
+<tr><th>#</th><th>Format</th><th>Exemple</th><th>Résultat</th></tr>
+<tr><td>1</td><td><code>Xh Y'ZZ''CC</code> (heures)</td><td>1h23'45''12</td><td>((1×3600+23×60+45)×100)+12</td></tr>
+<tr><td>2</td><td><code>X'YY''CC</code> (min+centièmes)</td><td>3'43''65</td><td>((3×60+43)×100)+65 = 22365</td></tr>
+<tr><td>3</td><td><code>X'YY</code> (min sans centièmes)</td><td>12'09</td><td>(12×60+9)×100 = 72900</td></tr>
+<tr><td>4</td><td><code>XX''CC</code> (sec+centièmes)</td><td>10''48</td><td>10×100+48 = 1048</td></tr>
+<tr><td>5</td><td><code>XmYY</code> (distance, m)</td><td>6m30</td><td>6×100+30 = 630</td></tr>
+<tr><td>6</td><td><code>X.YY</code> (distance décimale)</td><td>7.34</td><td>7×100+34 = 734</td></tr>
+<tr><td>7</td><td><code>XXXX</code> (entier seul)</td><td>734</td><td>734×100 (fallback)</td></tr>
+</table>
+
+<div class="box danger">
+  <div class="box-t">🚨 Le piège du dixième (str_pad)</div>
+  Quand il n'y a <strong>qu'un seul chiffre</strong> après <code>''</code>, <code>m</code> ou <code>.</code>, c'est un
+  <strong>dixième</strong>, pas un centième. Le code fait <code>str_pad($chiffre, 2, '0', STR_PAD_RIGHT)</code> →
+  ajoute un zéro <em>à droite</em> :
+  <table style="margin-top:8px">
+    <tr><th>Brut</th><th>SANS padding (BUG)</th><th>AVEC padding (CORRECT)</th></tr>
+    <tr><td><code>10''9</code></td><td>1009 (10,09 s) ❌</td><td>1090 (10,9 s) ✅</td></tr>
+    <tr><td><code>1'53''3</code></td><td>11303 ❌</td><td>11330 ✅</td></tr>
+    <tr><td><code>6m3</code></td><td>603 (6,03 m) ❌</td><td>630 (6,30 m) ✅</td></tr>
+  </table>
+  Un script de correction existe : <code>admin/fix_perf_int.php</code> (<code>?go</code> pour exécuter).
+</div>
+</section>
+
+<section id="identite">
+<h2>5 · Découpage du nom & catégorie</h2>
+<h4><code>splitNomPrenom()</code> (lignes ~941-978)</h4>
+<p>Sépare nom de famille et prénoms par heuristique de majuscules : les mots <strong>tout en majuscules</strong>
+(longueur &gt; 1) = nom de famille (peut être multi-mots : « VAN DER ZYPPE »), le reste = prénoms. Fonctionne dans
+les deux sens : « VAN DER ZYPPE Antonine » ou « Ndenga LUVUMBU ».</p>
+<h4><code>getCategorieCode($anneeNaissance, $anneeSaison)</code> (lignes ~986-1004)</h4>
+<p>Calcule l'âge (<code>saison − naissance</code>, approximation sans jour/mois) et renvoie le code FFA :
+≤7 EA, ≤9 PO, ≤11 BE, ≤13 MI, ≤15 CA, ≤17 JU, ≤22 ES, ≤39 SE, ≤49 V1, ≤59 V2, ≤69 V3, sinon V4.</p>
+</section>
+
+<section id="insert">
+<h2>6 · L'insertion optimisée — <code>core/insert_athle.php</code></h2>
+<h4><code>loadRefCache($conn)</code></h4>
+<p>Charge les 6 tables de référence (villes, clubs, épreuves, compétitions, catégories, nationalités) en mémoire
+sous forme <code>[table][valeur] = id</code>. Fait une fois au démarrage.</p>
+<h4><code>cachedGetOrInsertId(&$cache, $conn, …)</code></h4>
+<p>Pour obtenir l'id d'un club/épreuve/ville : <strong>(1)</strong> regarde le cache mémoire (0 requête si trouvé),
+<strong>(2)</strong> sinon <code>INSERT IGNORE</code>, <strong>(3)</strong> si déjà existant, <code>SELECT</code> pour
+récupérer l'id. Élimine ~95 % des SELECT.</p>
+<h4><code>insertAthleteData($scraper, $conn, &$cache)</code> — les 9 sections</h4>
+<ol>
+  <li><strong>Identité</strong> : si l'athlète existe déjà → <code>UPDATE</code> + <code>DELETE CASCADE</code> de ses 8 tables enfants ; sinon <code>INSERT</code>.</li>
+  <li>à <li value="8"><strong>Clubs, médailles, sélections, progressions, records, podiums, résultats</strong> : un <strong>batch INSERT</strong> par section (1 requête pour N lignes).</li></li>
+  <li value="9"><strong>Niveaux + perfs</strong> : séquentiel (chaque niveau génère un id dont dépendent ses perfs).</li>
+</ol>
+<div class="box tip"><div class="box-t">✅ Le gain</div>Pour un athlète typique : ~9-15 requêtes SQL au lieu de 200+. Stratégie « DELETE + réinsert » plutôt que « UPDATE des enfants » (plus simple et fiable).</div>
+</section>
+
+<section id="progstore">
+<h2>7 · Progressions déportées en fichier (optionnel)</h2>
+<p>La table <code>athlete_progressions</code> peut peser plus d'1 Go. Un système optionnel la déporte en fichier :</p>
+<table>
+<tr><th>Élément</th><th>Détail</th></tr>
+<tr><td>Activation</td><td><code>config/data_source.json</code> → <code>"athlete_progressions": "file"</code> (<code>progStoreEnabled()</code>)</td></tr>
+<tr><td>Source de vérité</td><td><code>archives/athlete_progressions_live.jsonl</code> (append-only, marqueur delete-and-replace)</td></tr>
+<tr><td>Index</td><td>256 shards <code>archives/.prog_idx/&lt;0-255&gt;.json</code> (par <code>id_athlete & 0xFF</code>)</td></tr>
+<tr><td>Helper</td><td><code>core/progressions_store.php</code> : <code>progStoreAppendBatch()</code>, <code>progStoreLoadForAthlete()</code></td></tr>
+<tr><td>Lecture</td><td><code>api/athlete.php</code> lit le fichier si activé, sinon le SQL classique</td></tr>
+</table>
+<p>Lors de l'insertion, le code écrit puis <strong>relit immédiatement</strong> pour vérifier l'intégrité ; en cas
+d'écart, il log dans <code>archives/.prog_idx/_errors.log</code>.</p>
+</section>
+
+<section id="reprise">
+<h2>8 · Reprise après interruption</h2>
+<table>
+<tr><th>Fichier</th><th>Rôle</th></tr>
+<tr><td><code>progress.txt</code></td><td>Position courante de l'orchestrateur (survit aux redémarrages)</td></tr>
+<tr><td><code>urls_cache.json</code></td><td>Cache de la table <code>nom_et_liens</code> (régénéré si supprimé)</td></tr>
+<tr><td><code>failed.json</code></td><td>Athlètes en échec (accumulé)</td></tr>
+<tr><td><code>src/{id}.php</code></td><td>1 copie JSON par athlète (sert au SEO + ré-import). Peut être purgé (voir inodes).</td></tr>
+<tr><td>Table <code>athlete_scrape_log</code></td><td>Date du dernier scrape par athlète → permet de sauter ceux vus il y a &lt; 24 h</td></tr>
+</table>
+<div class="box info"><div class="box-t">ℹ️ Suivi à distance</div><code>admin/remote_check.php?bk_key=…&action=scrape_status</code> donne l'état des pipelines (total, restants, %, derniers athlètes, audit qualité) en JSON.</div>
+</section>
+
+<div style="text-align:center;color:#6e7681;font-size:13px;padding:24px 0;border-top:1px solid var(--border)">
+  <a class="link" href="documentation_technique.html">← Retour au sommaire</a> &nbsp;·&nbsp;
+  <a class="link" href="doc_bdd.html">Schéma BDD →</a>
+</div>
+</div>
+</body>
+</html>

@@ -1304,6 +1304,106 @@ $maxMb = !empty($tables) ? max(array_column($tables, 'total_mb')) : 1;
     0% { transform: translateX(-100%); }
     100% { transform: translateX(400%); }
   }
+
+  /* Bouton Aide dans le header */
+  .help-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff; border: 1px solid #6366f1;
+    padding: 8px 14px; border-radius: 8px;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  }
+  .help-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5); }
+
+  /* Modale Aide */
+  .help-modal {
+    position: fixed; inset: 0; z-index: 99999;
+    background: rgba(5, 8, 14, 0.85); backdrop-filter: blur(6px);
+    display: none; justify-content: center; align-items: flex-start;
+    overflow-y: auto; padding: 40px 20px;
+  }
+  .help-modal.show { display: flex; }
+  .help-content {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; max-width: 920px; width: 100%;
+    padding: 28px 32px 32px; color: var(--text);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    line-height: 1.65; font-size: 14px;
+  }
+  .help-content h2 {
+    margin: 0 0 6px; font-size: 24px; color: #fff;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .help-content h3 {
+    margin: 28px 0 10px; font-size: 15px; font-weight: 700;
+    color: #c4b5fd; text-transform: uppercase; letter-spacing: 0.6px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border-soft);
+  }
+  .help-content h4 {
+    margin: 18px 0 6px; font-size: 13px; font-weight: 700; color: #fbbf24;
+  }
+  .help-content p { margin: 6px 0 10px; color: var(--text); }
+  .help-content ul { margin: 6px 0 12px; padding-left: 22px; }
+  .help-content li { margin: 4px 0; color: var(--text); }
+  .help-content code {
+    background: #1a2230; color: #a5b4fc;
+    padding: 2px 7px; border-radius: 4px; font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .help-content .legend-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 12px; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02); margin: 6px 0;
+  }
+  .help-content .legend-row .badge,
+  .help-content .legend-row .btn { flex-shrink: 0; }
+  .help-content .legend-desc { color: var(--text-dim); font-size: 13px; }
+  .help-close {
+    background: rgba(239, 68, 68, 0.15); color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 8px 14px; border-radius: 8px;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .help-close:hover { background: rgba(239, 68, 68, 0.25); }
+  .help-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; margin-bottom: 18px;
+  }
+  .help-toc {
+    background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 8px; padding: 12px 16px; margin: 14px 0 20px;
+    font-size: 12.5px;
+  }
+  .help-toc a { color: #a5b4fc; text-decoration: none; margin-right: 14px; }
+  .help-toc a:hover { color: #fff; text-decoration: underline; }
+  .help-callout {
+    background: rgba(251, 191, 36, 0.08); border-left: 3px solid var(--warning);
+    padding: 10px 14px; border-radius: 6px; margin: 12px 0;
+    color: #fcd34d; font-size: 13px;
+  }
+  .help-callout-ok {
+    background: rgba(16, 185, 129, 0.08); border-left: 3px solid var(--success);
+    padding: 10px 14px; border-radius: 6px; margin: 12px 0;
+    color: #6ee7b7; font-size: 13px;
+  }
+  .help-step {
+    counter-reset: step;
+    margin: 10px 0;
+  }
+  .help-step > div {
+    position: relative; padding: 8px 0 8px 38px; counter-increment: step;
+  }
+  .help-step > div::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 8px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff; font-weight: 700; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
 </style>
 </head>
 <body>
@@ -1314,7 +1414,12 @@ $maxMb = !empty($tables) ? max(array_column($tables, 'total_mb')) : 1;
     <h1 class="title">Archivage BDD</h1>
     <div class="subtitle"><code><?= htmlspecialchars($dbName) ?></code> &middot; Stockage <code>archives/</code> &middot; Config <code>config/data_source.json</code></div>
   </div>
-  <div class="pill"><span class="dot"></span> Connecte</div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button type="button" class="help-btn" onclick="openHelpModal()" title="Guide d'utilisation et legende des couleurs">
+      <span style="font-size:18px;line-height:1;">&#10067;</span> Aide
+    </button>
+    <div class="pill"><span class="dot"></span> Connecte</div>
+  </div>
 </div>
 
 <?php
@@ -2441,7 +2546,269 @@ async function refreshStats() {
 }
 refreshStats();
 setInterval(refreshStats, 5000);
+
+// ─── MODALE AIDE ───
+function openHelpModal() {
+  document.getElementById('helpModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeHelpModal() {
+  document.getElementById('helpModal').classList.remove('show');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeHelpModal();
+});
 </script>
+
+<!-- ───── MODALE AIDE ───── -->
+<div id="helpModal" class="help-modal" onclick="if(event.target===this) closeHelpModal()">
+  <div class="help-content">
+    <div class="help-header">
+      <h2><span>&#10067;</span> Guide complet — Archivage BDD</h2>
+      <button class="help-close" onclick="closeHelpModal()">&#10005; Fermer</button>
+    </div>
+
+    <p style="color:var(--text-dim);font-size:13px;margin-top:0">
+      Cette page sert a <b>deplacer des tables MySQL vers des fichiers <code>.jsonl</code></b> (et inversement)
+      sans perte, pour alleger la BDD ou archiver des donnees froides.
+      Le site peut <b>lire directement dans les fichiers</b> pour certaines tables — c'est transparent
+      cote utilisateur.
+    </p>
+
+    <div class="help-toc">
+      <b style="color:#fff">Sommaire :</b>
+      <a href="#help-concepts">Concepts</a>
+      <a href="#help-legend">Legende</a>
+      <a href="#help-table-actions">Actions table</a>
+      <a href="#help-archive-actions">Actions archive</a>
+      <a href="#help-global">Boutons globaux</a>
+      <a href="#help-safety">Securite</a>
+      <a href="#help-workflow">Workflow type</a>
+      <a href="#help-format">Format .jsonl</a>
+      <a href="#help-faq">FAQ</a>
+    </div>
+
+    <h3 id="help-concepts">1. Concepts cles</h3>
+    <h4>Source d'une table : BDD ou Fichier</h4>
+    <p>Chaque table peut etre lue par le site depuis <b>deux endroits</b> :</p>
+    <ul>
+      <li><b><span class="badge badge-bdd">BDD</span></b> &mdash; les donnees sont dans MySQL (mode normal, par defaut).</li>
+      <li><b><span class="badge badge-file">Fichier</span></b> &mdash; la table MySQL est <em>vide</em>, les donnees sont dans <code>archives/{table}_*.jsonl</code> et le code applicatif lit le fichier directement.</li>
+    </ul>
+    <p>La source de chaque table est stockee dans <code>config/data_source.json</code>. Changer la source ne deplace pas les donnees &mdash; cela dit juste au site <em>ou aller chercher</em>.</p>
+
+    <div class="help-callout">
+      <b>Important :</b> Toutes les tables ne sont pas lisibles en mode Fichier. Seules celles listees dans
+      <code>core/data_source.php</code> &raquo; <code>fileBackedTables()</code> sont "supportees".
+      Mettre une table non-supportee en mode Fichier afficherait <b>0 ligne</b> sur le site.
+    </div>
+
+    <h3 id="help-legend">2. Legende des couleurs et badges</h3>
+
+    <h4>Badges Source (colonne "Source")</h4>
+    <div class="legend-row">
+      <span class="badge badge-bdd">BDD</span>
+      <span class="legend-desc">Le site lit la table dans MySQL. Mode normal.</span>
+    </div>
+    <div class="legend-row">
+      <span class="badge badge-file">Fichier</span>
+      <span class="legend-desc">Le site lit dans <code>archives/{table}_*.jsonl</code>. La table MySQL est vide.</span>
+    </div>
+
+    <h4>Badges Patch (colonne "Patch")</h4>
+    <div class="legend-row">
+      <span class="badge badge-supported">OK</span>
+      <span class="legend-desc">Le code applicatif sait lire cette table en mode Fichier. Bascule sans risque.</span>
+    </div>
+    <div class="legend-row">
+      <span class="badge badge-unsupported">N/A</span>
+      <span class="legend-desc">Le code ne sait pas lire le fichier. Si tu passes cette table en Fichier, les pages associees afficheront 0 ligne.</span>
+    </div>
+
+    <h4>Boutons actions table</h4>
+    <div class="legend-row">
+      <span class="btn btn-toFile" style="cursor:default">&rarr; Fichier</span>
+      <span class="legend-desc"><b>Bascule vers fichier :</b> Export + Verification + Truncate (vide la BDD) + Source = Fichier.</span>
+    </div>
+    <div class="legend-row">
+      <span class="btn btn-toBdd" style="cursor:default">&rarr; BDD</span>
+      <span class="legend-desc"><b>Bascule vers BDD :</b> Restore depuis fichier + Source = BDD.</span>
+    </div>
+    <div class="legend-row">
+      <span class="btn btn-export" style="cursor:default">Export</span>
+      <span class="legend-desc">Cree un <code>.jsonl</code> sans toucher a la BDD. La table reste en mode BDD.</span>
+    </div>
+    <div class="legend-row">
+      <span class="btn btn-verify" style="cursor:default">Verifier</span>
+      <span class="legend-desc">Lecture seule : compare le dernier fichier <code>.jsonl</code> avec la BDD (lignes, colonnes, format).</span>
+    </div>
+    <div class="legend-row">
+      <span class="btn btn-trunc" style="cursor:default">Vider</span>
+      <span class="legend-desc">TRUNCATE la table MySQL <em>uniquement</em> apres verification que l'archive est valide.</span>
+    </div>
+
+    <h4>Boutons actions archive</h4>
+    <div class="legend-row">
+      <span class="btn btn-export" style="cursor:default">Inspecter</span>
+      <span class="legend-desc">Affiche les infos du fichier (table, lignes, colonnes, date d'export, si la table existe en BDD).</span>
+    </div>
+    <div class="legend-row">
+      <span class="btn btn-restore" style="cursor:default">Installer</span>
+      <span class="legend-desc">Restaure le fichier dans la BDD. Cree la table automatiquement si elle n'existe pas (grace au CREATE TABLE stocke dans le META).</span>
+    </div>
+    <div class="legend-row">
+      <span class="btn btn-del" style="cursor:default">Supprimer</span>
+      <span class="legend-desc">Suppression <em>securisee</em> : refuse si la table est en mode Fichier ou si la BDD a moins de lignes que le fichier (donnees seraient perdues).</span>
+    </div>
+    <div class="legend-row">
+      <span class="btn btn-del" style="cursor:default;background:rgba(220,38,38,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.5)">Forcer</span>
+      <span class="legend-desc">Suppression <em>sans verification</em>. A utiliser uniquement pour les fichiers corrompus ou exports rates.</span>
+    </div>
+
+    <h4>KPIs en haut de page</h4>
+    <ul>
+      <li><b>Tables</b> : nombre total de tables dans la BDD.</li>
+      <li><b>Taille BDD</b> : poids total MySQL (rouge si &gt; 500 MB, orange si &gt; 200 MB).</li>
+      <li><b>Archives</b> : nombre de fichiers <code>.jsonl</code> dans <code>archives/</code>.</li>
+      <li><b>Mode Fichier</b> : nombre de tables actuellement deportees en fichier.</li>
+    </ul>
+
+    <h3 id="help-table-actions">3. Actions sur une table (detail)</h3>
+
+    <h4>&rarr; Fichier (bascule complete)</h4>
+    <p>Le bouton orange execute <b>3 etapes</b> dans l'ordre, et s'arrete si l'une echoue :</p>
+    <div class="help-step">
+      <div><b>Export</b> : ecrit toutes les lignes de la table dans <code>archives/{table}_{date}.jsonl</code> (avec un META qui contient le CREATE TABLE).</div>
+      <div><b>Verification</b> : verifie que le fichier contient exactement le meme nombre de lignes que la BDD, avec les memes colonnes, et du JSON valide.</div>
+      <div><b>TRUNCATE + setSource('file')</b> : vide la table MySQL et marque la source = Fichier.</div>
+    </div>
+    <div class="help-callout-ok">
+      Si la verification echoue, la BDD reste intacte et le fichier corrompu est supprime. <b>Aucun risque de perte.</b>
+    </div>
+
+    <h4>&rarr; BDD (retour en BDD)</h4>
+    <p>Le bouton cyan restaure le fichier le plus recent dans MySQL puis remet la source = BDD.
+       Refuse si la table contient deja des lignes (eviter les doublons).</p>
+
+    <h4>Export</h4>
+    <p>Cree un <code>.jsonl</code> sans toucher a la BDD. Utile pour faire un backup ponctuel.</p>
+
+    <h4>Verifier</h4>
+    <p>Lecture seule. Compare le dernier fichier <code>.jsonl</code> avec la BDD :</p>
+    <ul>
+      <li>Fichier existe et n'est pas vide.</li>
+      <li>Premiere ligne = <code>#META</code> valide.</li>
+      <li>Nom de table dans META = nom attendu.</li>
+      <li>Nombre de lignes fichier = nombre de lignes BDD (exact).</li>
+      <li>Premiere et derniere ligne = JSON parseable.</li>
+      <li>Colonnes JSON = colonnes BDD.</li>
+    </ul>
+
+    <h4>Vider</h4>
+    <p>TRUNCATE de la table apres verification de l'archive. <b>Refuse si pas d'archive ou si verification echoue.</b></p>
+
+    <h3 id="help-archive-actions">4. Actions sur une archive (detail)</h3>
+
+    <h4>Inspecter</h4>
+    <p>Ouvre une popup avec : nom de table, date d'export, nombre de lignes du fichier, colonnes, et comparaison avec la BDD si la table existe.</p>
+
+    <h4>Installer</h4>
+    <p>Restaure le fichier en BDD. Le bouton est intelligent :</p>
+    <ul>
+      <li>Si la table existe et a les memes colonnes &rarr; insertion directe.</li>
+      <li>Si la table n'existe pas et que le META contient un CREATE TABLE &rarr; cree la table puis insere.</li>
+      <li>Si les colonnes ne correspondent pas &rarr; refuse.</li>
+    </ul>
+    <p>Le restore se fait par <b>chunks de 2000 lignes</b> via AJAX pour eviter les timeouts Hostinger.</p>
+
+    <h4>Supprimer</h4>
+    <p>Suppression securisee. Refuse dans 2 cas :</p>
+    <ul>
+      <li>La table est en mode Fichier &mdash; supprimer perdrait toutes les donnees.</li>
+      <li>Le fichier contient plus de lignes que la BDD &mdash; donnees pas encore migrees.</li>
+    </ul>
+
+    <h4>Forcer</h4>
+    <p>Saute toutes les verifications. <b>A utiliser uniquement</b> pour les fichiers corrompus ou exports rates qui n'ont aucune valeur.</p>
+
+    <h3 id="help-global">5. Boutons globaux (panneau du haut)</h3>
+
+    <h4>Exporter les N table(s) manquante(s)</h4>
+    <p>Cree un <code>.jsonl</code> <em>uniquement</em> pour les tables qui n'ont pas encore d'archive. Verifie avant : ne re-exporte jamais une table deja archivee. Ne touche pas a la BDD.</p>
+
+    <h4>Tout restaurer depuis les fichiers</h4>
+    <p>Reconstruit la BDD a partir des <code>.jsonl</code> de <code>archives/</code>. Table par table, en chunks. <b>Saute les tables qui ont deja des donnees</b> pour eviter les doublons. Rejouable sans risque (idempotent).</p>
+
+    <h4>Tout lire depuis la BDD</h4>
+    <p>Bascule la source de toutes les tables a "BDD". Equivalent a vider <code>config/data_source.json</code>. Toujours sans risque.</p>
+
+    <h4>Tout lire depuis les fichiers</h4>
+    <p>Bascule la source des tables <em>supportees</em> (et qui ont une archive) a "Fichier". Les autres restent en BDD pour ne rien casser.</p>
+
+    <h3 id="help-safety">6. Securite : les 5 verifications avant TRUNCATE</h3>
+    <p>Avant tout <code>TRUNCATE TABLE</code>, le systeme verifie :</p>
+    <ol style="padding-left:22px">
+      <li><b>Fichier present</b> et &gt; 0 octets.</li>
+      <li>Premiere ligne = <code>#META</code> valide (JSON parseable, avec <code>table</code> + <code>columns</code>).</li>
+      <li><b>Nom de table</b> dans META = nom attendu.</li>
+      <li><b>Nombre de lignes</b> fichier = BDD (exact, pas approximatif).</li>
+      <li>Premiere/derniere ligne = JSON parseable, et <b>colonnes identiques</b> a la BDD.</li>
+    </ol>
+    <div class="help-callout-ok">
+      Si une seule de ces verifications echoue, la BDD reste intacte et le fichier corrompu est supprime.
+    </div>
+
+    <h3 id="help-workflow">7. Workflow type : alleger une grosse table (ex: <code>logs</code>)</h3>
+    <div class="help-step">
+      <div>Verifier que la table est <b><span class="badge badge-supported">OK</span></b> (supportee par le code). Sinon, ajouter le support dans <code>core/data_source.php</code> avant.</div>
+      <div>Cliquer sur <b><span class="btn btn-toFile" style="cursor:default">&rarr; Fichier</span></b>. Le systeme exporte, verifie, puis truncate.</div>
+      <div>Verifier sur le site que les pages qui utilisent cette table fonctionnent toujours (elles lisent maintenant le fichier).</div>
+      <div>Plus tard, pour ramener les donnees : <b><span class="btn btn-toBdd" style="cursor:default">&rarr; BDD</span></b>.</div>
+    </div>
+
+    <h4>Workflow type : redeployer la BDD sur un autre serveur</h4>
+    <div class="help-step">
+      <div>Sur le serveur source : cliquer sur <b>Exporter les N table(s) manquante(s)</b>.</div>
+      <div>Copier le dossier <code>archives/</code> vers le nouveau serveur.</div>
+      <div>Sur le nouveau serveur : cliquer sur <b>Tout restaurer depuis les fichiers</b>. Les tables manquantes sont creees automatiquement grace au CREATE TABLE stocke dans chaque META.</div>
+    </div>
+
+    <h3 id="help-format">8. Format <code>.jsonl</code></h3>
+    <p>JSON Lines : 1 row par ligne, streamable pour gros volumes. Structure :</p>
+    <pre style="background:#0a0e14;padding:12px;border-radius:6px;font-size:11px;overflow-x:auto;border:1px solid var(--border-soft)"><code style="background:transparent;color:#a5b4fc">#META {"table":"logs","exported_at":"2026-05-16 14:30:12","columns":["id","ts","ip",...],"create_sql":"CREATE TABLE `logs` (...) ENGINE=..."}
+{"id":1,"ts":"2026-05-16 10:00:00","ip":"1.2.3.4",...}
+{"id":2,"ts":"2026-05-16 10:00:01","ip":"5.6.7.8",...}
+...</code></pre>
+    <ul>
+      <li><b>Premiere ligne :</b> <code>#META</code> + JSON avec nom de table, date, colonnes, et <code>create_sql</code> complet (pour redeployer ailleurs).</li>
+      <li><b>Lignes suivantes :</b> 1 row par ligne, JSON associatif.</li>
+      <li><b>Encodage :</b> <code>JSON_UNESCAPED_UNICODE</code> + <code>JSON_INVALID_UTF8_SUBSTITUTE</code>.</li>
+      <li><b>Stockage :</b> <code>archives/</code> protege par <code>.htaccess Deny from all</code> &mdash; non accessible via le web.</li>
+    </ul>
+
+    <h3 id="help-faq">9. FAQ rapide</h3>
+    <h4>Que se passe-t-il si je supprime un fichier en mode Fichier ?</h4>
+    <p>Le bouton <b>Supprimer</b> refusera. Si tu forces, <b>tu perds toutes les donnees de la table</b> (la BDD est vide et le fichier supprime).</p>
+
+    <h4>Pourquoi certaines tables affichent <span class="badge badge-unsupported">N/A</span> ?</h4>
+    <p>Le code applicatif ne sait pas encore lire ces tables en mode Fichier. Pour ajouter le support, editer <code>core/data_source.php</code> &raquo; <code>fileBackedTables()</code> et patcher les pages qui requetent la table.</p>
+
+    <h4>Pourquoi le restore se fait par chunks ?</h4>
+    <p>Pour eviter les timeouts Hostinger (limite ~30s par requete). Les chunks de 2000 lignes passent largement sous la limite et permettent de restaurer des tables de millions de lignes.</p>
+
+    <h4>Et si la connexion se coupe pendant un export ou un restore ?</h4>
+    <p>Le fichier <code>.progress.json</code> garde la trace de la progression. Le truncate ne se declenche qu'apres verification reussie, donc <b>aucun risque de perdre des donnees a mi-chemin</b>. Au pire, tu retrouves un export partiel a supprimer.</p>
+
+    <h4>Comment lit-on un fichier <code>.jsonl</code> en pratique ?</h4>
+    <p>Les fonctions de <code>core/data_source.php</code> servent de proxy : a la place de <code>$conn-&gt;query("SELECT ... FROM logs")</code>, les pages qui supportent le mode Fichier appellent un helper qui detecte la source et streame le fichier ligne par ligne.</p>
+
+    <div style="margin-top:28px;padding-top:18px;border-top:1px solid var(--border-soft);text-align:center;color:var(--text-muted);font-size:12px">
+      Cle API necessaire : <code>?bk_key=...</code> dans l'URL.
+      Fichier : <code>admin/db_archive.php</code> &middot; Config : <code>config/data_source.json</code> &middot; Stockage : <code>archives/</code>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
