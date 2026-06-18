@@ -15,6 +15,9 @@
  *   ?bk_key=...&action=logs&limit=20    → derniers logs
  *   ?bk_key=...&action=sessions         → sessions actives
  *   ?bk_key=...&action=ping             → test connexion BDD
+ *   ?bk_key=...&action=demo_list        → démos Platine lancées + taux de conversion
+ *   ?bk_key=...&action=demo_reset&email=X → redonne le droit à une démo (ou &id_user=)
+ *   ?bk_key=...&action=webhook_log&limit=50 → journal du webhook Stripe (paiements reçus)
  */
 
 $key = $_GET['bk_key'] ?? $_SERVER['HTTP_X_BK_KEY'] ?? '';
@@ -67,6 +70,51 @@ switch ($action) {
             $r = $conn->query("SELECT COUNT(*) as c FROM `$t`");
             $out['counts'][$t] = $r ? (int)$r->fetch_assoc()['c'] : 'error';
         }
+        break;
+
+    // ── Démo Platine 5 min : suivi & pilotage ───────────────────────────────
+    case 'demo_list':
+        // Démos lancées + taux de conversion (abonnement actif ensuite).
+        $out['demo'] = function_exists('bkDemoListAll')
+            ? bkDemoListAll($conn)
+            : ['error' => 'demo_mode indisponible'];
+        break;
+
+    case 'demo_reset':
+        // Redonne le droit à une démo (par ?email= ou ?id_user=).
+        $uid   = (int)($_GET['id_user'] ?? 0);
+        $email = trim($_GET['email'] ?? '');
+        if ($uid <= 0 && $email !== '') {
+            $st = $conn->prepare("SELECT id_user FROM users WHERE email = ? LIMIT 1");
+            $st->bind_param("s", $email); $st->execute();
+            $r = $st->get_result()->fetch_assoc(); $st->close();
+            if ($r) $uid = (int)$r['id_user'];
+        }
+        if ($uid <= 0) { $out['ok'] = false; $out['error'] = 'Utilisateur introuvable'; break; }
+        $out['ok']      = function_exists('bkDemoResetUid') ? bkDemoResetUid($uid) : false;
+        $out['id_user'] = $uid;
+        $out['message'] = $out['ok']
+            ? 'Démo réinitialisée — le membre peut en relancer une.'
+            : 'Aucune démo enregistrée pour ce membre.';
+        break;
+
+    // ── Journal du webhook Stripe (filet anti paiement perdu) ───────────────
+    case 'webhook_log':
+        $f = __DIR__ . '/../logs/.stripe_webhook.php';
+        if (!file_exists($f)) {
+            $out['exists'] = false;
+            $out['lines']  = [];
+            $out['note']   = 'Aucun événement Stripe reçu pour le moment (fichier inexistant).';
+            break;
+        }
+        $raw  = file_get_contents($f);
+        $pos  = strpos($raw, "\n");
+        $body = $pos !== false ? substr($raw, $pos + 1) : '';
+        $all  = array_values(array_filter(explode("\n", $body), 'strlen'));
+        $n    = max(1, min(500, (int)($_GET['limit'] ?? 50)));
+        $out['exists']      = true;
+        $out['total_lines'] = count($all);
+        $out['lines']       = array_slice($all, -$n);
         break;
 
     case 'logs':

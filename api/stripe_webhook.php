@@ -37,7 +37,10 @@ function wh_welcome_if_active($conn, $idUser) {
     if (!$sub || ($sub['status'] ?? '') !== 'active') return;
     // Période payée encore valable ?
     if (!empty($sub['current_period_end']) && strtotime($sub['current_period_end']) < time()) return;
-    bkSendSubscriptionWelcome($conn, $idUser, $sub['plan'] ?? null);
+    $r = bkSendSubscriptionWelcome($conn, $idUser, $sub['plan'] ?? null);
+    wh_log('EMAIL bienvenue uid=' . $idUser . ' plan=' . ($sub['plan'] ?? '?') . ' -> '
+        . (!empty($r['sent']) ? 'ENVOYÉ' : (!empty($r['skipped']) ? 'déjà envoyé' : 'ÉCHEC (' . ($r['reason'] ?? '?') . ')'))
+        . ' [' . ($r['to'] ?? '') . ']');
 }
 
 // On répond toujours vite et sobrement (texte brut, pas de JSON/CORS).
@@ -52,6 +55,22 @@ function wh_end($code, $msg) {
     exit;
 }
 
+/**
+ * Journalise chaque passage du webhook dans logs/.stripe_webhook.php (protégé
+ * par die()). Filet anti « paiement perdu » : même quand le webhook n'est pas
+ * encore configuré, on garde une trace lisible (action=webhook_log de
+ * remote_check) pour réconcilier les paiements à la main. Rotation simple à 500 Ko.
+ */
+function wh_log($msg) {
+    $f    = __DIR__ . '/../logs/.stripe_webhook.php';
+    $line = '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n";
+    if (!file_exists($f) || @filesize($f) > 512000) {
+        @file_put_contents($f, "<?php die('Acces interdit'); ?>\n" . $line, LOCK_EX);
+        return;
+    }
+    @file_put_contents($f, $line, FILE_APPEND | LOCK_EX);
+}
+
 // ── 1) Récupère le corps brut + l'en-tête de signature ───────────────────
 $payload = file_get_contents('php://input');
 $sigHeader = $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '';
@@ -60,7 +79,19 @@ if ($payload === '' || $sigHeader === '') {
     wh_end(400, 'Payload ou signature manquant');
 }
 if (strpos(STRIPE_WEBHOOK_SECRET, 'A_REMPLIR') !== false) {
-    // Webhook reçu mais pas encore configuré : on accuse réception sans planter.
+    // Webhook reçu mais pas encore configuré : on accuse réception sans planter,
+    // MAIS on journalise l'événement (filet anti paiement perdu) pour pouvoir
+    // réconcilier le paiement à la main en attendant la configuration des clés.
+    $ev = json_decode($payload, true);
+    if (is_array($ev) && !empty($ev['type'])) {
+        $obj = $ev['data']['object'] ?? [];
+        $em  = $obj['customer_details']['email'] ?? ($obj['customer_email'] ?? ($obj['email'] ?? ''));
+        $amt = isset($obj['amount_paid'])  ? number_format($obj['amount_paid']  / 100, 2) . '€'
+             : (isset($obj['amount_total']) ? number_format($obj['amount_total'] / 100, 2) . '€' : '');
+        wh_log('⚠ WEBHOOK NON CONFIGURÉ — événement reçu et IGNORÉ. type=' . $ev['type']
+            . ' email=' . ($em ?: '?') . ' montant=' . ($amt ?: '?')
+            . ' → renseigne STRIPE_WEBHOOK_SECRET pour synchroniser automatiquement (paiement à valider à la main en attendant).');
+    }
     wh_end(200, 'Webhook non configure (ignore)');
 }
 
@@ -88,6 +119,7 @@ foreach ($signatures as $sig) {
     if (hash_equals($expected, $sig)) { $valid = true; break; }
 }
 if (!$valid) {
+    wh_log('✗ Signature INVALIDE (clé STRIPE_WEBHOOK_SECRET incorrecte ?) — événement rejeté.');
     wh_end(400, 'Signature invalide');
 }
 
@@ -174,4 +206,5 @@ switch ($eventType) {
         break;
 }
 
+wh_log('✓ Événement traité: ' . $eventType . ' (id=' . $eventId . ')');
 wh_end(200, 'OK');

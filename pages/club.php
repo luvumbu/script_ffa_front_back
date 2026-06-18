@@ -109,8 +109,11 @@ if ($apiKeyOk) {
 } elseif ($tr !== '') {
     $hasAccess = ($tr === 'platine');           // le mode test prime
 } else {
-    $hasAccess = !empty($_COOKIE['bk_sa_token']) || ($uid && getUserPlanRank($conn, $uid) >= 4);
+    $hasAccess = !empty($_COOKIE['bk_sa_token'])
+        || (function_exists('bkDemoActive') && bkDemoActive($conn))   // démo Platine 5 min en cours
+        || ($uid && getUserPlanRank($conn, $uid) >= 4);
 }
+$demoAvail = function_exists('bkDemoAvailable') && bkDemoAvailable($conn);
 $tarifs = BK_URL('/tarifs');
 
 // ── Données ──────────────────────────────────────────────────────────────
@@ -473,6 +476,8 @@ $nbEp   = $stats['total_epreuves'] ?? 0;
 </style>
 </head>
 <body>
+<?php if (function_exists('bkDemoBanner')) echo bkDemoBanner($conn); ?>
+<?php if ((isset($_GET['demo_started']) || isset($_GET['demo_guide'])) && function_exists('bkDemoWelcomeScreen')) echo bkDemoWelcomeScreen($conn); ?>
   <div class="topbar"><div class="wrap">
     <span class="brand">&#127967;&#65039; BOKONZI <span class="badge-pro">Espace Club</span></span>
     <a href="<?= BK_URL('/') ?>">&larr; Retour au site</a>
@@ -515,6 +520,21 @@ $nbEp   = $stats['total_epreuves'] ?? 0;
           <h2 style="color:#fff;border:none;justify-content:center;margin:12px 0 8px;">Effectif réservé à l'offre Platine</h2>
           <p class="muted" style="max-width:480px;margin:0 auto 18px;">Débloque l'<b>effectif complet</b> de ce club (<?= (int)$total ?> licenciés), leurs niveaux, leur palmarès et l'<b>export CSV</b> — l'outil pensé pour les clubs &amp; structures.</p>
           <a class="btn btn-pri" style="display:inline-block;padding:12px 26px;" href="<?= htmlspecialchars($tarifs) ?>">Passer à Platine &rarr;</a>
+          <?php if ($demoAvail): ?>
+          <div style="margin-top:14px;">
+            <button type="button" id="clubDemoBtn" class="btn" style="display:inline-block;padding:11px 24px;border:1px solid #8b7cf0;color:#a78bfa;background:rgba(139,124,240,.10);cursor:pointer;" onclick="clubStartDemo(this)">&#127881; Essayer Platine 5 min gratuites</button>
+            <p class="muted" style="font-size:12px;margin:8px 0 0;">Accès complet pendant 5 minutes, une seule fois.</p>
+          </div>
+          <script>
+          function clubStartDemo(btn){
+            var prev=btn.textContent; btn.disabled=true; btn.textContent='Activation…';
+            fetch(<?= json_encode(BK_URL('/api/demo_start.php')) ?>,{method:'POST',credentials:'same-origin'})
+              .then(function(r){return r.json();})
+              .then(function(d){ if(d&&d.ok){try{var u=new URL(location.href);u.searchParams.set('demo_started','1');location.href=u.toString();}catch(e){location.reload();}return;} alert(d&&d.message?d.message:'Démo indisponible.'); btn.disabled=false; btn.textContent=prev; })
+              .catch(function(){ alert('Connexion impossible. Réessayez.'); btn.disabled=false; btn.textContent=prev; });
+          }
+          </script>
+          <?php endif; ?>
         </div>
 
       <?php else: ?>

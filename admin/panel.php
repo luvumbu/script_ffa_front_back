@@ -4099,6 +4099,17 @@ tr:hover td { background: #1c2128; }
             <div class="tools-grid">
 
                 <div class="tools-card">
+                    <h4>Articles — Le Fil BOKONZI <span class="tools-tag ok">CONTENU</span></h4>
+                    <p class="desc">Générer des articles : « Le saviez-vous ? » (faits uniques d'un club), par épreuve, par fréquence, club de la semaine, en masse.</p>
+                    <a class="url" href="<?= $_toolsBase ?>/admin/generate_articles.php?bk_key=<?= $_toolsKey ?>" target="_blank"><?= $_toolsBase ?>/admin/generate_articles.php?bk_key=...</a>
+                    <div class="tools-actions">
+                        <a class="tools-btn" href="<?= $_toolsBase ?>/admin/generate_articles.php?bk_key=<?= $_toolsKey ?>" target="_blank">Générer</a>
+                        <a class="tools-btn" href="<?= $_toolsBase ?>/admin/setup_articles.php?bk_key=<?= $_toolsKey ?>" target="_blank">Créer la table</a>
+                        <a class="tools-btn" href="<?= $_toolsBase ?>/?page=fil" target="_blank">Voir le fil</a>
+                    </div>
+                </div>
+
+                <div class="tools-card">
                     <h4>Archive Manager <span class="tools-tag ok">PRINCIPAL</span></h4>
                     <p class="desc">Export/Import tables BDD, bascule BDD/Fichier, install depuis archive.</p>
                     <a class="url" href="<?= $_toolsBase ?>/admin/db_archive.php?bk_key=<?= $_toolsKey ?>" target="_blank"><?= $_toolsBase ?>/admin/db_archive.php?bk_key=...</a>

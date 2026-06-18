@@ -14,6 +14,7 @@
 
 require_once __DIR__ . '/stripe_config.php'; // $BK_PLANS, $BK_CAPABILITIES, $BK_ACTIVE_STATUSES
 require_once __DIR__ . '/test_mode.php';     // bkTestRole() — « aperçu en tant que » super admin
+require_once __DIR__ . '/demo_mode.php';     // bkDemoActive() — démo Platine 5 min self-service
 
 // Limite de recherches/jour par défaut pour un utilisateur connecté SANS abonnement.
 // Si api/search.php est chargé, sa constante BK_SEARCH_LIMIT_LOGGED prime (voir getUserSearchLimit).
@@ -53,6 +54,26 @@ function getUserSubscription($conn, $idUser, $fresh = false) {
                 'updated_at'             => null,
             ];
         }
+    }
+
+    // Démo Platine self-service (5 min, une seule fois) : pendant la fenêtre
+    // active, on simule un abonnement Platine pour le membre concerné → tout le
+    // site se débloque exactement comme un vrai abonné, puis se reverrouille.
+    if (function_exists('bkDemoActive') && bkDemoActive($conn)
+        && bkDemoCurrentUid($conn) === $idUser) {
+        return [
+            'id_subscription'        => 0,
+            'id_user'                => $idUser,
+            'stripe_customer_id'     => '',
+            'stripe_subscription_id' => 'DEMO',
+            'plan'                   => BK_DEMO_PLAN,
+            'status'                 => 'active',
+            'billing_period'         => 'demo',
+            'current_period_end'     => null,
+            'cancel_at_period_end'   => 0,
+            'created_at'             => null,
+            'updated_at'             => null,
+        ];
     }
 
     if (!$fresh && array_key_exists($idUser, $cache)) return $cache[$idUser];

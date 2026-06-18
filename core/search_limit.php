@@ -67,6 +67,17 @@ function bkSearchLimit($conn, $consume = true) {
         if ($tr !== '') return bkSearchLimitTest($tr, $consume);
     }
 
+    // Démo Platine self-service en cours : recherches illimitées (comme Platine).
+    if (function_exists('bkDemoActive') && bkDemoActive($conn)) {
+        return [
+            'blocked'            => false, 'reason' => '', 'used' => 0,
+            'limit'              => 0,     'remaining' => 0,
+            'cooldown_remaining' => 0,     'cooldown_total' => 0,
+            'anon_trial'         => false, 'trial_remaining' => 0, 'trial_total' => 0,
+            'unlimited'          => true,  'logged' => true, 'is_sa' => false,
+        ];
+    }
+
     $ip       = bkSearchClientIp();
     $isLogged = !empty($_COOKIE['bk_token']);
     $isSA     = !empty($_COOKIE['bk_sa_token']);

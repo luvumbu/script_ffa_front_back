@@ -39,6 +39,10 @@ function bkProfileGateExempt($conn) {
     // Super admin
     if (!empty($_COOKIE['bk_sa_token'])) return true;
 
+    // Démo Platine 5 min en cours → accès illimité (aucun blocage pendant l'essai).
+    // (Déjà couvert par hasActiveSubscription plus bas, mais explicite = sûr.)
+    if (function_exists('bkDemoActive') && bkDemoActive($conn)) return true;
+
     // Bots & IP whitelistées (Google, Hostinger, localhost) → SEO préservé
     $ip = bkGateIp();
     $wl = ['66.249.','66.102.','64.233.','72.14.','74.125.','209.85.','216.239.',
@@ -141,7 +145,7 @@ function bkProfileGateStatus($conn, $athleteIdExterne) {
  * HTML du mur de paiement affiché côté serveur quand l'accès est refusé.
  * @param string $mode 'limit' (déjà 1 profil vu aujourd'hui) | 'timer_expired' (2 min écoulées)
  */
-function bkProfilePaywallHtml($mode = 'limit') {
+function bkProfilePaywallHtml($mode = 'limit', $demoAvail = false) {
     $isTimer = ($mode === 'timer_expired');
     $title = $isTimer ? 'Votre aperçu gratuit est terminé' : 'Limite gratuite atteinte';
     $perDay  = BK_PROFILE_FREE_PER_DAY;
@@ -161,10 +165,18 @@ function bkProfilePaywallHtml($mode = 'limit') {
             <h2 class="bk-pgate-h">&#9670; <?= $title ?></h2>
             <p class="bk-pgate-p"><?= $intro ?></p>
             <p class="bk-pgate-p">Passez à un abonnement BOKONZI pour consulter <b>autant de profils que vous voulez, sans minuteur</b> — à partir de 1,99&nbsp;€/mois.</p>
+            <?php if ($demoAvail): ?>
+            <p class="bk-pgate-p" style="color:#a78bfa;font-weight:600;">&#127881; Envie de tout essayer d'abord ? Profitez de <b style="color:#c9d1d9;">5 minutes d'accès Platine complet, gratuites</b>.</p>
+            <?php endif; ?>
             <div class="bk-pgate-btns">
+                <?php if ($demoAvail): ?>
+                <button type="button" class="bk-pgate-cta" onclick="bkStartDemo(this)">&#127881; Essayer Platine 5 min gratuites</button>
+                <a href="<?= $base ?>/tarifs" class="bk-pgate-cta2">Voir les offres &rarr;</a>
+                <?php else: ?>
                 <a href="<?= $base ?>/tarifs" class="bk-pgate-cta">Voir les offres &rarr;</a>
                 <?php if (empty($_COOKIE['bk_token'])): ?>
                 <a href="<?= $base ?>/login.php" class="bk-pgate-cta2">Se connecter</a>
+                <?php endif; ?>
                 <?php endif; ?>
             </div>
             <p class="bk-pgate-note">Sans abonnement, l'accès se réinitialise demain : <?= $perDay ?> fiche<?= $perDay > 1 ? 's' : '' ?> gratuite<?= $perDay > 1 ? 's' : '' ?> par jour.</p>
@@ -193,7 +205,7 @@ function bkProfilePaywallHtml($mode = 'limit') {
  * À insérer dans la page profil quand l'accès est autorisé mais NON exempté.
  * @param int $remaining secondes restantes avant blocage
  */
-function bkProfileTimerBlock($remaining) {
+function bkProfileTimerBlock($remaining, $demoAvail = false) {
     $remaining = max(1, (int)$remaining);
     $base    = BK_BASE;
     $perDay  = BK_PROFILE_FREE_PER_DAY;
@@ -202,6 +214,11 @@ function bkProfileTimerBlock($remaining) {
     $minsTxt   = $mins . ' minute' . ($mins > 1 ? 's' : '');
     $loginBtn = empty($_COOKIE['bk_token'])
         ? '<a href="' . $base . '/login.php" style="display:inline-block;padding:12px 22px;border-radius:11px;font-size:14px;font-weight:700;text-decoration:none;border:1.5px solid #30363d;color:#c9d1d9;">Se connecter</a>'
+        : '';
+    // Membre gratuit connecté : on lui propose la démo Platine 5 min directement
+    // ici (moment de friction = meilleur point de conversion).
+    $demoBtn = $demoAvail
+        ? '<button type="button" onclick="bkStartDemo(this)" style="display:inline-block;padding:12px 22px;border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;border:none;background:linear-gradient(135deg,#8b7cf0,#6d28d9);color:#fff;">&#127881; Essayer Platine 5 min gratuites</button>'
         : '';
     ob_start();
     ?>
@@ -220,7 +237,8 @@ function bkProfileTimerBlock($remaining) {
               + '<p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 12px;">La formule gratuite offre <b style="color:#c9d1d9;"><?= $minsTxt ?></b> de consultation sur <b style="color:#c9d1d9;"><?= $perDayTxt ?></b>.</p>'
               + '<p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 20px;">Abonnez-vous pour un acc&egrave;s <b style="color:#c9d1d9;">illimit&eacute;, sans minuteur</b> &mdash; d&egrave;s 1,99&nbsp;&euro;/mois.</p>'
               + '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">'
-              + '<a href="<?= $base ?>/tarifs" style="display:inline-block;padding:12px 22px;border-radius:11px;font-size:14px;font-weight:700;text-decoration:none;background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;">Voir les offres &rarr;</a>'
+              + '<?= $demoBtn ?>'
+              + '<a href="<?= $base ?>/tarifs" style="display:inline-block;padding:12px 22px;border-radius:11px;font-size:14px;font-weight:700;text-decoration:none;<?= $demoBtn === "" ? "background:linear-gradient(135deg,#6c5ce7,#ec4899);color:#fff;" : "border:1.5px solid #30363d;color:#c9d1d9;" ?>">Voir les offres &rarr;</a>'
               + '<?= $loginBtn ?>'
               + '</div>'
               + '<p style="color:#5a6580;font-size:12px;margin:16px 0 0;">Revenez demain pour <?= $perDay ?> nouvelle<?= $perDay > 1 ? 's' : '' ?> fiche<?= $perDay > 1 ? 's' : '' ?> gratuite<?= $perDay > 1 ? 's' : '' ?>.</p>'

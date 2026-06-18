@@ -1092,6 +1092,10 @@ if (count($_bcItems) > 1):
 </head>
 <body>
 <?php if (function_exists('bkTestBanner')) echo bkTestBanner(); ?>
+<?php if (function_exists('bkDemoBanner')) echo bkDemoBanner($conn); ?>
+<?php if (function_exists('bkDemoPromoBanner')) echo bkDemoPromoBanner($conn); ?>
+<?php if (isset($_GET['demo_ended']) && function_exists('bkDemoEndedScreen')) echo bkDemoEndedScreen($conn); ?>
+<?php if ((isset($_GET['demo_started']) || isset($_GET['demo_guide'])) && function_exists('bkDemoWelcomeScreen')) echo bkDemoWelcomeScreen($conn); ?>
 <!-- Anti-flash : applique le theme (clair/sombre/auto) avant tout rendu -->
 <script>
 (function(){ try {
@@ -1975,6 +1979,7 @@ if (BK_IS_LOCAL) {
     <a href="<?= $_canonBase ?>/concept" class="<?= $page === 'concept' ? 'active' : '' ?>">Concept</a>
     <a href="<?= $_canonBase ?>/athletes" class="nav-athletes-cta <?= $page === 'athletes' ? 'active' : '' ?>" style="color:#fff;background:linear-gradient(135deg,#6c5ce7,#a29bfe);font-weight:800;font-size:16px;padding:10px 18px;border-radius:8px;letter-spacing:0.04em;text-transform:uppercase;box-shadow:0 4px 14px rgba(108,92,231,0.4);display:inline-flex;align-items:center;gap:6px;">&#127939; Athlètes</a>
     <a href="<?= $_canonBase ?>/noms" class="<?= $page === 'noms' ? 'active' : '' ?>" style="color:#a78bfa;font-weight:600;">Noms</a>
+    <a href="<?= $_canonBase ?>/fil" class="<?= $page === 'fil' ? 'active' : '' ?>" style="color:#34d399;font-weight:700;">&#128240; Le Fil</a>
     <a href="<?= $_canonBase ?>/recherche" class="nav-recherche-cta <?= $page === 'recherche' ? 'active' : '' ?>" style="color:#000;background:linear-gradient(135deg,#ffd700,#fbbf24);font-weight:800;font-size:16px;padding:10px 18px;border-radius:8px;letter-spacing:0.04em;text-transform:uppercase;box-shadow:0 4px 14px rgba(255,215,0,0.35);animation:bkGoldBlink 1.6s ease-in-out infinite;display:inline-flex;align-items:center;gap:6px;">&#128270; Recherche</a><?php
         if ($_slMode === 'unlimited') {
             echo '<span id="searchQuota" title="Recherches illimitees" style="display:inline-block;font-size:11px;padding:3px 9px;border-radius:10px;margin-left:4px;font-weight:800;cursor:default;background:#10b98125;color:#34d399;border:1px solid #10b98160;white-space:nowrap;">&infin;</span>';
@@ -6266,6 +6271,8 @@ elseif ($page === 'profil' && $id):
     $_pGate = $_isProfileHidden
         ? ['allowed' => true, 'exempt' => true, 'reason' => 'hidden', 'remaining' => 0]
         : bkProfileGateStatus($conn, (int)$id);
+    // La démo Platine 5 min est-elle proposable ? (bouton sur les murs de blocage)
+    $_demoAvail = function_exists('bkDemoAvailable') && bkDemoAvailable($conn);
 
     if ($_isProfileHidden):
 ?>
@@ -6277,11 +6284,11 @@ elseif ($page === 'profil' && $id):
 </div>
 
 <?php elseif (!$_pGate['allowed']):
-        echo bkProfilePaywallHtml($_pGate['reason']);
+        echo bkProfilePaywallHtml($_pGate['reason'], $_demoAvail);
     elseif ($data && ($data['success'] ?? false)):
         $i = $data['identite'];
 ?>
-<?php if (!$_pGate['exempt']) echo bkProfileTimerBlock($_pGate['remaining']); ?>
+<?php if (!$_pGate['exempt']) echo bkProfileTimerBlock($_pGate['remaining'], $_demoAvail); ?>
 
 <?php
 // Calcul precoce des annees de carriere pour le watermark (background filigrane)
@@ -12106,7 +12113,7 @@ window.p2LoadSameDay = function(btn) {
 
     var apiBase = (location.hostname === 'bokonzi.com' || location.hostname === 'www.bokonzi.com')
         ? 'https://bokonzi.com/api'
-        : (location.pathname.indexOf('/BK/') !== -1 ? '/BK/api' : '/api');
+        : '<?= $BASE_API_JS ?>';
     var url = apiBase + '/same_day_perf.php'
         + '?epreuve=' + encodeURIComponent(ep)
         + '&date=' + encodeURIComponent(dt)
@@ -16025,7 +16032,7 @@ elseif ($page === 'espace'):
     // Rediriger si pas connecte
     $espUser = getCurrentUser($conn);
     if (!$espUser) {
-        $loginUrl = $isLocal ? '/BK/login.php' : '/login.php';
+        $loginUrl = BK_BASE . '/login.php';
         header('Location: ' . $loginUrl . '?redirect=espace');
         exit;
     }
@@ -16344,6 +16351,16 @@ foreach ($BK_PLANS as $_pk => $_p) {
 .bkt-modal-desc{width:100%;box-sizing:border-box;min-height:120px;background:#0d1117;border:1px solid #1e2a3a;border-radius:10px;color:#c9d1d9;font-size:12.5px;font-family:inherit;padding:11px 13px;line-height:1.55;resize:vertical;}
 .bkt-modal-copy{margin-top:10px;width:100%;background:linear-gradient(135deg,#6c5ce7,#ec4899);border:none;color:#fff;font-family:inherit;font-size:13px;font-weight:700;padding:11px;border-radius:10px;cursor:pointer;}
 .bkt-modal-copy:hover{opacity:.92;}
+/* Preuve sociale + réassurance sous le titre */
+.bkt-social{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:18px auto 0;max-width:680px;}
+.bkt-social span{display:inline-flex;align-items:center;gap:6px;background:#161b22;border:1px solid #1e2a3a;color:#c9d1d9;font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:100px;}
+.bkt-social b{color:#a78bfa;}
+/* Bandeau "essayez avant de payer" (réduction du risque via la démo) */
+.bkt-demorr{max-width:760px;margin:26px auto 0;background:linear-gradient(135deg,rgba(139,124,240,.10),rgba(109,40,217,.10));border:1px solid #6d28d955;border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center;text-align:center;}
+.bkt-demorr .tx{color:#c9d1d9;font-size:14px;line-height:1.5;}
+.bkt-demorr .tx b{color:#fff;}
+.bkt-demorr button{background:linear-gradient(135deg,#8b7cf0,#6d28d9);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:14px;padding:11px 22px;border-radius:10px;cursor:pointer;}
+.bkt-demorr button:hover{filter:brightness(1.08);}
 </style>
 
 <div class="bkt-wrap">
@@ -16351,6 +16368,12 @@ foreach ($BK_PLANS as $_pk => $_p) {
         <span class="bkt-badge"><span class="dot">●</span> Tarifs</span>
         <h1 class="bkt-h1">Soutenez BOKONZI,<br><span class="g">débloquez plus.</span></h1>
         <p class="bkt-lead">L'offre gratuite permet de découvrir 1 fiche athlète par jour. Les abonnements donnent l'accès illimité, sans minuteur, et les outils d'analyse — résiliables à tout moment.</p>
+
+        <div class="bkt-social">
+            <span>&#128101; <b>700+</b> passionnés déjà inscrits</span>
+            <span>&#128274; Paiement sécurisé Stripe</span>
+            <span>&#8617;&#65039; Sans engagement, résiliable en 1 clic</span>
+        </div>
 
         <?php if ($tarifSummary['active']): ?>
         <div class="bkt-current">
@@ -16364,16 +16387,23 @@ foreach ($BK_PLANS as $_pk => $_p) {
         <?php endif; ?>
 
         <?php if ($tarifUser && !$tarifSummary['active']): ?>
-        <p style="max-width:680px;margin:14px auto 0;color:#8b949e;font-size:13px;">
-            Déjà payé sur Stripe&nbsp;?
-            <button type="button" onclick="bktVerify(this)" style="background:#1f6feb;border:none;color:#fff;font-family:inherit;font-size:12px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;margin-left:6px;">Vérifier mon paiement</button>
-        </p>
+        <div style="max-width:680px;margin:16px auto 0;background:#1f6feb12;border:1px solid #1f6feb44;border-radius:12px;padding:13px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;text-align:center;">
+            <span style="color:#c9d1d9;font-size:13.5px;">&#9989; <b style="color:#fff;">Vous venez de payer</b> mais l'accès n'est pas encore actif&nbsp;? Récupérez-le immédiatement&nbsp;:</span>
+            <button type="button" onclick="bktVerify(this)" style="background:#1f6feb;border:none;color:#fff;font-family:inherit;font-size:13px;font-weight:700;padding:9px 18px;border-radius:9px;cursor:pointer;">Activer mon abonnement</button>
+        </div>
         <?php endif; ?>
 
         <?php if (!$stripeReady): ?>
         <div class="bkt-notice">⚙️ Le paiement en ligne sera activé très bientôt. Les offres ci-dessous sont à titre indicatif.</div>
         <?php endif; ?>
     </div>
+
+    <?php if (function_exists('bkDemoAvailable') && bkDemoAvailable($conn)): ?>
+    <div class="bkt-demorr">
+        <span class="tx">&#127881; <b>Pas encore décidé&nbsp;?</b> Testez l'offre <b>Platine</b> pendant 5&nbsp;minutes, gratuitement et sans carte bancaire.</span>
+        <button type="button" onclick="bkStartDemo(this)">Démarrer ma démo &rarr;</button>
+    </div>
+    <?php endif; ?>
 
     <div class="bkt-grid">
         <!-- GRATUIT -->
@@ -16439,6 +16469,9 @@ foreach ($BK_PLANS as $_pk => $_p) {
                 <a class="bkt-cta cta-<?= $pk ?>" href="<?= htmlspecialchars($_plUrl) ?>">
                     <?= $tarifCurRank > 0 ? 'Passer à ' . htmlspecialchars($p['name']) : 'S\'abonner' ?>
                 </a>
+            <?php endif; ?>
+            <?php if ($pk === 'platine' && function_exists('bkDemoAvailable') && bkDemoAvailable($conn)): ?>
+                <button type="button" class="bkt-cta" style="margin-top:8px;border-color:#8b7cf0;color:#a78bfa;background:rgba(139,124,240,.10);" onclick="bkStartDemo(this)">&#127881; Essayer 5 min gratuites</button>
             <?php endif; ?>
         </div>
         <?php
@@ -18242,6 +18275,153 @@ document.addEventListener('DOMContentLoaded', function() {
     if (dot1) dot1.classList.add('active');
 });
 </script>
+
+<?php
+// ======================= LE FIL — feed d'articles à scroll infini =======================
+elseif ($page === 'fil'):
+    require_once __DIR__ . '/core/articles_feed.php';
+    $_filFeed = bkFetchArticles($conn, 1, 8, bkArticlesIp());
+    $_renderCard = function ($a) {
+        $cover = is_array($a['cover'] ?? null) ? $a['cover'] : [];
+        $disc  = htmlspecialchars($cover['discipline'] ?? $a['type']);
+        $best  = isset($cover['best']) ? htmlspecialchars($cover['best']) : '';
+        $bn    = isset($cover['best_nom']) ? htmlspecialchars($cover['best_nom']) : '';
+        $nb    = isset($cover['nb_athletes']) ? (int)$cover['nb_athletes'] : 0;
+        $url   = '?page=article&slug=' . urlencode($a['slug']);
+        $h  = '<article class="bk-fil-card"><div class="bk-fil-badge">' . $disc . '</div>';
+        $h .= '<h2 class="bk-fil-title"><a href="' . $url . '">' . htmlspecialchars($a['title']) . '</a></h2>';
+        if ($best !== '') {
+            $h .= '<div class="bk-fil-stat">&#129351; <strong>' . $best . '</strong> &mdash; ' . $bn
+                . ($nb ? ' &middot; ' . $nb . ' athlètes' : '') . '</div>';
+        }
+        $h .= '<p class="bk-fil-excerpt">' . htmlspecialchars($a['excerpt']) . '</p>';
+        $h .= '<a class="bk-fil-more" href="' . $url . '">Lire l\'article &rarr;</a></article>';
+        return $h;
+    };
+?>
+<style>
+.bk-fil-wrap{max-width:640px;margin:0 auto;padding:28px 16px 80px;}
+.bk-fil-head{text-align:center;margin-bottom:22px;}
+.bk-fil-h1{font-size:30px;font-weight:800;color:var(--text-primary,#fff);margin:0 0 6px;}
+.bk-fil-sub{color:var(--text-secondary,#8b949e);font-size:14px;}
+.bk-fil-tag{display:inline-block;margin-top:8px;background:rgba(108,92,231,.15);color:#a78bfa;border:1px solid #6c5ce755;border-radius:100px;padding:5px 14px;font-size:12.5px;font-weight:700;}
+.bk-fil-card{background:var(--bg-card,#161b22);border:1px solid var(--border,#1e2a3a);border-radius:16px;padding:20px 22px;margin-bottom:16px;transition:transform .15s,box-shadow .15s;}
+.bk-fil-card:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(0,0,0,.30);}
+.bk-fil-badge{display:inline-block;text-transform:uppercase;letter-spacing:.5px;font-size:11px;font-weight:800;color:#a78bfa;background:rgba(108,92,231,.12);padding:4px 10px;border-radius:6px;margin-bottom:10px;}
+.bk-fil-title{font-size:20px;font-weight:800;margin:0 0 8px;line-height:1.25;}
+.bk-fil-title a{color:var(--text-primary,#fff);text-decoration:none;}
+.bk-fil-title a:hover{color:#a78bfa;}
+.bk-fil-stat{color:var(--text-primary,#c9d1d9);font-size:14px;margin-bottom:8px;}
+.bk-fil-stat strong{color:#55efc4;font-family:'Courier New',monospace;}
+.bk-fil-excerpt{color:var(--text-secondary,#8b949e);font-size:14px;line-height:1.55;margin:0 0 14px;}
+.bk-fil-more{display:inline-block;color:#fff;background:linear-gradient(135deg,#6c5ce7,#a855f7);text-decoration:none;font-weight:700;font-size:13.5px;padding:9px 18px;border-radius:9px;}
+.bk-fil-more:hover{filter:brightness(1.08);}
+#bkFilSentinel{text-align:center;color:var(--text-secondary,#8b949e);font-size:13px;padding:18px;}
+#bkFilEnd{text-align:center;color:var(--text-secondary,#5a6580);font-size:13px;padding:20px;}
+</style>
+<div class="bk-fil-wrap">
+    <div class="bk-fil-head">
+        <h1 class="bk-fil-h1">&#128240; Le Fil</h1>
+        <div class="bk-fil-sub">Les performances, clubs et athlètes qui comptent — selon ce qui vous intéresse.</div>
+        <?php if ($_filFeed['personalized']): ?><span class="bk-fil-tag">&#10024; Personnalisé pour vous</span><?php endif; ?>
+    </div>
+    <div id="bkFilList">
+        <?php
+        if (empty($_filFeed['items'])) {
+            echo '<p style="text-align:center;color:#8b949e;">Le fil se remplit… revenez bientôt.</p>';
+        } else {
+            foreach ($_filFeed['items'] as $a) echo $_renderCard($a);
+        }
+        ?>
+    </div>
+    <div id="bkFilSentinel" data-page="1" data-more="<?= $_filFeed['has_more'] ? '1' : '0' ?>"></div>
+    <div id="bkFilEnd" style="display:none;">&#127937; Vous avez tout vu pour le moment.</div>
+</div>
+<script>
+(function(){
+    var list=document.getElementById('bkFilList'), sent=document.getElementById('bkFilSentinel');
+    if(!list||!sent) return;
+    var page=parseInt(sent.getAttribute('data-page'),10)||1;
+    var more=sent.getAttribute('data-more')==='1', loading=false;
+    function _e(s){var d=document.createElement('div');d.textContent=(s==null?'':s);return d.innerHTML;}
+    function card(a){
+        var c=a.cover||{}, url='?page=article&slug='+encodeURIComponent(a.slug);
+        var stat=c.best?'<div class="bk-fil-stat">&#129351; <strong>'+_e(c.best)+'</strong> &mdash; '+_e(c.best_nom||'')+(c.nb_athletes?' &middot; '+c.nb_athletes+' athlètes':'')+'</div>':'';
+        return '<article class="bk-fil-card"><div class="bk-fil-badge">'+_e(c.discipline||a.type)+'</div>'
+            +'<h2 class="bk-fil-title"><a href="'+url+'">'+_e(a.title)+'</a></h2>'+stat
+            +'<p class="bk-fil-excerpt">'+_e(a.excerpt)+'</p>'
+            +'<a class="bk-fil-more" href="'+url+'">Lire l\'article &rarr;</a></article>';
+    }
+    function load(){
+        if(loading||!more) return; loading=true; sent.textContent='Chargement…';
+        fetch('<?= BK_BASE ?>/api/articles.php?page='+(page+1)+'&limit=8',{credentials:'same-origin'})
+            .then(function(r){return r.json();}).then(function(d){
+                (d.items||[]).forEach(function(a){ list.insertAdjacentHTML('beforeend', card(a)); });
+                page++; more=!!d.has_more; loading=false; sent.textContent='';
+                if(!more){ sent.style.display='none'; var e=document.getElementById('bkFilEnd'); if(e)e.style.display='block'; }
+            }).catch(function(){ loading=false; sent.textContent='Erreur — re-scrollez pour réessayer.'; });
+    }
+    var io=new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting) load(); }); },{rootMargin:'600px'});
+    io.observe(sent);
+})();
+</script>
+
+<?php
+// ======================= PAGE ARTICLE — détail SEO =======================
+elseif ($page === 'article' && isset($_GET['slug'])):
+    $_slug = $conn->real_escape_string($_GET['slug']);
+    $_aRes = $conn->query("SELECT * FROM articles WHERE slug='$_slug' AND status='published' LIMIT 1");
+    $_art  = $_aRes ? $_aRes->fetch_assoc() : null;
+    if ($_art) { $conn->query("UPDATE articles SET views=views+1 WHERE id_article=" . (int)$_art['id_article']); }
+?>
+<style>
+.bk-art-wrap{max-width:720px;margin:0 auto;padding:24px 18px 80px;}
+.bk-art-back{display:inline-block;color:#a78bfa;text-decoration:none;font-size:13.5px;font-weight:700;margin-bottom:14px;}
+.bk-art-badge{display:inline-block;text-transform:uppercase;letter-spacing:.5px;font-size:11px;font-weight:800;color:#a78bfa;background:rgba(108,92,231,.12);padding:4px 10px;border-radius:6px;}
+.bk-art-h1{font-size:30px;font-weight:800;color:var(--text-primary,#fff);margin:12px 0 6px;line-height:1.18;}
+.bk-art-meta{color:var(--text-secondary,#8b949e);font-size:13px;margin-bottom:22px;}
+.bk-art-body{color:var(--text-primary,#c9d1d9);font-size:15.5px;line-height:1.7;}
+.bk-art-body h3{color:var(--text-primary,#fff);font-size:18px;margin:24px 0 12px;}
+.bk-art-body a{color:#a78bfa;text-decoration:none;}
+.bk-art-body a:hover{text-decoration:underline;}
+.bk-art-table{width:100%;border-collapse:collapse;margin:8px 0 16px;font-size:14px;}
+.bk-art-table th{text-align:left;color:var(--text-secondary,#8b949e);font-size:12px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border,#1e2a3a);padding:8px 6px;}
+.bk-art-table td{padding:8px 6px;border-bottom:1px solid var(--border,#161b22);color:var(--text-primary,#c9d1d9);}
+.bk-art-table td strong{color:#55efc4;font-family:'Courier New',monospace;}
+.bk-art-foot{color:var(--text-secondary,#5a6580);font-size:12.5px;margin-top:18px;border-top:1px solid var(--border,#1e2a3a);padding-top:12px;}
+.bk-art-cta{margin-top:26px;background:linear-gradient(135deg,rgba(108,92,231,.10),rgba(168,85,247,.10));border:1px solid #6c5ce744;border-radius:14px;padding:18px 20px;text-align:center;}
+.bk-art-cta a{display:inline-block;margin-top:8px;background:linear-gradient(135deg,#6c5ce7,#a855f7);color:#fff;text-decoration:none;font-weight:700;font-size:13.5px;padding:10px 20px;border-radius:9px;}
+</style>
+<?php if (!$_art): ?>
+<div style="text-align:center;padding:64px 24px;">
+    <div style="font-size:48px;margin-bottom:12px;">&#128196;</div>
+    <h2 style="color:var(--text-primary,#fff);border:none;">Article introuvable</h2>
+    <p style="color:#8b949e;">Cet article n'existe pas ou n'est plus publié.</p>
+    <a href="?page=fil" class="bk-art-back">&larr; Retour au Fil</a>
+</div>
+<?php else:
+    $_cover = json_decode($_art['cover'] ?: '{}', true) ?: [];
+?>
+<div class="bk-art-wrap">
+    <a href="?page=fil" class="bk-art-back">&larr; Le Fil</a><br>
+    <span class="bk-art-badge"><?= htmlspecialchars($_cover['discipline'] ?? $_art['type']) ?></span>
+    <h1 class="bk-art-h1"><?= htmlspecialchars($_art['title']) ?></h1>
+    <div class="bk-art-meta"><?= (int)$_art['views'] ?> vues &middot; publié le <?= date('d/m/Y', strtotime($_art['created_at'])) ?></div>
+    <div class="bk-art-body"><?= $_art['body'] ?></div>
+    <div class="bk-art-cta">
+        <div style="color:var(--text-primary,#c9d1d9);font-size:14px;">Envie de suivre ce club et d'autres analyses ?</div>
+        <a href="?page=fil">Continuer dans Le Fil &rarr;</a>
+    </div>
+</div>
+<script>document.title = <?= json_encode($_art['title'] . ' — BOKONZI', JSON_UNESCAPED_UNICODE) ?>;</script>
+<script type="application/ld+json"><?= json_encode([
+    '@context' => 'https://schema.org', '@type' => 'Article',
+    'headline' => $_art['title'], 'description' => $_art['excerpt'],
+    'datePublished' => date('c', strtotime($_art['created_at'])),
+    'author' => ['@type' => 'Organization', 'name' => 'BOKONZI'],
+    'publisher' => ['@type' => 'Organization', 'name' => 'BOKONZI'],
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
+<?php endif; ?>
 
 <?php endif; ?>
 
