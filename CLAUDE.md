@@ -93,16 +93,18 @@ BK/
 │   ├── .page_limits.php     Compteurs anti-scraping journaliers par IP (protege par die())
 │   ├── .st_ignored_ips.php  IPs ignorees du search tracking (protege par die())
 │   └── .sa_sessions.php     Sessions super admin (protege par die())
-├── docs/               Documentation technique
-├── generate_og_image.html Generateur image OG (canvas 1200x630)
+├── docs/               Documentation technique (+ archi.txt, FONCTIONNALITES.md deplaces ici)
+├── archive/            Scripts dev/test/legacy hors runtime (bloque cote web) :
+│                         generate_og_image.html, generate_favicon.html (generateurs ponctuels),
+│                         panel.php (ancienne page stats autonome), baremes_hommes_ffa .php (doublon
+│                         legacy, vrai barème = config/bareme_hommes.php), test_mail_*.php, test_smtp.php, x.php
 ├── index.php           PAGE PRINCIPALE (~8500 lignes PHP+HTML+JS, anti-scraping 10 pages/jour)
 ├── dashboard.css       Styles du dashboard (~550 lignes)
 ├── common.css          Styles globaux
-├── login.php / register.php / forgot_password.php / reset_password.php / nav.php / panel.php
+├── login.php / register.php / forgot_password.php / reset_password.php / nav.php
 ├── sitemap.php         Generation sitemap XML
 ├── robots.txt          SEO robots
-├── README.md           Documentation utilisateur
-└── FONCTIONNALITES.md  Documentation complete des fonctionnalites
+└── README.md           Documentation utilisateur
 ```
 
 ## index.php — Structure des pages
@@ -755,7 +757,7 @@ $totalPages = ceil($total / $limit);
 - **Twitter Cards** : summary_large_image
 - **JSON-LD** : WebSite + SportsOrganization + BreadcrumbList (index.php), Person + BreadcrumbList (seo.php pour profils)
 - **Sitemap** : `sitemap.php` genere dynamiquement (toutes pages + clubs + epreuves + villes + athletes pagines 500/page)
-- **OG Image** : `generate_og_image.html` genere un PNG 1200x630 via canvas
+- **OG Image** : `archive/generate_og_image.html` genere un PNG 1200x630 via canvas
 - **H1** : "Base de Donnees Athletisme Francais — Athletes, Clubs, Records"
 - **noindex** : pages comparer, tuto, profil 404
 - **GTM** : Google Tag Manager (GTM-KPNTVXDF) dans `<head>` + noscript apres `<body>`
