@@ -85,9 +85,15 @@ function _progShardPath(int $idAthlete): string {
     return _progPaths()['idxDir'] . '/' . $shard . '.json';
 }
 
+/** Cache partage des shards d'index (par reference, coherent write/read). */
+function &_progShardCache(): array {
+    static $cache = [];
+    return $cache;
+}
+
 /** Charge un shard d'index (cache en memoire pour le request). */
 function _progLoadShard(int $shard): array {
-    static $cache = [];
+    $cache =& _progShardCache();
     if (isset($cache[$shard])) return $cache[$shard];
     $path = _progPaths()['idxDir'] . '/' . $shard . '.json';
     if (!file_exists($path)) { $cache[$shard] = []; return []; }
@@ -97,13 +103,18 @@ function _progLoadShard(int $shard): array {
     return $data;
 }
 
-/** Ecrit un shard d'index. Atomic via tmp + rename. */
+/** Ecrit un shard d'index. Atomic via tmp + rename. Met aussi le cache a jour. */
 function _progWriteShard(int $shard, array $data): bool {
     $path = _progPaths()['idxDir'] . '/' . $shard . '.json';
     $tmp  = $path . '.tmp';
     $json = json_encode($data, JSON_UNESCAPED_UNICODE);
     if (@file_put_contents($tmp, $json, LOCK_EX) === false) return false;
-    return @rename($tmp, $path);
+    if (!@rename($tmp, $path)) return false;
+    // Garde le cache coherent : une lecture suivante dans le meme request
+    // doit voir les nouveaux offsets, pas l'ancienne version.
+    $cache =& _progShardCache();
+    $cache[$shard] = $data;
+    return true;
 }
 
 /**
@@ -160,10 +171,17 @@ function progStoreLoadForAthletes(array $ids): array {
  */
 function progStoreAppendBatch(int $idAthlete, array $rows): bool {
     $src = progStoreSourcePath();
-    $fp = @fopen($src, 'ab');
+    // IMPORTANT : on N'OUVRE PAS en mode append ('a'). En mode append, ftell()
+    // ne renvoie pas la position absolue (elle part de 0 et ne suit que les
+    // octets ecrits dans la session) -> les offsets enregistres sont faux et la
+    // relecture tombe sur les mauvaises lignes (bug "ecrit mais relit 0").
+    // On ouvre en lecture/ecriture sans troncature ('c+b') puis on se place a la
+    // vraie fin du fichier sous verrou exclusif : ftell() est alors fiable.
+    $fp = @fopen($src, 'c+b');
     if (!$fp) return false;
 
     if (!flock($fp, LOCK_EX)) { fclose($fp); return false; }
+    fseek($fp, 0, SEEK_END); // vraie fin de fichier (offsets absolus corrects)
 
     // Position avant ecriture pour calculer les offsets
     $newOffsets = [];

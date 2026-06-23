@@ -15,6 +15,8 @@ ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 error_reporting(E_ALL);
 
+require __DIR__ . '/_guard.php';
+
 // Sanity checks avant include
 $dbFile      = dirname(__DIR__) . '/core/db.php';
 $libDir      = __DIR__ . '/lib';
@@ -210,7 +212,9 @@ if ($runnerRunning) {
 <body>
 
 <h1>Scraping v2 — Analyseur intelligent</h1>
-<div class="sub">Lecture et comprehension automatique des URLs athle.fr depuis les tables sources</div>
+<div class="sub">Lecture et comprehension automatique des URLs athle.fr depuis les tables sources
+    &nbsp;·&nbsp; <a href="hub.php<?= isset($_GET['bk_key']) ? '?bk_key='.urlencode($_GET['bk_key']) : '' ?>" style="color:#a78bfa;font-weight:700;text-decoration:none;">&#128225; Hub central</a>
+</div>
 
 <form class="ctrl" method="GET">
     <label>Table source :</label>

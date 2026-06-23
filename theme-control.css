@@ -1,0 +1,163 @@
+/* =====================================================================
+   theme-control.css — SOURCE DE VERITE UNIQUE DU THEME (clair / sombre)
+   ---------------------------------------------------------------------
+   Ce fichier est charge EN DERNIER (apres dashboard.css, apres les
+   <style> inline et apres bkRenderThemeHead() du theme custom).
+   Il gagne donc la cascade et reprend le controle integral des couleurs.
+
+   Objectif : empecher que les couleurs inline codees en dur (~5000 dans
+   index.php) cassent le mode clair OU le mode sombre. Tout est pilote ici.
+
+   STRUCTURE :
+     A) Variables CSS — valeurs SOMBRES (defaut) reaffirmees
+     B) Variables CSS — surcharge MODE CLAIR (body.p2-light)  [le chainon manquant]
+     C) Normalisation MODE CLAIR  : hex sombres inline -> creme
+     D) Normalisation MODE SOMBRE : hex clairs inline -> sombre (filet de securite)
+     E) Garde de LISIBILITE pour les themes custom (liens / badges)
+
+   CONVENTION : pour ajouter une couleur, l'ajouter UNIQUEMENT ici.
+   Ne plus rajouter de patch `body.p2-light [style*=...]` ailleurs.
+   ===================================================================== */
+
+/* =====================================================================
+   A) PALETTE SOMBRE (defaut) — tokens semantiques de reference
+   On reaffirme les tokens pour qu'ils existent meme si dashboard.css
+   evolue. Ce sont les memes valeurs que dashboard.css :root.
+   ===================================================================== */
+:root {
+    /* Surfaces sombres (du plus bas au plus haut) */
+    --bk-bg:        #0d1117;   /* fond page / boites principales */
+    --bk-surface-1: #161b22;   /* carte */
+    --bk-surface-2: #1e2a3a;   /* carte surelevee / input */
+    --bk-surface-3: #21262d;   /* zones internes (barres, pistes) */
+    /* Bordures */
+    --bk-border:      #30363d;
+    --bk-border-soft: #1a2540;
+    /* Texte */
+    --bk-text:    #f0f6fc;   /* texte fort */
+    --bk-text-2:  #c9d1d9;   /* texte normal */
+    --bk-text-3:  #8b949e;   /* texte secondaire */
+    --bk-text-4:  #6e7681;   /* texte attenue */
+    /* Lien lisible dans le mode courant (sombre par defaut) */
+    --bk-link:    #a78bfa;
+}
+
+/* =====================================================================
+   B) MODE CLAIR — surcharge des variables (LE CHAINON MANQUANT)
+   Avant ce bloc, body.p2-light ne redefinissait AUCUNE variable : tous
+   les elements en var(--bg-card) etc. restaient sombres en mode clair.
+   Ici on bascule toute la palette d'un coup -> tout var() suit.
+   ===================================================================== */
+body.p2-light {
+    /* Tokens dashboard.css (navy -> creme) */
+    --bg-body:       #f4ede0;
+    --bg-card:       #faf6ec;
+    --bg-card-hover: #fffdf7;
+    --bg-surface:    #f1e8d6;
+    --bg-input:      #ffffff;
+    --bg-nav:        #faf6ecee;
+    --border:        #d8cdb1;
+    --border-light:  #c9bfa6;
+    --text-primary:  #1a1814;
+    --text-secondary:#5a5040;
+    --text-muted:    #8a7d63;
+    --text-white:    #0a0805;
+    --text-link:     #6b4f2c;
+
+    /* Tokens de ce fichier (sombre -> creme) */
+    --bk-bg:        #f4ede0;
+    --bk-surface-1: #faf6ec;
+    --bk-surface-2: #ffffff;
+    --bk-surface-3: #ebe2cf;
+    --bk-border:      #c9bfa6;
+    --bk-border-soft: #d8cdb1;
+    --bk-text:    #0a0805;
+    --bk-text-2:  #1a1814;
+    --bk-text-3:  #5a5040;
+    --bk-text-4:  #8a7d63;
+    --bk-link:    #6b4f2c;
+}
+
+/* =====================================================================
+   C) NORMALISATION MODE CLAIR — couleurs inline sombres -> creme
+   On cible les substrings exacts ecrits dans les attributs style="...".
+   Les deux formes (avec / sans espace apres ':') sont couvertes.
+   ===================================================================== */
+
+/* --- Fonds sombres -> surfaces creme --- */
+body.p2-light [style*="background:#0d1117"],
+body.p2-light [style*="background: #0d1117"],
+body.p2-light [style*="background:#0a0f20"],
+body.p2-light [style*="background: #0a0f20"] { background: var(--bk-surface-1) !important; }
+
+body.p2-light [style*="background:#161b22"],
+body.p2-light [style*="background: #161b22"],
+body.p2-light [style*="background:#131a28"],
+body.p2-light [style*="background: #131a28"] { background: var(--bk-surface-2) !important; }
+
+body.p2-light [style*="background:#1e2a3a"],
+body.p2-light [style*="background: #1e2a3a"],
+body.p2-light [style*="background:#1a2540"],
+body.p2-light [style*="background: #1a2540"],
+body.p2-light [style*="background:#21262d"],
+body.p2-light [style*="background: #21262d"] { background: var(--bk-surface-3) !important; }
+
+/* --- Texte clair -> texte fonce --- */
+body.p2-light [style*="color:#f0f6fc"],
+body.p2-light [style*="color: #f0f6fc"],
+body.p2-light [style*="color:#fff"],
+body.p2-light [style*="color: #fff"],
+body.p2-light [style*="color:#ffffff"],
+body.p2-light [style*="color: #ffffff"] { color: var(--bk-text) !important; }
+
+body.p2-light [style*="color:#c9d1d9"],
+body.p2-light [style*="color: #c9d1d9"] { color: var(--bk-text-2) !important; }
+
+body.p2-light [style*="color:#8b949e"],
+body.p2-light [style*="color: #8b949e"] { color: var(--bk-text-3) !important; }
+
+body.p2-light [style*="color:#5a6580"],
+body.p2-light [style*="color: #5a6580"],
+body.p2-light [style*="color:#6e7681"],
+body.p2-light [style*="color: #6e7681"] { color: var(--bk-text-4) !important; }
+
+/* --- Bordures sombres -> creme --- */
+body.p2-light [style*="border:1px solid #30363d"],
+body.p2-light [style*="border: 1px solid #30363d"],
+body.p2-light [style*="border-color:#30363d"],
+body.p2-light [style*="border-color: #30363d"] { border-color: var(--bk-border) !important; }
+
+body.p2-light [style*="border:1px solid #1a2540"],
+body.p2-light [style*="border: 1px solid #1a2540"],
+body.p2-light [style*="border:1px solid #21262d"],
+body.p2-light [style*="border: 1px solid #21262d"] { border-color: var(--bk-border-soft) !important; }
+
+/* =====================================================================
+   D) NORMALISATION MODE SOMBRE — (volontairement vide)
+   On NE bascule PAS automatiquement les couleurs claires inline en sombre :
+   ne basculer qu'une couleur sur deux d'un element (fond OU texte) cree du
+   texte invisible. Les rares elements codes en clair qui depassent en mode
+   sombre (boite blanche, etc.) se corrigent AU CAS PAR CAS — de preference
+   en remplacant le hex inline par var(--bg-card)/var(--text-primary) dans
+   le code source, ou par une regle ciblee par classe ici.
+   ===================================================================== */
+
+/* =====================================================================
+   E) GARDE DE LISIBILITE — themes custom (core/theme.php)
+   Un theme custom peut definir un accent tres clair (ex: jaune #bbaf2a)
+   qui rend les liens illisibles sur fond creme en mode clair. On force
+   ici une couleur de lien lisible dans CHAQUE mode, quel que soit le
+   theme. (S'applique apres le <style> du theme custom -> gagne.)
+   ===================================================================== */
+body.p2-light a:not(.btn):not([class*="btn-"]):not(.nav-link):not(.tab) {
+    color: var(--bk-link) !important;
+}
+body.p2-light a:not(.btn):not([class*="btn-"]):not(.nav-link):not(.tab):hover {
+    color: #2a2418 !important;
+}
+
+/* Badges de NIVEAU (D/R/N/I) : ne JAMAIS laisser un theme custom les
+   recolorer. Ils portent une couleur semantique inline -> on protege le
+   contraste du texte en gardant la couleur inline (pas de surcharge de
+   couleur ici, juste on s'assure que .badge-cat custom ne les ecrase pas
+   via une regle plus specifique dans core/theme.php). */

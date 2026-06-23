@@ -26,9 +26,11 @@ $baseUrl = $baseUrl ?? '';
     'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
     })(window,document,'script','dataLayer','GTM-KPNTVXDF');</script>
     <!-- End Google Tag Manager -->
-    <!-- Google AdSense -->
+    <!-- Google AdSense : pas de pub pour les abonnés (si le helper paywall est disponible). -->
+<?php if (!function_exists('bkIsSubscriber') || empty($GLOBALS['conn']) || !bkIsSubscriber($GLOBALS['conn'])): ?>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7899923856846249"
      crossorigin="anonymous"></script>
+<?php endif; ?>
     <title><?= $seoTitle ?></title>
     <meta name="description" content="<?= htmlspecialchars($seoDesc) ?>">
 <?php if ($seoNoIndex): ?>

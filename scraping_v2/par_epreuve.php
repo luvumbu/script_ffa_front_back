@@ -18,6 +18,7 @@
 @ini_set('zlib.output_compression', 'Off');
 
 require_once dirname(__DIR__) . '/core/db.php';
+require __DIR__ . '/_guard.php';
 require_once __DIR__ . '/lib/SourceTableReader.php';
 require_once __DIR__ . '/lib/PageAnalyzer.php';
 require_once __DIR__ . '/lib/UrlAnalyzer.php';
@@ -721,6 +722,7 @@ if ($action === 'do_verify' || $action === 'do_scrape' || $action === 'do_refres
     <h1>Scraping v2 — Par epreuve</h1>
     <p class="sub">
         Choisis une annee, puis l'epreuve precise a traiter. Chaque clic = 1 action ciblee.
+        <a style="color:#a78bfa;font-weight:700;" href="hub.php<?= isset($_GET['bk_key']) ? '?bk_key='.urlencode($_GET['bk_key']) : '' ?>">&#128225; Hub</a> |
         <a style="color:#60a5fa;" href="par_annee.php">Mode par annee (tout)</a>
     </p>
 

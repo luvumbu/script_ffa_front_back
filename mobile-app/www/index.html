@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Bokonzi</title>
+  <style>
+    html,body{margin:0;height:100%;background:#0d1117;color:#f0f6fc;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;}
+    .logo{font-size:34px;font-weight:800;letter-spacing:-1px;
+      background:linear-gradient(135deg,#a78bfa,#ec4899,#f59e0b);
+      -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+    .spin{width:34px;height:34px;border:3px solid #30363d;border-top-color:#a78bfa;
+      border-radius:50%;animation:s .8s linear infinite;}
+    @keyframes s{to{transform:rotate(360deg)}}
+    .sub{color:#8b949e;font-size:13px;}
+  </style>
+</head>
+<body>
+  <div class="logo">BOKONZI</div>
+  <div class="spin"></div>
+  <div class="sub">Chargement…</div>
+  <script>
+    // Filet de securite : si l'app ouvre cette page locale (et non le site distant),
+    // on tente de rejoindre le site en ligne.
+    setTimeout(function(){ location.href = 'https://bokonzi.com'; }, 1500);
+  </script>
+</body>
+</html>

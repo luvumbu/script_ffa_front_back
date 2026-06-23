@@ -114,6 +114,8 @@ $racine = dirname(__DIR__);
 <title><?= t('search_title') ?></title>
 <link rel="stylesheet" href="../css.css">
 <?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
+<link rel="stylesheet" href="../theme-control.css?v=1">
+<link rel="stylesheet" href="../mobile.css?v=1">
 </head>
 <body>
 <div class="simpson-container">

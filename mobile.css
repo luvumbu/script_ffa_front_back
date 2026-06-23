@@ -1,0 +1,214 @@
+/* ============================================================================
+   BOKONZI — mobile.css  (SOURCE DE VERITE UNIQUE pour l'adaptation TELEPHONE)
+   ----------------------------------------------------------------------------
+   - Charge EN DERNIER dans le <head>, APRES dashboard.css, les <style> inline
+     et theme-control.css : gagne la cascade pour la MISE EN PAGE.
+   - NE CONTIENT QUE DU LAYOUT (display / largeur / padding / font-size /
+     direction / overflow). AUCUNE COULEUR : le theme reste pilote par
+     theme-control.css. Les deux fichiers ne se marchent jamais dessus.
+   - !important est utilise volontairement : beaucoup d'elements ont des
+     grilles/largeurs en style="" inline (specificite max) qu'il faut battre
+     sur petit ecran.
+   - 2 paliers : <= 768px (telephone large + petite tablette) et <= 480px
+     (telephone etroit).
+   - REGLE : tout ajustement responsif TELEPHONE se fait ICI, plus de patchs
+     @media disperses dans index.php / dashboard.css.
+   ========================================================================== */
+
+/* =========================================================================
+   1. PALIER TELEPHONE  (<= 768px)
+   ========================================================================= */
+@media (max-width: 768px) {
+
+    /* --- Anti-debordement horizontal global (cause n°1 du "zoom" mobile) --- */
+    html, body { max-width: 100%; overflow-x: hidden; }
+    *, *::before, *::after { box-sizing: border-box; }
+    img, canvas, svg, video, iframe { max-width: 100%; height: auto; }
+
+    /* --- Conteneur principal : marges serrees --- */
+    .container,
+    .wrap { padding-left: 14px !important; padding-right: 14px !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* NAVIGATION : bande horizontale scrollable (plus de saut de ligne)  */
+    /* ------------------------------------------------------------------ */
+    nav, .nav {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 2px;
+        padding: 0 10px !important;
+    }
+    nav::-webkit-scrollbar, .nav::-webkit-scrollbar { display: none; }
+    nav a, .nav a {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        padding: 12px 9px !important;
+        font-size: 12px !important;
+    }
+    nav .logo, .nav .logo { flex: 0 0 auto; font-size: 17px !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* TITRES / HERO                                                       */
+    /* ------------------------------------------------------------------ */
+    h1 { font-size: clamp(20px, 6vw, 26px) !important; line-height: 1.15; }
+    h2 { font-size: clamp(18px, 5vw, 22px) !important; }
+    .bk-hero2 { grid-template-columns: 1fr !important; gap: 32px !important; padding: 36px 0 28px !important; }
+    .bk-hero-left { text-align: center; }
+    .bk-hero-left h1 { font-size: clamp(28px, 8vw, 40px) !important; letter-spacing: -1px; }
+    .bk-hero-lead { font-size: 16px !important; margin-left: auto; margin-right: auto; }
+    .bk-hero-ctas, .bk-hero-trust { justify-content: center !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* GRILLES DE STATS / CARTES                                           */
+    /* ------------------------------------------------------------------ */
+    .grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+    .card { padding: 14px !important; }
+    .card .num { font-size: 24px !important; }
+    .charts-row, .charts-row-3 { grid-template-columns: 1fr !important; }
+    .chart-card { padding: 14px !important; }
+    /* Tout bloc en 2/3/4 colonnes inline repasse en 1 colonne */
+    [style*="grid-template-columns:1fr 1fr"],
+    [style*="grid-template-columns: 1fr 1fr"],
+    [style*="repeat(2,1fr)"],
+    [style*="repeat(3,1fr)"],
+    [style*="repeat(4,1fr)"] { grid-template-columns: 1fr !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* TABLEAUX (pattern 3-tables)  : scroll horizontal propre            */
+    /* ------------------------------------------------------------------ */
+    .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 10px;
+    }
+    .bk-table { min-width: max-content; }
+    .bk-table th, .bk-table td {
+        padding: 10px 12px !important;
+        font-size: 12px !important;
+        white-space: nowrap;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* RECHERCHE / FILTRES : tout en pleine largeur, empile               */
+    /* ------------------------------------------------------------------ */
+    .search-box { padding: 14px !important; }
+    .search-box input, .search-box select,
+    .search-filters input, .search-filters select,
+    input[type="text"], input[type="search"], input[type="email"], select {
+        width: 100% !important;
+        margin: 5px 0 !important;
+        font-size: 16px !important; /* 16px = pas de zoom auto iOS au focus */
+    }
+    .search-filters { flex-direction: column !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* BOUTONS : cibles tactiles confortables                             */
+    /* ------------------------------------------------------------------ */
+    .btn, button.btn, a.btn {
+        width: 100%;
+        margin: 6px 0;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    /* Petits boutons d'action (suivre, PDF, ffa, signaler...) : restent en ligne */
+    .btn-follow, .btn-pdf, .btn-ffa, .btn-close-detail,
+    .view-toggle button, .p2-view-toggle { width: auto; }
+
+    /* ------------------------------------------------------------------ */
+    /* PROFIL                                                              */
+    /* ------------------------------------------------------------------ */
+    .profil-header { flex-direction: column !important; gap: 14px !important; padding: 16px !important; text-align: center; }
+    .profil-header .name { font-size: 22px !important; }
+    .section-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+    .section-tabs a { display: inline-block; padding: 10px 14px !important; font-size: 12px !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* PANNEAU DETAIL CLUB / EPREUVE (overlay inline)                     */
+    /* ------------------------------------------------------------------ */
+    .club-detail-panel { padding: 16px !important; border-radius: 10px; }
+    .club-detail-header h2 { font-size: 18px !important; }
+    .club-detail-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap !important;
+        white-space: nowrap;
+    }
+    .club-detail-tab { flex: 0 0 auto; padding: 8px 14px !important; font-size: 12px !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* LISTE ATHLETES (cartes)                                            */
+    /* ------------------------------------------------------------------ */
+    .ath-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+    .ath-card { padding: 12px !important; }
+    .ath-card .ath-name { font-size: clamp(16px, 4.5vw, 20px) !important; }
+    .ath-card .ath-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* COMPARER : panier flottant compact                                 */
+    /* ------------------------------------------------------------------ */
+    .cmp-basket {
+        left: 10px !important; right: 10px !important;
+        width: auto !important; max-width: none !important;
+        bottom: 10px !important;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* DECORS 3D LOURDS : on reduit (perf + lisibilite mobile)            */
+    /* ------------------------------------------------------------------ */
+    .stade-3d { transform: scale(0.7); height: 260px !important; }
+    .podium-3d { height: 280px !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* TOGGLES FLOTTANTS (theme clair/sombre) : ne pas chevaucher le pouce */
+    /* ------------------------------------------------------------------ */
+    .p2-toggles { gap: 6px; }
+    .p2-light-toggle, .p2-view-toggle { font-size: 11px; padding: 8px 12px; }
+
+    /* Barre newsletter fixe : compacte, ne mange pas tout l'ecran */
+    #newsletterBar { padding: 12px 14px !important; }
+    #newsletterBar input { width: 100% !important; }
+
+    /* ------------------------------------------------------------------ */
+    /* MODALES / OVERLAYS plein ecran sur telephone                       */
+    /* ------------------------------------------------------------------ */
+    .overlay > div, .modal > div, [id$="Overlay"] > div, [id$="Modal"] > div {
+        max-width: 94vw !important;
+        width: 94vw !important;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    /* Tableau prix : 1 colonne */
+    .bk-prix { grid-template-columns: 1fr !important; }
+}
+
+/* =========================================================================
+   2. PALIER TELEPHONE ETROIT  (<= 480px)
+   ========================================================================= */
+@media (max-width: 480px) {
+
+    .container, .wrap { padding-left: 10px !important; padding-right: 10px !important; }
+
+    /* Stats : 2 colonnes restent lisibles, mais on serre */
+    .grid { gap: 8px !important; }
+    .card .num { font-size: 21px !important; }
+
+    /* Liste athletes : 1 seule colonne */
+    .ath-grid { grid-template-columns: 1fr !important; }
+    .ath-card .ath-kpis { grid-template-columns: repeat(4, 1fr) !important; }
+
+    h1 { font-size: 20px !important; }
+    .bk-hero-left h1 { font-size: 26px !important; }
+
+    nav a, .nav a { padding: 11px 7px !important; font-size: 11px !important; }
+
+    .bk-table th, .bk-table td { padding: 8px 10px !important; font-size: 11px !important; }
+
+    /* Decors 3D : encore plus reduits sur tres petit ecran */
+    .stade-3d { height: 200px !important; }
+    .podium-3d { height: 220px !important; }
+}

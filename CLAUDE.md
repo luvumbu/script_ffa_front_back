@@ -1,5 +1,16 @@
 # BOKONZI (BK) — Reference rapide projet
 
+## THEME clair/sombre — SOURCE DE VERITE UNIQUE : `theme-control.css`
+> A LIRE AVANT TOUTE MODIF DE COULEUR / THEME. But : que les bugs clair/sombre ne reviennent plus.
+
+- **Mode par defaut = SOMBRE**. Le mode clair s'active via la classe `body.p2-light` (toggle flottant en bas a droite, stocke en `localStorage` `bk_theme_mode` / legacy `bk_p2_light`).
+- **`theme-control.css`** (racine) est charge **EN DERNIER** dans le `<head>`, APRES `dashboard.css`, APRES les `<style>` inline, et APRES `bkRenderThemeHead()` (theme custom). Il gagne donc la cascade et controle toutes les couleurs de theme.
+- **Charge sur** : `index.php` + `pages/{profil,athlete,global_athlete,classement,recherche,performances}.php` (lien relatif `theme-control.css` ou `../theme-control.css`, cache-bust `?v=N`). PAS sur `pages/club.php` (outil B2B autonome sans toggle).
+- **Contenu (4 couches)** : A) tokens sombres `--bk-*` ; B) **surcharge des variables en mode clair** `body.p2-light { --bg-*, --text-*, --border... }` (le chainon qui manquait : sans lui, tout `var(--bg-card)` restait sombre en clair) ; C) normalisation `body.p2-light [style*="#hex"]` (hex sombres inline -> creme) ; D) filet `body:not(.p2-light) [style*="#hex"]` (hex clairs inline -> sombre) ; E) garde lisibilite liens pour themes custom.
+- **REGLE** : pour ajouter/corriger une couleur de theme, **modifier UNIQUEMENT `theme-control.css`**. Ne plus ajouter de patch `body.p2-light [style*=...]` disperse dans `index.php`/`dashboard.css` (il en reste ~641 historiques, en cours d'absorption). Idealement, utiliser `var(--bg-card)`, `var(--text-primary)`, etc. dans le nouveau code au lieu de coder un hex en dur.
+- **Theme custom** (`core/theme.php`, fichier `logs/.global_style.php`) : ne doit JAMAIS recolorer les badges a couleur inline (niveaux D/R/N/I, medailles). La regle `.badge-cat,.tag` est scopee `body:not(.p2-light) ...:not([style*="background"])`.
+- **Palette creme (mode clair)** : fonds `#f4ede0`/`#faf6ec`/`#ffffff`, bordures `#c9bfa6`/`#d8cdb1`, texte `#1a1814`/`#5a5040`/`#8a7d63`, lien `#6b4f2c`. **Palette sombre inline** : fonds `#0d1117`/`#161b22`/`#1e2a3a`, bordures `#30363d`, texte `#f0f6fc`/`#c9d1d9`/`#8b949e`.
+
 ## Stack technique
 - **Backend**: PHP 8+ / MySQL (mysqli) / Apache (XAMPP)
 - **Frontend**: HTML/CSS/JS vanilla + Chart.js 4.4.7
@@ -1183,3 +1194,23 @@ Page autonome : tableau de bord complet d'un club. **URL** : `pages/club.php?clu
 
 
 
+
+# ═══════════════════════════════════════════════════════════════
+#  SESSION JUIN 2026 (21/06) — Theme clair/sombre : controle integral
+# ═══════════════════════════════════════════════════════════════
+
+## Probleme (recurrent)
+- Bugs de mode sombre/clair qui revenaient sans cesse sur le profil (et ailleurs).
+- Cause racine : ~5000 couleurs hex codees en dur inline dans `index.php`, mode clair rattrape par 641 patchs `body.p2-light` disperses, AUCUNE surcharge des variables CSS en mode clair, et un theme custom (`logs/.global_style.php` = vert/jaune) qui ecrasait titres/liens/badges en `!important` (y compris les badges de niveau D/R/N/I).
+
+## Solution : `theme-control.css` (SOURCE DE VERITE UNIQUE)
+- Nouveau fichier a la racine, charge **EN DERNIER** dans le `<head>` (apres `dashboard.css`, les `<style>` inline et `bkRenderThemeHead()`) -> gagne la cascade.
+- 4 couches : A) tokens sombres `--bk-*` ; B) **surcharge des variables CSS en mode clair** `body.p2-light { --bg-*, --text-*, --border... }` (chainon manquant) ; C) normalisation `body.p2-light [style*="#hexSombre"]` -> creme ; E) garde de lisibilite des liens pour themes custom. (Section D laissee VIDE volontairement : basculer 1 couleur sur 2 d'un element en sombre cree du texte invisible -> corrections au cas par cas.)
+- Charge sur : `index.php` + `pages/{profil,athlete,global_athlete,classement,recherche,performances}.php` (cache-bust `?v=N`). Pas sur `pages/club.php` (pas de toggle).
+
+## `core/theme.php` (theme custom)
+- La regle `.badge-cat, .tag` est desormais `body:not(.p2-light) .badge-cat:not([style*="background"]), ...` : le theme custom ne recolore plus les badges a couleur inline (niveaux/medailles), et seulement en sombre (en clair, les regles lisibles de `dashboard.css` s'appliquent).
+
+## REGLE A SUIVRE
+- Toute couleur de theme se modifie UNIQUEMENT dans `theme-control.css`. Ne plus disperser de patchs `body.p2-light [style*=...]`. Dans le nouveau code, prefer `var(--bg-card)` / `var(--text-primary)` aux hex en dur.
+- Detail complet en TETE de ce fichier (section « THEME clair/sombre — SOURCE DE VERITE UNIQUE »).

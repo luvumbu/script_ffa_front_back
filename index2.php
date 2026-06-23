@@ -1107,8 +1107,6 @@ if (count($_bcItems) > 1):
     <?php bkPaywallAssets($conn); ?>
     <!-- SOURCE DE VERITE DU THEME (clair/sombre) : charge en dernier pour gagner la cascade -->
     <link rel="stylesheet" href="theme-control.css?v=1">
-    <!-- SOURCE DE VERITE MOBILE (adaptation telephone) : charge tout en dernier, layout uniquement -->
-    <link rel="stylesheet" href="mobile.css?v=1">
 </head>
 <body>
 <?php if (function_exists('bkTestBanner')) echo bkTestBanner(); ?>
@@ -2043,6 +2041,8 @@ if ($page === 'accueil'):
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!-- Active les entrees animees AVANT le 1er paint (evite tout flash) -->
+<script>document.documentElement.classList.add('bk-js');</script>
 
 <style>
 /* ============================================================ */
@@ -2303,6 +2303,84 @@ if ($page === 'accueil'):
     .bk-mockup-stats{grid-template-columns:repeat(3,1fr);}
 }
 @keyframes bkGoldBlink{0%,100%{opacity:1;text-shadow:0 0 8px rgba(255,215,0,0.6);}50%{opacity:0.6;text-shadow:none;}}
+
+/* ============================================================ */
+/*  POLISH (index2) — entrees animees + micro-interactions      */
+/*  Additif : aucune structure/contenu modifie.                 */
+/* ============================================================ */
+
+/* --- Reveal au scroll (hide seulement si JS dispo -> pas de FOUC sans JS) --- */
+html.bk-js .bk-reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.8,.2,1),transform .7s cubic-bezier(.2,.8,.2,1);will-change:opacity,transform;}
+html.bk-js .bk-reveal.in{opacity:1;transform:none;}
+
+/* --- Entree du hero (staggered au chargement) --- */
+html.bk-js .bk-hero-left>*{opacity:0;animation:bkHeroIn .8s cubic-bezier(.2,.8,.2,1) forwards;}
+html.bk-js .bk-hero-left .bk-tag{animation-delay:.05s;}
+html.bk-js .bk-hero-left h1{animation-delay:.16s;}
+html.bk-js .bk-hero-left .bk-hero-lead{animation-delay:.3s;}
+html.bk-js .bk-hero-left .bk-hero-ctas{animation-delay:.42s;}
+html.bk-js .bk-hero-left .bk-hero-trust{animation-delay:.54s;}
+html.bk-js .bk-hero-right{opacity:0;animation:bkHeroIn 1s cubic-bezier(.2,.8,.2,1) .35s forwards;}
+@keyframes bkHeroIn{from{opacity:0;transform:translateY(22px);}to{opacity:1;transform:none;}}
+
+/* --- Degrade anime sur l'accent du titre --- */
+.bk-hero-left h1 .grad{background-size:220% auto;animation:bkGradShift 7s linear infinite;}
+@keyframes bkGradShift{to{background-position:220% center;}}
+
+/* --- Flottement doux du mockup (desktop uniquement) --- */
+@media(min-width:941px){
+    .bk-mockup{animation:bkFloat 6.5s ease-in-out infinite;}
+    @keyframes bkFloat{0%,100%{transform:perspective(1200px) rotateY(-4deg) rotateX(2deg) translateY(0);}50%{transform:perspective(1200px) rotateY(-4deg) rotateX(2deg) translateY(-12px);}}
+}
+
+/* --- Barres du mockup qui respirent --- */
+.bk-mockup-bars .bar{transform-origin:bottom;animation:bkBarPulse 3.6s ease-in-out infinite;}
+.bk-mockup-bars .bar:nth-child(2){animation-delay:.2s;}
+.bk-mockup-bars .bar:nth-child(3){animation-delay:.4s;}
+.bk-mockup-bars .bar:nth-child(4){animation-delay:.6s;}
+.bk-mockup-bars .bar:nth-child(5){animation-delay:.8s;}
+.bk-mockup-bars .bar:nth-child(6){animation-delay:1s;}
+.bk-mockup-bars .bar:nth-child(7){animation-delay:1.2s;}
+@keyframes bkBarPulse{0%,100%{transform:scaleY(.9);opacity:.82;}50%{transform:scaleY(1);opacity:1;}}
+
+/* --- Bandeau chiffres : separateurs + survol --- */
+.bk-trust-item{transition:transform .25s;}
+.bk-trust-item:not(:last-child)::after{content:"";position:absolute;top:50%;right:-10px;transform:translateY(-50%);width:1px;height:44px;background:linear-gradient(180deg,transparent,#26344a,transparent);}
+.bk-trust-item:hover{transform:translateY(-4px);}
+@media(max-width:940px){.bk-trust-item:not(:last-child)::after{display:none;}}
+
+/* --- Cartes fonctionnalites : liseret degrade au survol --- */
+.bk-feat-card::after{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#6c5ce7,#ec4899,#f59e0b);transform:scaleX(0);transform-origin:left;transition:transform .4s cubic-bezier(.2,.8,.2,1);}
+.bk-feat-card:hover::after{transform:scaleX(1);}
+.bk-feat-ico{transition:transform .3s;}
+.bk-feat-card:hover .bk-feat-ico{transform:translateY(-2px) scale(1.06);}
+
+/* --- Cas d'usage : icone qui s'incline au survol --- */
+.bk-usecase-ico{transition:transform .45s cubic-bezier(.2,.8,.2,1);}
+.bk-usecase:hover .bk-usecase-ico{transform:translateY(-3px) rotate(-5deg);}
+
+/* --- CTA final : reflet qui balaie --- */
+.bk-cta-final::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;background:linear-gradient(105deg,transparent,rgba(255,255,255,0.16),transparent);transform:skewX(-18deg);animation:bkShine 5.5s ease-in-out infinite;pointer-events:none;}
+@keyframes bkShine{0%{left:-60%;}45%,100%{left:140%;}}
+
+/* --- Accessibilite : focus visible clavier --- */
+.bk-btn-primary:focus-visible,.bk-btn-secondary:focus-visible,.bk-cta-btn-w:focus-visible,.bk-cta-btn-gh:focus-visible,.bk-feat-link:focus-visible{outline:2px solid #a78bfa;outline-offset:3px;border-radius:12px;}
+
+/* --- Petits ecrans : resserrement --- */
+@media(max-width:560px){
+    .bk-hero2{padding:40px 0 28px 0;gap:36px;}
+    .bk-hero-left h1{font-size:clamp(30px,8.5vw,40px);letter-spacing:-1px;}
+    .bk-hero-lead{font-size:16px;}
+    .bk-trust{grid-template-columns:1fr 1fr;padding:26px 16px;gap:24px 10px;}
+    .bk-cta-final{padding:44px 22px;border-radius:18px;}
+    .bk-sec-head{margin-bottom:36px;}
+}
+
+/* --- Respect de prefers-reduced-motion --- */
+@media(prefers-reduced-motion:reduce){
+    html.bk-js .bk-reveal,html.bk-js .bk-hero-left>*,html.bk-js .bk-hero-right{opacity:1!important;transform:none!important;animation:none!important;}
+    .bk-mockup,.bk-mockup-bars .bar,.bk-hero-left h1 .grad,.bk-cta-final::after,.bk-tag .dot{animation:none!important;}
+}
 </style>
 
 <div class="bk-land">
@@ -2389,7 +2467,7 @@ if ($page === 'accueil'):
     </section>
 
     <!-- ============ TRUST SIGNALS ============ -->
-    <section class="bk-trust">
+    <section class="bk-trust bk-reveal">
         <div class="bk-trust-item">
             <div class="bk-trust-num">+300k</div>
             <div class="bk-trust-lbl">Athletes referencees</div>
@@ -2409,7 +2487,7 @@ if ($page === 'accueil'):
     </section>
 
     <!-- ============ FONCTIONNALITES ============ -->
-    <section class="bk-sec" id="fonctionnalites">
+    <section class="bk-sec bk-reveal" id="fonctionnalites">
         <div class="bk-sec-head">
             <div class="bk-eyebrow">Fonctionnalites</div>
             <h2>Tout ce qu'il faut pour explorer<br>la data sportive.</h2>
@@ -2510,7 +2588,7 @@ if ($page === 'accueil'):
     </section>
 
     <!-- ============ DEMO PLEINE LARGEUR ============ -->
-    <section class="bk-sec" id="demo">
+    <section class="bk-sec bk-reveal" id="demo">
         <div class="bk-sec-head">
             <div class="bk-eyebrow">Demo</div>
             <h2>Un aperc&#807;u du produit<br>en action.</h2>
@@ -2603,7 +2681,7 @@ if ($page === 'accueil'):
     </section>
 
     <!-- ============ CAS D'USAGE ============ -->
-    <section class="bk-sec">
+    <section class="bk-sec bk-reveal">
         <div class="bk-sec-head">
             <div class="bk-eyebrow">Cas d'usage</div>
             <h2>Un outil pour<br>plusieurs profils.</h2>
@@ -2617,7 +2695,7 @@ if ($page === 'accueil'):
             </div>
             <div class="bk-usecase">
                 <div class="bk-usecase-ico">&#127963;</div>
-                <h3>Clubs &amp; fediations</h3>
+                <h3>Clubs &amp; federations</h3>
                 <p>Analysez vos effectifs, suivez les progressions, valorisez les resultats de vos licencies.</p>
             </div>
             <div class="bk-usecase">
@@ -2725,7 +2803,7 @@ if ($page === 'accueil'):
     <?php endif; // fin section tarifs masquee ?>
 
     <!-- ============ CTA FINAL ============ -->
-    <section class="bk-cta-final">
+    <section class="bk-cta-final bk-reveal">
         <h2>Pret a explorer la data sportive ?</h2>
         <p>Un clic pour acceder a la version gratuite complete.</p>
         <div class="bk-cta-ctas">
@@ -2739,6 +2817,24 @@ if ($page === 'accueil'):
     </div>
 
 </div>
+
+<!-- Reveal au scroll des sections de la landing (isole, sans dependance) -->
+<script>
+(function(){
+    var els = document.querySelectorAll('.bk-reveal');
+    if (!els.length) return;
+    if (!('IntersectionObserver' in window)) {
+        for (var i=0;i<els.length;i++) els[i].classList.add('in');
+        return;
+    }
+    var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+            if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+        });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    els.forEach(function(e){ io.observe(e); });
+})();
+</script>
 
 <?php
 // ================================================================

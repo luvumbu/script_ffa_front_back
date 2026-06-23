@@ -377,8 +377,12 @@ function bkRenderThemeHead() {
     // Bordures et radius : cards principales
     $css .= ".bk-table, .profil-header, .profil-hero, .section, .section-card, .chart-card, .stat-card, .search-box, .tools-card, input, textarea, select, .badge-cat, .btn-msg, button { border-radius: {$rad} !important; }\n";
 
-    // Badges tags
-    $css .= ".badge-cat, .tag { background: {$pri}25 !important; color: {$acc} !important; border: 1px solid {$pri}55 !important; }\n";
+    // Badges tags — UNIQUEMENT mode sombre + UNIQUEMENT les badges sans couleur
+    // inline. Les badges de NIVEAU (D/R/N/I) et MEDAILLES portent une couleur
+    // semantique dans leur attribut style="background:..." : on ne les ecrase JAMAIS,
+    // sinon ils perdent leur sens (tous verts/jaunes). En mode clair, on laisse les
+    // regles lisibles de dashboard.css (body.p2-light .badge-cat) s'appliquer.
+    $css .= "body:not(.p2-light) .badge-cat:not([style*=\"background\"]), body:not(.p2-light) .tag:not([style*=\"background\"]) { background: {$pri}25 !important; color: {$acc} !important; border: 1px solid {$pri}55 !important; }\n";
 
     // Nav active
     $css .= ".nav a.active, nav a.active, .nav-link.active { color: {$pri} !important; }\n";

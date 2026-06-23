@@ -1,0 +1,15 @@
+{
+  "appId": "com.bokonzi.app",
+  "appName": "Bokonzi",
+  "webDir": "www",
+  "server": {
+    "url": "https://bokonzi.com",
+    "androidScheme": "https",
+    "cleartext": false,
+    "errorPath": "error.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0d1117"
+  }
+}

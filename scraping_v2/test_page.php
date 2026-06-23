@@ -12,6 +12,8 @@
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
+require __DIR__ . '/_guard.php';
+
 require_once __DIR__ . '/lib/PageAnalyzer.php';
 
 $urlDefaut = 'https://www.athle.fr/bases/liste.aspx?frmpostback=true&frmbase=bilans&frmmode=1&frmespace=0&frmannee=2026&frmcategorie=&frmsexe=F&frmepreuve=110&frmvent=&frmligue=&frmdepartement=&frmclub=&frmnationalite=&frmamini=&frmamaxi=&frmplaces=&frmposition=1';

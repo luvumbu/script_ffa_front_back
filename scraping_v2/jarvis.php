@@ -14,6 +14,7 @@
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__) . '/core/db.php';
+require __DIR__ . '/_guard.php';
 
 $stateDir     = __DIR__ . '/state';
 $flagFile     = $stateDir . '/scraper_v2_running.flag';

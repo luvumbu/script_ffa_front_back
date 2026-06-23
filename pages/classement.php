@@ -269,6 +269,8 @@ logIp();
     }
     </style>
     <?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
+    <link rel="stylesheet" href="../theme-control.css?v=1">
+    <link rel="stylesheet" href="../mobile.css?v=1">
 </head>
 <body>
 <?php include __DIR__ . '/../nav.php'; ?>

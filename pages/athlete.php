@@ -71,6 +71,8 @@ $nom = htmlspecialchars($identite['nom_complet'] ?? 'Inconnu');
         a { color: #00d4ff; text-decoration: none; }
     </style>
     <?php require_once __DIR__ . '/../core/theme.php'; bkRenderThemeHead(); ?>
+    <link rel="stylesheet" href="../theme-control.css?v=1">
+    <link rel="stylesheet" href="../mobile.css?v=1">
 </head>
 <body>
 

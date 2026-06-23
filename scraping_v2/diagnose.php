@@ -19,6 +19,8 @@
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
+require __DIR__ . '/_guard.php';
+
 $libDir = __DIR__ . '/lib';
 $stateDir = __DIR__ . '/state';
 

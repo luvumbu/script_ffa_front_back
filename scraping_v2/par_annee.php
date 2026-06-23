@@ -17,6 +17,8 @@
 ini_set('display_errors', '1');
 error_reporting(E_ALL);
 
+require __DIR__ . '/_guard.php';
+
 $dbFile   = dirname(__DIR__) . '/core/db.php';
 $libDir   = __DIR__ . '/lib';
 $dataFile = __DIR__ . '/data/parametres_athle.json';
@@ -245,7 +247,7 @@ $pct = $stPages > 0 ? round($stDone / $stPages * 100, 1) : 0;
     <p class="sub">
         Choisis une annee. Toutes les tables (sprint, fond, sauts, lancers, haies, marche, combine) seront scrapees.
         Le nombre de pages est lu directement depuis la BDD (colonne <code>page_total</code>).
-        <a href="index.php">Mode classique</a> | <a href="?annee=<?= $anneeChoisie ?>&t=1">Rafraichir</a>
+        <a href="hub.php<?= isset($_GET['bk_key']) ? '?bk_key='.urlencode($_GET['bk_key']) : '' ?>">&#128225; Hub</a> | <a href="index.php">Mode classique</a> | <a href="?annee=<?= $anneeChoisie ?>&t=1">Rafraichir</a>
     </p>
 
 <?php if ($discRunning): ?>

@@ -18,6 +18,7 @@
 @set_time_limit(120);
 
 require_once dirname(__DIR__) . '/core/db.php';
+require __DIR__ . '/_guard.php';
 require_once __DIR__ . '/lib/SourceTableReader.php';
 require_once __DIR__ . '/lib/PageAnalyzer.php';
 require_once __DIR__ . '/lib/UrlAnalyzer.php';
@@ -334,6 +335,7 @@ code { background: #1a2230; color: #a5b4fc; padding: 2px 6px; border-radius: 4px
 <div class="sub">Choisis un classement, on fetch la page athle.fr live + compare avec ta BDD athlete par athlete. Re-scrape ciblee par bouton.</div>
 
 <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <a href="hub.php<?= isset($_GET['bk_key']) ? '?bk_key='.urlencode($_GET['bk_key']) : '' ?>" class="btn" style="background:linear-gradient(135deg,#6d28d9,#a78bfa);">&#128225; Hub</a>
     <a href="par_annee.php" class="btn btn-back">&larr; Par annee</a>
     <a href="par_epreuve.php" class="btn btn-back">Par epreuve</a>
     <a href="index.php" class="btn btn-back">Index</a>

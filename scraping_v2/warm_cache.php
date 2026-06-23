@@ -15,6 +15,7 @@
 @set_time_limit(30);
 
 require_once dirname(__DIR__) . '/core/db.php';
+require __DIR__ . '/_guard.php';
 require_once __DIR__ . '/lib/SourceTableReader.php';
 
 $tempFile  = __DIR__ . '/state/stats_warming.json';
